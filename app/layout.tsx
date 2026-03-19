@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
 import { Bebas_Neue, Instrument_Sans, DM_Mono } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 const bebas = Bebas_Neue({
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${bebas.variable} ${instrument.variable} ${mono.variable}`}>
       <body className="bg-bg text-white font-body antialiased">
         {children}
+        <Analytics />
       </body>
     </html>
   );
