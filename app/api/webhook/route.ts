@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
       // ── New subscription created ────────────────────────────────
       case 'checkout.session.completed': {
-        const session  = event.data.object as Stripe.CheckoutSession;
+        const session  = event.data.object as Stripe.Checkout.Session;
         const subId    = session.subscription as string;
         const sub      = await stripe.subscriptions.retrieve(subId);
         const meta     = sub.metadata;
