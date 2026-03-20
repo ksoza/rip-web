@@ -22,7 +22,24 @@ export function LandingPage() {
   const [mode, setMode]           = useState<'signin' | 'signup'>('signup');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
+  const [googleLoading, setGoogleLoading] = useState(false);
   const supabase = createSupabaseBrowser();
+
+  async function handleGoogleAuth() {
+    setGoogleLoading(true); setError('');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}`,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message);
+      setGoogleLoading(false);
+    }
+  }
 
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault();
@@ -67,7 +84,7 @@ export function LandingPage() {
       <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
         <div className="inline-flex items-center gap-2 bg-bg2 border border-border2 rounded-full px-4 py-2 text-xs text-muted uppercase tracking-widest mb-8">
           <span className="w-2 h-2 rounded-full bg-lime animate-pulse" />
-          $RIP Token Launching in 90 Days · First 10K Wallets Get Free $RIP
+          AI Fan Studio · Now in Early Access
         </div>
 
         <h1 className="font-display text-7xl md:text-9xl tracking-wider text-white leading-none mb-6">
@@ -111,15 +128,15 @@ export function LandingPage() {
       {/* Pricing */}
       <section className="max-w-5xl mx-auto px-6 pb-20">
         <h2 className="font-display text-3xl tracking-wider text-center text-white mb-4">
-          PLANS + <span className="text-lime">FREE $RIP ☽</span>
+          <span className="text-lime">PLANS</span>
         </h2>
-        <p className="text-muted text-sm text-center mb-10">First 10,000 subscribers get free $RIP airdrop on launch day, pre-staked at crazy APY</p>
+        <p className="text-muted text-sm text-center mb-10">Start free. Upgrade anytime for more generations and features.</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
-            { name: 'Free',    price: '$0',  mo: '',     rip: null,    apy: null,   gens: '3 generations', feat: ['Text only', 'Fan Feed access', 'Watermarked'], highlight: false },
-            { name: 'Starter', price: '$1',  mo: '/mo',  rip: '500',   apy: '420%', gens: '30 generations', feat: ['Voice TTS', 'Social export', 'No watermark', 'Referral link'], highlight: false },
-            { name: 'Creator', price: '$5',  mo: '/mo',  rip: '3,000', apy: '690%', gens: '150 generations', feat: ['Lip sync', 'VidMuse music', 'Voice cloning', 'HD export'], highlight: true },
-            { name: 'Studio',  price: '$10', mo: '/mo',  rip: '7,500', apy: '1000%', gens: 'Unlimited', feat: ['All tools', '4K lip sync', 'Full pipeline', 'API access'], highlight: false },
+            { name: 'Free',    price: '$0',  mo: '',     gens: '3 generations', feat: ['Text only', 'Fan Feed access', 'Watermarked'], highlight: false },
+            { name: 'Starter', price: '$1',  mo: '/mo',  gens: '30 generations', feat: ['Voice TTS', 'Social export', 'No watermark', 'Referral link'], highlight: false },
+            { name: 'Creator', price: '$5',  mo: '/mo',  gens: '150 generations', feat: ['Lip sync', 'VidMuse music', 'Voice cloning', 'HD export'], highlight: true },
+            { name: 'Studio',  price: '$10', mo: '/mo',  gens: 'Unlimited', feat: ['All tools', '4K lip sync', 'Full pipeline', 'API access'], highlight: false },
           ].map(plan => (
             <div key={plan.name}
               className={`rounded-xl p-5 border-2 text-center relative ${plan.highlight ? 'border-rip bg-gradient-to-b from-[#0d0408] to-[#080410]' : 'border-border bg-bg2'}`}
@@ -131,12 +148,7 @@ export function LandingPage() {
               )}
               <div className="text-[10px] text-muted uppercase tracking-widest mb-2">{plan.name}</div>
               <div className="font-display text-5xl text-white">{plan.price}<span className="text-sm font-body text-muted">{plan.mo}</span></div>
-              {plan.rip && (
-                <>
-                  <div className="text-lime text-sm font-bold mt-2">+ {plan.rip} ☽ $RIP FREE</div>
-                  <div className="text-gold text-xs mt-1">🔒 {plan.apy} Pre-Launch APY</div>
-                </>
-              )}
+              
               <div className="text-[11px] text-muted2 mt-3 mb-4 space-y-1">
                 <div className="font-bold text-muted">{plan.gens}</div>
                 {plan.feat.map(f => <div key={f}>{f}</div>)}
@@ -144,7 +156,7 @@ export function LandingPage() {
             </div>
           ))}
         </div>
-        <p className="text-center text-xs text-muted2 mt-4">Pay with Card · SOL · XRP · USDC · $RIP (20% off)</p>
+        <p className="text-center text-xs text-muted2 mt-4">Pay with Card</p>
       </section>
 
       {/* Auth Form */}
@@ -156,6 +168,27 @@ export function LandingPage() {
           <p className="text-muted text-sm text-center mb-6">
             {mode === 'signup' ? '3 free generations. No credit card needed.' : 'Sign in to your RiP studio.'}
           </p>
+
+          {/* Google Sign In */}
+          <button
+            onClick={handleGoogleAuth}
+            disabled={googleLoading}
+            className="w-full flex items-center justify-center gap-3 py-3 rounded-lg text-sm font-bold bg-white text-black hover:bg-gray-100 disabled:opacity-50 transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+              <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
+            </svg>
+            {googleLoading ? 'Redirecting...' : 'Continue with Google'}
+          </button>
+
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-muted2 uppercase tracking-widest">or</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
 
           <form onSubmit={handleAuth} className="space-y-4">
             <input
@@ -193,7 +226,6 @@ export function LandingPage() {
 
           <p className="text-[10px] text-muted2 text-center mt-4 leading-relaxed">
             All content is fan-made &amp; transformative. Not affiliated with any IP owners.
-            13% of all revenue routes to founder wallet automatically.
           </p>
         </div>
       </section>
@@ -207,7 +239,7 @@ export function LandingPage() {
         <p className="text-xs text-muted2 max-w-lg mx-auto">
           Fan-made platform. All referenced IP belongs to respective rights holders.
           RiP is not affiliated with any studios, networks, or creators.
-          $RIP is a utility token — not financial advice.
+         
         </p>
       </footer>
     </div>

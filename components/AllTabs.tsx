@@ -304,22 +304,9 @@ export function SettingsTab({ user, profile, onSignOut }: any) {
       </div>
 
       <div>
-        <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Revenue & Wallet</div>
-        <Row label="Founder Wallet (Solana)"
-          desc="DbnD8vxbNVrG9iL7oi83Zg8RGqxFLATGcW67oq2xD5Nj"
-          action={() => copy('DbnD8vxbNVrG9iL7oi83Zg8RGqxFLATGcW67oq2xD5Nj', 'wallet')}
-          actionLabel="Copy"
-          actionKey="wallet"
-        />
-        <Row label="Revenue Split" desc="13% founder · 50% launch fund · 15% AI · 10% staking · 7% ops · 5% reserve" />
-        <Row label="$RIP Launch" desc="Token deploys 90 days after studio launch on pump.fun → Raydium → XRPL" />
-      </div>
-
-      <div>
         <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Legal</div>
         <Row label="Content Policy" desc="All content is fan-made and transformative. Not affiliated with any IP owners." />
-        <Row label="$RIP Token" desc="Utility token. Not financial advice. Consult a professional before investing." />
-        <Row label="App Version" desc="RiP Web v1.0.0 · remixip.com" />
+        <Row label="App Version" desc="RiP Web v1.0.0 · remixip.icu" />
       </div>
 
       <button onClick={onSignOut} className="w-full py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-rip hover:text-rip transition-colors">
