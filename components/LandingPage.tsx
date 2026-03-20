@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase';
+import { RipLogo } from './RipLogo';
 
 const GENRE_COLORS: Record<string, string> = {
   'TV Show': '#00d4ff', 'Movie': '#ff6b35', 'Anime': '#ff2d78',
@@ -63,12 +64,7 @@ export function LandingPage() {
 
       {/* Nav */}
       <nav className="border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 bg-bg/95 backdrop-blur z-50">
-        <div className="font-display text-3xl tracking-widest">
-          <span className="text-rip">R</span>
-          <span className="text-white">i</span>
-          <span className="text-cyan">P</span>
-          <span className="ml-2 text-xs font-body text-muted tracking-widest uppercase">Remix I.P.</span>
-        </div>
+        <RipLogo size="sm" />
         <div className="flex items-center gap-3">
           <button onClick={() => setMode('signin')} className="text-sm text-muted hover:text-white transition-colors">Sign In</button>
           <button
@@ -232,9 +228,8 @@ export function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-border px-6 py-8 text-center">
-        <div className="font-display text-2xl tracking-widest mb-2">
-          <span className="text-rip">R</span><span className="text-white">i</span><span className="text-cyan">P</span>
-          <span className="ml-2 text-xs font-body text-muted2">☽</span>
+        <div className="flex justify-center mb-2">
+          <RipLogo size="sm" />
         </div>
         <p className="text-xs text-muted2 max-w-lg mx-auto">
           Fan-made platform. All referenced IP belongs to respective rights holders.

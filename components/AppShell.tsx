@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { StudioTab }   from './studio/StudioTab';
+import { RipLogo }     from './RipLogo';
 import { FeedTab, SettingsTab } from './AllTabs';
 
 const TABS = [
@@ -36,12 +37,7 @@ export function AppShell({ user }: { user: User }) {
 
       {/* Top Bar */}
       <header className="border-b border-border bg-bg/95 backdrop-blur sticky top-0 z-50 px-5 py-3 flex items-center justify-between">
-        <div className="font-display text-2xl tracking-widest">
-          <span className="text-rip">R</span>
-          <span className="text-white">i</span>
-          <span className="text-cyan">P</span>
-          <span className="ml-2 text-[10px] font-body text-muted2 tracking-widest uppercase">Remix I.P.</span>
-        </div>
+        <RipLogo size="sm" />
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted hidden sm:block">
             {profile?.tier === 'free'

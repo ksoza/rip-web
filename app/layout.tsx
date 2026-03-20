@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
-import { Bebas_Neue, Instrument_Sans, DM_Mono } from 'next/font/google';
+import { Bebas_Neue, Instrument_Sans, DM_Mono, UnifrakturMaguntia } from 'next/font/google';
 import './globals.css';
 
 const bebas = Bebas_Neue({
@@ -23,6 +23,13 @@ const mono = DM_Mono({
   display:  'swap',
 });
 
+const oldEnglish = UnifrakturMaguntia({
+  weight:   ['400'],
+  subsets:  ['latin'],
+  variable: '--font-oldenglish',
+  display:  'swap',
+});
+
 export const metadata: Metadata = {
   title:       'RiP — Remix I.P. | AI Fan Studio',
   description: 'Remix any TV show, movie, anime, cartoon or news show with AI. Generate scripts, scenes, alternate endings and more. Powered by $RIP ☽',
@@ -42,7 +49,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${bebas.variable} ${instrument.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${bebas.variable} ${instrument.variable} ${mono.variable} ${oldEnglish.variable}`} suppressHydrationWarning>
       <body className="bg-bg text-white font-body antialiased" suppressHydrationWarning>
         {children}
       </body>
