@@ -3,13 +3,11 @@ import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { StudioTab }   from './studio/StudioTab';
-import { FeedTab, WalletTab, RevenueTab, SettingsTab } from './AllTabs';
+import { FeedTab, SettingsTab } from './AllTabs';
 
 const TABS = [
   { id: 'studio',   icon: '🎬', label: 'Studio'  },
   { id: 'feed',     icon: '📡', label: 'Feed'    },
-  { id: 'wallet',   icon: '☽',  label: 'Wallet'  },
-  { id: 'revenue',  icon: '💰', label: 'Revenue' },
   { id: 'settings', icon: '🔧', label: 'Settings'},
 ];
 
@@ -61,8 +59,6 @@ export function AppShell({ user }: { user: User }) {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-28">
           {tab === 'studio'   && <StudioTab   user={user} profile={profile} onProfileUpdate={setProfile} />}
           {tab === 'feed'     && <FeedTab     user={user} />}
-          {tab === 'wallet'   && <WalletTab   user={user} />}
-          {tab === 'revenue'  && <RevenueTab  user={user} />}
           {tab === 'settings' && <SettingsTab user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} />}
         </div>
       </main>

@@ -175,14 +175,12 @@ export function StudioTab({ user, profile, onProfileUpdate }: any) {
           </div>
 
           <div className="bg-gradient-to-b from-[#0d0408] to-[#080410] border border-[#2a0a1e] rounded-xl p-5">
-            <div className="text-[9px] font-bold text-rip uppercase tracking-widest mb-3">🔥 Pre-Launch Offer</div>
+            <div className="text-[9px] font-bold text-rip uppercase tracking-widest mb-3">🔥 Upgrade</div>
             <div className="font-display text-4xl text-white mb-1">$1<span className="text-sm font-body text-muted">/mo</span></div>
-            <div className="text-lime text-sm font-bold mb-1">+ 500 ☽ $RIP FREE</div>
-            <div className="text-gold text-xs mb-3">🔒 420% Pre-Launch APY</div>
-            <div className="text-xs text-muted2 mb-4 leading-relaxed">30 gens · Voice TTS · No watermark · First 10K wallets</div>
+            <div className="text-xs text-muted2 mb-4 leading-relaxed">30 gens · Voice TTS · No watermark · Social export</div>
             <button className="w-full py-2.5 rounded-lg font-bold text-sm text-white transition hover:brightness-110"
               style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
-              Upgrade + Get Free $RIP ☽
+              Upgrade to Starter
             </button>
           </div>
         </div>
