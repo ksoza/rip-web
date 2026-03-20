@@ -31,9 +31,10 @@ input::placeholder, textarea::placeholder { color: #22222e; }
 ::selection { background: rgba(255,45,120,.3); color: #fff; }
 
 @layer utilities {
-  .font-display  { font-family: var(--font-bebas); }
-  .font-body     { font-family: var(--font-instrument); }
-  .font-mono     { font-family: var(--font-mono); }
+  .font-display    { font-family: var(--font-bebas); }
+  .font-body       { font-family: var(--font-instrument); }
+  .font-mono       { font-family: var(--font-mono); }
+  .font-oldenglish { font-family: var(--font-oldenglish); }
   .text-gradient-rip {
     background: linear-gradient(90deg, #ff2d78, #a855f7);
     -webkit-background-clip: text;
