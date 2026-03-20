@@ -21,10 +21,16 @@ export function RipLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
       />
       {/* Stacked text block */}
       <div className="relative flex flex-col items-center justify-center select-none" style={{ lineHeight: 1 }}>
-        {/* R.I.P. in Old English */}
+        {/* R.I.P. in Times New Roman */}
         <span
-          className="font-oldenglish text-white"
-          style={{ fontSize: c.ripSize, letterSpacing: '0.08em', lineHeight: 1 }}
+          className="text-white"
+          style={{
+            fontFamily: "'Times New Roman', Georgia, serif",
+            fontSize: c.ripSize,
+            letterSpacing: '0.12em',
+            lineHeight: 1,
+            fontWeight: 700,
+          }}
         >
           R.I.P.
         </span>
