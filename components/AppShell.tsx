@@ -3,10 +3,7 @@ import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { StudioTab }   from './studio/StudioTab';
-import { FeedTab }     from './feed/FeedTab';
-import { WalletTab }   from './wallet/WalletTab';
-import { RevenueTab }  from './wallet/RevenueTab';
-import { SettingsTab } from './wallet/SettingsTab';
+import { FeedTab, WalletTab, RevenueTab, SettingsTab } from './AllTabs';
 
 const TABS = [
   { id: 'studio',   icon: '🎬', label: 'Studio'  },
