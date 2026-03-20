@@ -12,10 +12,16 @@ export default function Home() {
 
   useEffect(() => {
     const sb = createSupabaseBrowser();
-    sb.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-      setLoading(false);
-    });
+    sb.auth.getUser()
+      .then(({ data }) => {
+        setUser(data.user);
+      })
+      .catch((err) => {
+        console.error('Auth check failed:', err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_, session) => {
       setUser(session?.user ?? null);
     });

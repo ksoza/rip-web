@@ -4,16 +4,21 @@ import { createClient }        from '@supabase/supabase-js';
 
 // ── Browser client (use in Client Components) ─────────────────────
 export function createSupabaseBrowser() {
+  // Sanitize URL in case env var was set with a label prefix (e.g. "URL: https://...")
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  const url = rawUrl.replace(/^URL:\s*/i, '').trim();
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    url,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
 }
 
 // ── Server/Admin client (use in API Routes + Server Actions) ──────
 export function createSupabaseAdmin() {
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  const url = rawUrl.replace(/^URL:\s*/i, '').trim();
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    url,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
