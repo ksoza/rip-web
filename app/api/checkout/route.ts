@@ -7,20 +7,29 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-06-20',
 });
 
-const PRICE_IDS = {
+const PRICE_IDS: Record<string, string> = {
   starter: process.env.STRIPE_PRICE_STARTER!,
   creator: process.env.STRIPE_PRICE_CREATOR!,
   studio:  process.env.STRIPE_PRICE_STUDIO!,
 };
 
-const PLAN_RIP = { starter: 500, creator: 3000, studio: 7500 };
+const PLAN_RIP: Record<string, number> = { starter: 500, creator: 3000, studio: 7500 };
+
+// Use the actual deployed URL (works for both remixip.icu and remixip.com)
+function getAppUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://www.remixip.icu';
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { plan, userId, referralCode } = await req.json();
 
-    if (!plan || !PRICE_IDS[plan as keyof typeof PRICE_IDS]) {
+    if (!plan || !PRICE_IDS[plan]) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
+    }
+
+    if (!PRICE_IDS[plan] || PRICE_IDS[plan].startsWith('price_xxxxx')) {
+      return NextResponse.json({ error: 'Stripe prices not configured yet' }, { status: 500 });
     }
 
     const supabase = createSupabaseAdmin();
@@ -44,18 +53,20 @@ export async function POST(req: NextRequest) {
       await supabase.from('profiles').update({ stripe_customer_id: customerId }).eq('id', userId);
     }
 
+    const appUrl = getAppUrl();
+
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
       customer:   customerId,
       mode:       'subscription',
-      line_items: [{ price: PRICE_IDS[plan as keyof typeof PRICE_IDS], quantity: 1 }],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/?success=true&plan=${plan}`,
-      cancel_url:  `${process.env.NEXT_PUBLIC_APP_URL}/?canceled=true`,
+      line_items: [{ price: PRICE_IDS[plan], quantity: 1 }],
+      success_url: `${appUrl}/?success=true&plan=${plan}`,
+      cancel_url:  `${appUrl}/?canceled=true`,
       subscription_data: {
         metadata: {
           user_id:      userId,
           plan,
-          rip_amount:   String(PLAN_RIP[plan as keyof typeof PLAN_RIP]),
+          rip_amount:   String(PLAN_RIP[plan] || 0),
           referral_code: referralCode || '',
         },
       },

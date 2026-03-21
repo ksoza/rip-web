@@ -7,24 +7,34 @@ import { AppShell }     from '@/components/AppShell';
 import type { User }    from '@supabase/supabase-js';
 
 export default function Home() {
-  const [user, setUser]     = useState<User | null>(null);
+  const [user, setUser]       = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const sb = createSupabaseBrowser();
-    sb.auth.getUser()
-      .then(({ data }) => {
-        setUser(data.user);
+
+    // First, check URL for auth callback (Google OAuth, email confirm, etc.)
+    // Supabase puts tokens in the URL hash after OAuth redirect
+    sb.auth.getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null);
       })
       .catch((err) => {
-        console.error('Auth check failed:', err);
+        console.error('Session check failed:', err);
       })
       .finally(() => {
         setLoading(false);
       });
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_, session) => {
+
+    // Listen for auth state changes (login, logout, token refresh)
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      // If user just signed in, make sure we're not stuck on loading
+      if (_event === 'SIGNED_IN') {
+        setLoading(false);
+      }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 

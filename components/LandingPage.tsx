@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { RipLogo } from './RipLogo';
 
@@ -23,38 +23,57 @@ export function LandingPage() {
   const [mode, setMode]           = useState<'signin' | 'signup'>('signup');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
+  const [success, setSuccess]     = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const supabase = createSupabaseBrowser();
 
+  // Check URL params for checkout success/cancel
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('error')) {
+      setError(params.get('error_description') || 'Authentication failed. Please try again.');
+    }
+  }, []);
+
   async function handleGoogleAuth() {
-    setGoogleLoading(true); setError('');
+    setGoogleLoading(true); setError(''); setSuccess('');
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}`,
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       });
       if (error) throw error;
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Google sign-in failed. Please try again.');
       setGoogleLoading(false);
     }
   }
 
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSuccess('');
     try {
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
         if (error) throw error;
+        // Check if email confirmation is needed
+        if (data.user && !data.session) {
+          setSuccess('Check your email for a confirmation link to activate your account!');
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed');
     }
     setLoading(false);
   }
@@ -66,9 +85,9 @@ export function LandingPage() {
       <nav className="border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 bg-bg/95 backdrop-blur z-50">
         <RipLogo size="sm" />
         <div className="flex items-center gap-3">
-          <button onClick={() => setMode('signin')} className="text-sm text-muted hover:text-white transition-colors">Sign In</button>
+          <button onClick={() => { setMode('signin'); setError(''); setSuccess(''); document.getElementById('auth-form')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-sm text-muted hover:text-white transition-colors">Sign In</button>
           <button
-            onClick={() => { setMode('signup'); document.getElementById('auth-form')?.scrollIntoView({ behavior: 'smooth' }); }}
+            onClick={() => { setMode('signup'); setError(''); setSuccess(''); document.getElementById('auth-form')?.scrollIntoView({ behavior: 'smooth' }); }}
             className="bg-rip text-white text-sm font-bold px-4 py-2 rounded-lg hover:brightness-110 transition"
           >
             Start Free ☽
@@ -89,7 +108,7 @@ export function LandingPage() {
         </h1>
 
         <p className="text-muted text-lg max-w-2xl mx-auto leading-relaxed mb-10">
-          The world's first AI fan studio. Remix any TV show, movie, anime, cartoon, or news show.
+          The world&apos;s first AI fan studio. Remix any TV show, movie, anime, cartoon, or news show.
           Generate scripts, alternate endings, new characters, crossovers — powered by Claude AI.
         </p>
 
@@ -197,13 +216,15 @@ export function LandingPage() {
             />
             <input
               type="password"
-              placeholder="Password"
+              placeholder="Password (min 6 characters)"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
+              minLength={6}
               className="w-full bg-bg3 border border-border rounded-lg px-4 py-3 text-white text-sm outline-none focus:border-bord2 placeholder:text-muted2"
             />
-            {error && <p className="text-red-400 text-xs">{error}</p>}
+            {error && <p className="text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">{error}</p>}
+            {success && <p className="text-lime text-xs bg-lime/10 border border-lime/20 rounded-lg px-3 py-2">{success}</p>}
             <button
               type="submit"
               disabled={loading}
@@ -215,7 +236,7 @@ export function LandingPage() {
           </form>
 
           <div className="mt-4 text-center">
-            <button onClick={() => setMode(m => m === 'signup' ? 'signin' : 'signup')} className="text-xs text-muted hover:text-white transition-colors">
+            <button onClick={() => { setMode(m => m === 'signup' ? 'signin' : 'signup'); setError(''); setSuccess(''); }} className="text-xs text-muted hover:text-white transition-colors">
               {mode === 'signup' ? 'Already have an account? Sign in' : "Don't have an account? Sign up free"}
             </button>
           </div>
@@ -234,7 +255,6 @@ export function LandingPage() {
         <p className="text-xs text-muted2 max-w-lg mx-auto">
           Fan-made platform. All referenced IP belongs to respective rights holders.
           RiP is not affiliated with any studios, networks, or creators.
-         
         </p>
       </footer>
     </div>

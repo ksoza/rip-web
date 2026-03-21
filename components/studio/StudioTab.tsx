@@ -17,6 +17,7 @@ export function StudioTab({ user, profile, onProfileUpdate }: any) {
   const [result, setResult]   = useState<any>(null);
   const [error, setError]     = useState('');
   const [copied, setCopied]   = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
   const genLeft = profile ? profile.generations_limit - profile.generations_used : 0;
   const canGen  = show.trim() && idea.trim() && genLeft > 0 && !loading;
@@ -42,9 +43,29 @@ export function StudioTab({ user, profile, onProfileUpdate }: any) {
     finally { setLoading(false); }
   }
 
+  async function handleUpgrade(plan: string) {
+    setUpgrading(true);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, userId: user.id }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setError(data.error || 'Could not start checkout');
+      }
+    } catch {
+      setError('Network error — try again');
+    }
+    setUpgrading(false);
+  }
+
   async function copyForSocial() {
     if (!result) return;
-    const text = `🎬 ${result.title}\n${show} — Fan ${TYPES.find(t=>t.id===type)?.label}\n\n${result.logline}\n\n${result.hashtags}\n\n${result.disclaimer}\n\nCreated with RiP ☽ remixip.com`;
+    const text = `🎬 ${result.title}\n${show} — Fan ${TYPES.find(t=>t.id===type)?.label}\n\n${result.logline}\n\n${result.hashtags}\n\n${result.disclaimer}\n\nCreated with RiP ☽ remixip.icu`;
     await navigator.clipboard.writeText(text);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
@@ -152,7 +173,12 @@ export function StudioTab({ user, profile, onProfileUpdate }: any) {
                 </button>
               </div>
               {result.generationsLeft === 0 && (
-                <p className="text-xs text-center text-rip mt-3">That was your last free generation — <a href="#" className="underline">upgrade for more</a></p>
+                <p className="text-xs text-center text-rip mt-3">
+                  That was your last free generation —{' '}
+                  <button onClick={() => handleUpgrade('starter')} className="underline hover:text-white transition-colors">
+                    upgrade for more
+                  </button>
+                </p>
               )}
             </div>
           )}
@@ -178,9 +204,12 @@ export function StudioTab({ user, profile, onProfileUpdate }: any) {
             <div className="text-[9px] font-bold text-rip uppercase tracking-widest mb-3">🔥 Upgrade</div>
             <div className="font-display text-4xl text-white mb-1">$1<span className="text-sm font-body text-muted">/mo</span></div>
             <div className="text-xs text-muted2 mb-4 leading-relaxed">30 gens · Voice TTS · No watermark · Social export</div>
-            <button className="w-full py-2.5 rounded-lg font-bold text-sm text-white transition hover:brightness-110"
+            <button
+              onClick={() => handleUpgrade('starter')}
+              disabled={upgrading}
+              className="w-full py-2.5 rounded-lg font-bold text-sm text-white transition hover:brightness-110 disabled:opacity-50"
               style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
-              Upgrade to Starter
+              {upgrading ? 'Loading...' : 'Upgrade to Starter'}
             </button>
           </div>
         </div>
