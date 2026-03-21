@@ -1,6 +1,6 @@
+'use client';
 // components/publish/PublishModal.tsx
 // NFT minting + publishing flow — mint to Solana (Metaplex) or XRPL
-'use client';
 import { useState } from 'react';
 
 type Chain = 'solana' | 'xrpl';

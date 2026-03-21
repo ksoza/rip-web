@@ -1,7 +1,7 @@
+'use client';
 // components/publish/PublishFlow.tsx
 // Multi-step publish & mint flow for RiP creations
 // Step 1: Details → Step 2: NFT Options → Step 3: Preview & Publish
-'use client';
 import { useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { Chain, NFTMediaType } from '@/lib/nft/types';

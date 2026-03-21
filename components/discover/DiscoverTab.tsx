@@ -1,7 +1,7 @@
+'use client';
 // components/discover/DiscoverTab.tsx
 // "Like Suno, but for TV and Movies" — social publishing platform
 // Creators post AI-generated episodes/scenes, others watch/like/remix/follow
-'use client';
 import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 

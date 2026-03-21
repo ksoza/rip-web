@@ -1,6 +1,6 @@
+'use client';
 // components/watch/WatchPage.tsx
 // Full watch/playback page for viewing a creation — video player, details, comments, related
-'use client';
 import { useState } from 'react';
 
 // ── Types ───────────────────────────────────────────────────────

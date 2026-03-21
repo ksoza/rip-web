@@ -1,6 +1,6 @@
+'use client';
 // components/studio/StudioTab.tsx
 // Creative Studio V2 — Multi-mode creation suite
-'use client';
 import { useState, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useStudioStore, genId } from '@/lib/store';

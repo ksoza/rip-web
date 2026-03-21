@@ -1,6 +1,6 @@
+'use client';
 // components/profile/CreatorProfile.tsx
 // Creator profile page with their shows, NFTs, stats, and follow button
-'use client';
 import { useState, useMemo } from 'react';
 
 // ── Types ───────────────────────────────────────────────────────

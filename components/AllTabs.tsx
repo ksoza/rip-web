@@ -1,5 +1,5 @@
-// components/AllTabs.tsx — Settings and legacy tab components
 'use client';
+// components/AllTabs.tsx — Settings and legacy tab components
 import { useState, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 

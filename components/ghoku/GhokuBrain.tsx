@@ -1,7 +1,7 @@
+'use client';
 // components/ghoku/GhokuBrain.tsx
 // Gh.O.K.U. — GitHub Oracle Kinetic Unit
 // A living GitHub brain that searches, scans, and synthesizes repos in real time
-'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 
 // ── Types ───────────────────────────────────────────────────────

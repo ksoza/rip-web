@@ -1,6 +1,6 @@
+'use client';
 // components/wallet/WalletTab.tsx
 // $RIP Token + Wallet Management — connect Solana/XRPL wallets, view balances
-'use client';
 import { useState, useEffect } from 'react';
 
 // ── Types ───────────────────────────────────────────────────────

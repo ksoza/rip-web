@@ -1,6 +1,6 @@
+'use client';
 // components/studio/TimelineEditor.tsx
 // CapCut-style timeline editor for arranging scenes, audio, and effects
-'use client';
 import { useState, useRef, useCallback, useEffect, useMemo, MouseEvent } from 'react';
 import { useStudioStore, genId } from '@/lib/store';
 import type { Asset, TimelineTrack, TimelineClip } from '@/lib/store';
