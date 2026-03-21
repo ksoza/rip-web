@@ -22,12 +22,60 @@ type Profile = {
 export function AppShell({ user }: { user: User }) {
   const [tab, setTab]         = useState('studio');
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const supabase = createSupabaseBrowser();
 
   useEffect(() => {
-    supabase.from('profiles').select('username,tier,generations_used,generations_limit')
-      .eq('id', user.id).single()
-      .then(({ data }) => setProfile(data));
+    async function loadProfile() {
+      setProfileLoading(true);
+      try {
+        // Try to fetch profile
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username,tier,generations_used,generations_limit')
+          .eq('id', user.id)
+          .single();
+
+        if (data) {
+          setProfile(data);
+        } else if (error?.code === 'PGRST116') {
+          // Profile doesn't exist yet — the database trigger may not have fired yet
+          // (can happen if the trigger wasn't set up or there's a race condition)
+          // Create a fallback profile client-side
+          const defaultProfile: Profile = {
+            username: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'user',
+            tier: 'free',
+            generations_used: 0,
+            generations_limit: 3,
+          };
+          setProfile(defaultProfile);
+
+          // Try to upsert the profile via the API (as a background task)
+          // The DB trigger should handle this, but just in case
+          await supabase.from('profiles').upsert({
+            id: user.id,
+            username: defaultProfile.username,
+            avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+            tier: 'free',
+            generations_used: 0,
+            generations_limit: 3,
+          }, { onConflict: 'id' });
+        }
+      } catch (err) {
+        console.error('Profile load error:', err);
+        // Provide fallback profile so the app doesn't break
+        setProfile({
+          username: user.email?.split('@')[0] || 'user',
+          tier: 'free',
+          generations_used: 0,
+          generations_limit: 3,
+        });
+      } finally {
+        setProfileLoading(false);
+      }
+    }
+
+    loadProfile();
   }, [user.id]);
 
   const genLeft = profile ? profile.generations_limit - profile.generations_used : 0;
@@ -40,7 +88,7 @@ export function AppShell({ user }: { user: User }) {
         <RipLogo size="sm" />
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted hidden sm:block">
-            {profile?.tier === 'free'
+            {profileLoading ? '...' : profile?.tier === 'free'
               ? `${genLeft} free generation${genLeft !== 1 ? 's' : ''} left`
               : `${profile?.tier} plan`}
           </span>
