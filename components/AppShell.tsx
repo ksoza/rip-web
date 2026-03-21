@@ -4,15 +4,18 @@ import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { StudioTab }    from './studio/StudioTab';
 import { DiscoverTab }  from './discover/DiscoverTab';
+import { GhokuBrain }   from './ghoku/GhokuBrain';
+import { WalletTab }    from './wallet/WalletTab';
 import { RipLogo }      from './RipLogo';
-import { WalletTab, RevenueTab, SettingsTab } from './AllTabs';
+import { SettingsTab }  from './AllTabs';
 
 // ── Nav Tabs ────────────────────────────────────────────────────
 const NAV = [
   { id: 'studio',   icon: '🎬', label: 'Studio',   color: '#ff2d78' },
   { id: 'discover', icon: '🌐', label: 'Discover',  color: '#00d4ff' },
-  { id: 'wallet',   icon: '💎', label: 'Wallet',    color: '#8aff00' },
-  { id: 'settings', icon: '⚙️', label: 'Settings',  color: '#a855f7' },
+  { id: 'ghoku',    icon: '🧠', label: 'Gh.O.K.U.', color: '#8aff00' },
+  { id: 'wallet',   icon: '💎', label: 'Wallet',    color: '#a855f7' },
+  { id: 'settings', icon: '⚙️', label: 'Settings',  color: '#666' },
 ];
 
 type Profile = {
@@ -124,7 +127,8 @@ export function AppShell({ user }: { user: User }) {
         <div className={`mx-auto py-6 pb-28 ${tab === 'studio' ? 'max-w-6xl px-4 sm:px-6' : 'max-w-5xl px-4 sm:px-6'}`}>
           {tab === 'studio'   && <StudioTab    user={user} profile={profile} onProfileUpdate={setProfile} />}
           {tab === 'discover' && <DiscoverTab  user={user} profile={profile} />}
-          {tab === 'wallet'   && <WalletTab    user={user} />}
+          {tab === 'ghoku'    && <GhokuBrain />}
+          {tab === 'wallet'   && <WalletTab />}
           {tab === 'settings' && <SettingsTab  user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} />}
         </div>
       </main>
