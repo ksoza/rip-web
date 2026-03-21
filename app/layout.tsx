@@ -50,9 +50,23 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://www.remixip.icu'),
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover' as const,
+  themeColor: '#060608',
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${bebas.variable} ${instrument.variable} ${mono.variable} ${oldEnglish.variable}`} suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      </head>
       <body className="bg-bg text-white font-body antialiased" suppressHydrationWarning>
         {children}
       </body>

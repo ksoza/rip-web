@@ -92,7 +92,7 @@ export function LandingPage() {
 
       {/* ── Hero ───────────────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
-        <div className="inline-flex items-center gap-2 bg-bg2 border border-border2 rounded-full px-4 py-2 text-xs text-muted uppercase tracking-widest mb-8">
+        <div className="inline-flex items-center gap-2 bg-bg2 border border-bord2 rounded-full px-4 py-2 text-xs text-muted uppercase tracking-widest mb-8">
           <span className="w-2 h-2 rounded-full bg-lime animate-pulse" />
           AI Fan Studio · Now in Early Access
         </div>
@@ -286,7 +286,7 @@ export function LandingPage() {
 
       {/* ── Auth Form ──────────────────────────────────────────── */}
       <section id="auth-form" className="max-w-md mx-auto px-6 pb-24">
-        <div className="bg-bg2 border border-border2 rounded-2xl p-8">
+        <div className="bg-bg2 border border-bord2 rounded-2xl p-8">
           <h2 className="font-display text-3xl tracking-wider text-white text-center mb-2">
             {mode === 'signup' ? 'START FREE' : 'WELCOME BACK'}
           </h2>
