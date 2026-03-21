@@ -1,286 +1,360 @@
 // components/wallet/WalletTab.tsx
-// Wallet tab — connect Solana/XRPL wallet, view NFTs, manage earnings
+// $RIP Token + Wallet Management — connect Solana/XRPL wallets, view balances
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // ── Types ───────────────────────────────────────────────────────
-type WalletChain = 'solana' | 'xrpl';
-type WalletView = 'overview' | 'nfts' | 'earnings' | 'activity';
+interface WalletState {
+  connected: boolean;
+  chain: 'solana' | 'xrpl' | null;
+  address: string;
+  balance: string;
+  tokens: TokenBalance[];
+}
 
-interface NFT {
-  id: string;
+interface TokenBalance {
+  symbol: string;
   name: string;
-  image?: string;
-  collection: string;
-  chain: WalletChain;
-  floorPrice: string;
-  mintAddress: string;
+  balance: string;
+  value: string;
+  icon: string;
+  change: number;
 }
 
 interface Transaction {
   id: string;
-  type: 'mint' | 'sale' | 'royalty' | 'tip' | 'subscription';
+  type: 'mint' | 'transfer' | 'stake' | 'reward' | 'purchase';
   amount: string;
-  currency: string;
-  chain: WalletChain;
-  from?: string;
-  to?: string;
-  timestamp: string;
+  token: string;
+  from: string;
+  to: string;
+  timestamp: number;
   status: 'confirmed' | 'pending';
 }
 
-// ── Sample Data ─────────────────────────────────────────────────
-const SAMPLE_NFTS: NFT[] = [
-  { id: 'n1', name: 'Breaking Bread S1E1', collection: 'Breaking Bread', chain: 'solana', floorPrice: '0.5 SOL', mintAddress: '7nYB...4kPq' },
-  { id: 'n2', name: 'Goku vs Saitama #001', collection: 'Anime Crossover', chain: 'solana', floorPrice: '1.2 SOL', mintAddress: '3mKL...9vRt' },
-  { id: 'n3', name: 'RiP Genesis Pass', collection: 'RiP Passes', chain: 'xrpl', floorPrice: '50 XRP', mintAddress: 'rHb9...3eDf' },
+type WalletView = 'portfolio' | 'nfts' | 'staking' | 'history';
+
+// ── Mock data (replaced by real API calls once wallets connect) ──
+const MOCK_TOKENS: TokenBalance[] = [
+  { symbol: '$RIP', name: 'Remix IP Token', balance: '12,450', value: '$124.50', icon: '☽', change: 5.2 },
+  { symbol: 'SOL', name: 'Solana', balance: '3.42', value: '$456.78', icon: '◎', change: -1.3 },
+  { symbol: 'USDC', name: 'USD Coin', balance: '89.00', value: '$89.00', icon: '💲', change: 0 },
 ];
 
-const SAMPLE_TXS: Transaction[] = [
-  { id: 't1', type: 'sale', amount: '0.5', currency: 'SOL', chain: 'solana', from: 'buyer123', timestamp: '2026-03-20T10:00:00Z', status: 'confirmed' },
-  { id: 't2', type: 'royalty', amount: '0.025', currency: 'SOL', chain: 'solana', from: 'resale', timestamp: '2026-03-19T15:00:00Z', status: 'confirmed' },
-  { id: 't3', type: 'tip', amount: '25', currency: 'XRP', chain: 'xrpl', from: 'fan_x', timestamp: '2026-03-18T20:00:00Z', status: 'confirmed' },
-  { id: 't4', type: 'subscription', amount: '$5.00', currency: 'USD', chain: 'solana', timestamp: '2026-03-17T12:00:00Z', status: 'confirmed' },
+const MOCK_TXS: Transaction[] = [
+  { id: '1', type: 'reward', amount: '+500 $RIP', token: '$RIP', from: 'RiP Protocol', to: 'You', timestamp: Date.now() - 3600000, status: 'confirmed' },
+  { id: '2', type: 'mint', amount: '-0.05 SOL', token: 'SOL', from: 'You', to: 'Metaplex', timestamp: Date.now() - 86400000, status: 'confirmed' },
+  { id: '3', type: 'stake', amount: '-2,000 $RIP', token: '$RIP', from: 'You', to: 'Staking Pool', timestamp: Date.now() - 172800000, status: 'confirmed' },
+  { id: '4', type: 'purchase', amount: '-$5.00', token: 'USDC', from: 'You', to: 'Creator Plan', timestamp: Date.now() - 259200000, status: 'confirmed' },
 ];
 
-// ── Component ───────────────────────────────────────────────────
+// ── Revenue Split Config ────────────────────────────────────────
+const REVENUE_SPLIT = [
+  { label: 'Founder', pct: 13, color: '#ff2d78' },
+  { label: 'Launch Fund', pct: 50, color: '#00d4ff' },
+  { label: 'AI Costs', pct: 15, color: '#a855f7' },
+  { label: 'Staking Rewards', pct: 10, color: '#8aff00' },
+  { label: 'Operations', pct: 7, color: '#ffcc00' },
+  { label: 'Reserve', pct: 5, color: '#f97316' },
+];
+
 export function WalletTab() {
-  const [connected, setConnected] = useState(false);
-  const [chain, setChain] = useState<WalletChain>('solana');
-  const [view, setView] = useState<WalletView>('overview');
-  const [walletAddress] = useState('DbnD8vxb...oq2xD5Nj');
+  const [view, setView] = useState<WalletView>('portfolio');
+  const [wallet, setWallet] = useState<WalletState>({
+    connected: false,
+    chain: null,
+    address: '',
+    balance: '0',
+    tokens: [],
+  });
+  const [connectDialog, setConnectDialog] = useState(false);
+  const [stakeAmount, setStakeAmount] = useState('');
+  const [staking, setStaking] = useState(false);
 
-  const VIEWS: { id: WalletView; label: string; icon: string }[] = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'nfts',     label: 'My NFTs',  icon: '💎' },
-    { id: 'earnings', label: 'Earnings', icon: '💰' },
-    { id: 'activity', label: 'Activity', icon: '📋' },
+  // Simulate wallet connection
+  const connectWallet = (chain: 'solana' | 'xrpl') => {
+    setWallet({
+      connected: true,
+      chain,
+      address: chain === 'solana'
+        ? 'DbnD8vxbNVrG9iL7oi83Zg8RGqxFLATGcW67oq2xD5Nj'
+        : 'rN7n3473SoLGDGdrgWUVBBdUzmaTEhkr8p',
+      balance: chain === 'solana' ? '3.42 SOL' : '1,250 XRP',
+      tokens: MOCK_TOKENS,
+    });
+    setConnectDialog(false);
+  };
+
+  const disconnectWallet = () => {
+    setWallet({ connected: false, chain: null, address: '', balance: '0', tokens: [] });
+  };
+
+  const VIEW_TABS: { id: WalletView; label: string; icon: string }[] = [
+    { id: 'portfolio', label: 'Portfolio', icon: '💰' },
+    { id: 'nfts', label: 'NFTs', icon: '💎' },
+    { id: 'staking', label: 'Staking', icon: '🔒' },
+    { id: 'history', label: 'History', icon: '📜' },
   ];
 
-  if (!connected) {
-    return (
-      <div className="max-w-md mx-auto py-16 text-center">
-        <div className="text-6xl mb-6 opacity-40">💎</div>
-        <h2 className="font-display text-3xl text-white mb-2">Connect Wallet</h2>
-        <p className="text-sm text-muted mb-8">Link your wallet to mint NFTs, earn royalties, and manage your on-chain assets.</p>
-
-        {/* Chain selector */}
-        <div className="flex gap-3 justify-center mb-6">
-          {[
-            { id: 'solana' as WalletChain, label: 'Solana', icon: '◎', color: '#9945FF' },
-            { id: 'xrpl' as WalletChain,   label: 'XRPL',   icon: '✕', color: '#00A3E0' },
-          ].map(c => (
-            <button key={c.id} onClick={() => setChain(c.id)}
-              className={`flex items-center gap-2 px-6 py-3 rounded-xl border text-sm font-bold transition-all ${
-                chain === c.id
-                  ? 'text-white'
-                  : 'bg-bg2 border-border text-muted hover:text-white'
-              }`}
-              style={chain === c.id ? { backgroundColor: `${c.color}20`, borderColor: `${c.color}40`, color: c.color } : {}}>
-              <span>{c.icon}</span>
-              {c.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Connect buttons */}
-        <div className="space-y-3">
-          {chain === 'solana' ? (
-            <>
-              <button onClick={() => setConnected(true)}
-                className="w-full py-3 rounded-xl text-sm font-bold text-white transition hover:brightness-110"
-                style={{ background: 'linear-gradient(90deg, #9945FF, #14F195)' }}>
-                🦊 Connect Phantom
-              </button>
-              <button onClick={() => setConnected(true)}
-                className="w-full py-3 rounded-xl text-sm font-bold bg-bg2 border border-border text-muted hover:text-white transition">
-                Connect Solflare
-              </button>
-            </>
-          ) : (
-            <>
-              <button onClick={() => setConnected(true)}
-                className="w-full py-3 rounded-xl text-sm font-bold text-white transition hover:brightness-110"
-                style={{ background: 'linear-gradient(90deg, #00A3E0, #00D4FF)' }}>
-                💧 Connect Xaman (Xumm)
-              </button>
-              <button onClick={() => setConnected(true)}
-                className="w-full py-3 rounded-xl text-sm font-bold bg-bg2 border border-border text-muted hover:text-white transition">
-                Connect GemWallet
-              </button>
-            </>
-          )}
-        </div>
-
-        <p className="text-[10px] text-muted2 mt-4">
-          Your wallet connects locally. Private keys never leave your device.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Wallet header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-            style={{ background: chain === 'solana' ? '#9945FF20' : '#00A3E020' }}>
-            {chain === 'solana' ? '◎' : '✕'}
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white">{walletAddress}</div>
-            <div className="text-[10px] text-muted">{chain === 'solana' ? 'Solana' : 'XRPL'} · Connected</div>
-          </div>
-        </div>
-        <button onClick={() => setConnected(false)}
-          className="px-3 py-1.5 rounded-lg text-[10px] bg-bg2 border border-border text-muted hover:text-rip hover:border-rip/30 transition">
-          Disconnect
-        </button>
-      </div>
+    <div className="min-h-screen bg-bg text-white p-4 pb-24">
+      {/* ── Wallet Header ──────────────────────────────── */}
+      <div className="max-w-3xl mx-auto">
+        {!wallet.connected ? (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-6">☽</div>
+            <h1 className="font-display text-3xl text-white mb-2">Connect Your Wallet</h1>
+            <p className="text-sm text-muted mb-8 max-w-md mx-auto">
+              Link your Solana or XRPL wallet to manage $RIP tokens, mint NFTs, stake rewards, and view your creator portfolio.
+            </p>
 
-      {/* View tabs */}
-      <div className="flex gap-1 mb-6 border-b border-border">
-        {VIEWS.map(v => (
-          <button key={v.id} onClick={() => setView(v.id)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 transition ${
-              view === v.id ? 'border-rip text-rip' : 'border-transparent text-muted hover:text-white'
-            }`}>
-            <span>{v.icon}</span> {v.label}
-          </button>
-        ))}
-      </div>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button onClick={() => connectWallet('solana')}
+                className="flex items-center justify-center gap-3 px-6 py-4 rounded-2xl text-sm font-bold transition-all"
+                style={{ background: 'linear-gradient(135deg, #9945FF, #14F195)' }}>
+                <span className="text-lg">◎</span>
+                Connect Solana
+              </button>
+              <button onClick={() => connectWallet('xrpl')}
+                className="flex items-center justify-center gap-3 px-6 py-4 bg-bg2 border border-border rounded-2xl text-sm font-bold text-white hover:border-cyan transition-all">
+                <span className="text-lg">✕</span>
+                Connect XRPL
+              </button>
+            </div>
 
-      {/* Overview */}
-      {view === 'overview' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: 'Balance', value: chain === 'solana' ? '4.23 SOL' : '1,250 XRP', color: '#8aff00' },
-              { label: 'NFTs Owned', value: SAMPLE_NFTS.filter(n => n.chain === chain).length.toString(), color: '#a855f7' },
-              { label: 'Total Earned', value: chain === 'solana' ? '2.1 SOL' : '175 XRP', color: '#ffcc00' },
-              { label: 'Pending', value: chain === 'solana' ? '0.05 SOL' : '0 XRP', color: '#ff2d78' },
-            ].map(stat => (
-              <div key={stat.label} className="bg-bg2 border border-border rounded-xl p-4 text-center">
-                <div className="font-display text-xl" style={{ color: stat.color }}>{stat.value}</div>
-                <div className="text-[9px] text-muted uppercase tracking-widest">{stat.label}</div>
-              </div>
-            ))}
-          </div>
+            {/* $RIP Token Info */}
+            <div className="mt-12 bg-bg2 border border-border rounded-2xl p-6 max-w-md mx-auto">
+              <h3 className="font-display text-lg text-rip mb-3">$RIP Token</h3>
+              <p className="text-xs text-muted leading-relaxed mb-4">
+                The native utility token of Remix IP. Earn by creating, stake for premium access, use for NFT minting fees, and receive revenue share from the protocol.
+              </p>
 
-          {/* Revenue split info */}
-          <div className="bg-bg2 border border-border rounded-xl p-4">
-            <h3 className="text-xs font-bold text-muted uppercase tracking-widest mb-3">Revenue Split</h3>
-            <div className="space-y-2">
-              {[
-                { label: 'Founder', pct: 13, color: '#ff2d78' },
-                { label: 'Launch Fund', pct: 50, color: '#00d4ff' },
-                { label: 'AI Costs', pct: 15, color: '#a855f7' },
-                { label: 'Staking Pool', pct: 10, color: '#8aff00' },
-                { label: 'Operations', pct: 7, color: '#ffcc00' },
-                { label: 'Reserve', pct: 5, color: '#666' },
-              ].map(item => (
-                <div key={item.label} className="flex items-center gap-3">
-                  <span className="text-xs text-muted w-24">{item.label}</span>
-                  <div className="flex-1 h-2 bg-bg3 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${item.pct}%`, backgroundColor: item.color }} />
-                  </div>
-                  <span className="text-xs font-bold" style={{ color: item.color }}>{item.pct}%</span>
+              {/* Revenue split visualization */}
+              <div className="space-y-2">
+                <p className="text-[9px] text-muted uppercase tracking-widest">Revenue Distribution</p>
+                <div className="h-3 rounded-full overflow-hidden flex">
+                  {REVENUE_SPLIT.map(s => (
+                    <div key={s.label} style={{ width: `${s.pct}%`, backgroundColor: s.color }}
+                      title={`${s.label}: ${s.pct}%`} />
+                  ))}
                 </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {REVENUE_SPLIT.map(s => (
+                    <div key={s.label} className="flex items-center gap-1 text-[9px]">
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
+                      <span className="text-muted">{s.label}</span>
+                      <span className="text-white">{s.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            {/* Connected wallet header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
+                  style={{ background: wallet.chain === 'solana' ? 'linear-gradient(135deg, #9945FF, #14F195)' : 'linear-gradient(135deg, #23292F, #3B82F6)' }}>
+                  {wallet.chain === 'solana' ? '◎' : '✕'}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-lime animate-pulse" />
+                    <span className="text-xs text-lime uppercase font-bold">Connected</span>
+                  </div>
+                  <p className="text-xs text-muted font-mono">
+                    {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
+                  </p>
+                </div>
+              </div>
+              <button onClick={disconnectWallet}
+                className="px-3 py-1.5 bg-bg2 border border-border rounded-lg text-xs text-muted hover:text-rip hover:border-rip transition">
+                Disconnect
+              </button>
+            </div>
+
+            {/* Total Balance */}
+            <div className="bg-bg2 border border-border rounded-2xl p-6 mb-4 text-center">
+              <p className="text-[9px] text-muted uppercase tracking-widest mb-1">Total Portfolio</p>
+              <h2 className="font-display text-4xl text-white">$670.28</h2>
+              <p className="text-sm text-lime mt-1">↑ $12.50 (1.9%) today</p>
+            </div>
+
+            {/* View tabs */}
+            <div className="flex gap-1 mb-4 bg-bg2 rounded-xl p-1">
+              {VIEW_TABS.map(t => (
+                <button key={t.id} onClick={() => setView(t.id)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition ${
+                    view === t.id ? 'bg-bg3 text-white' : 'text-muted hover:text-white'
+                  }`}>
+                  <span>{t.icon}</span>
+                  {t.label}
+                </button>
               ))}
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* NFTs */}
-      {view === 'nfts' && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {SAMPLE_NFTS.map(nft => (
-            <div key={nft.id} className="bg-bg2 border border-border rounded-xl overflow-hidden hover:border-bord2 transition cursor-pointer group">
-              <div className="aspect-square bg-bg3 flex items-center justify-center relative">
-                {nft.image ? (
-                  <img src={nft.image} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-4xl opacity-20">💎</span>
-                )}
-                <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[8px] font-bold"
-                  style={{
-                    backgroundColor: nft.chain === 'solana' ? '#9945FF20' : '#00A3E020',
-                    color: nft.chain === 'solana' ? '#9945FF' : '#00A3E0',
-                    border: `1px solid ${nft.chain === 'solana' ? '#9945FF40' : '#00A3E040'}`,
-                  }}>
-                  {nft.chain === 'solana' ? '◎' : '✕'} NFT
+            {/* PORTFOLIO VIEW */}
+            {view === 'portfolio' && (
+              <div className="space-y-2">
+                {wallet.tokens.map(token => (
+                  <div key={token.symbol} className="flex items-center gap-3 bg-bg2 border border-border rounded-xl p-4">
+                    <div className="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center text-xl">
+                      {token.icon}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-white">{token.symbol}</span>
+                        <span className="text-xs text-muted">{token.name}</span>
+                      </div>
+                      <p className="text-xs text-muted">{token.balance} tokens</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-white">{token.value}</p>
+                      <p className={`text-xs ${token.change > 0 ? 'text-lime' : token.change < 0 ? 'text-rip' : 'text-muted'}`}>
+                        {token.change > 0 ? '↑' : token.change < 0 ? '↓' : '–'} {Math.abs(token.change)}%
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Quick actions */}
+                <div className="grid grid-cols-3 gap-2 mt-4">
+                  <button className="bg-bg2 border border-border rounded-xl p-3 text-center hover:border-cyan transition">
+                    <div className="text-lg mb-1">📤</div>
+                    <div className="text-[10px] text-muted">Send</div>
+                  </button>
+                  <button className="bg-bg2 border border-border rounded-xl p-3 text-center hover:border-cyan transition">
+                    <div className="text-lg mb-1">📥</div>
+                    <div className="text-[10px] text-muted">Receive</div>
+                  </button>
+                  <button onClick={() => setView('staking')}
+                    className="bg-bg2 border border-border rounded-xl p-3 text-center hover:border-lime transition">
+                    <div className="text-lg mb-1">🔒</div>
+                    <div className="text-[10px] text-muted">Stake</div>
+                  </button>
                 </div>
               </div>
-              <div className="p-3">
-                <h4 className="text-sm font-bold text-white group-hover:text-rip transition">{nft.name}</h4>
-                <p className="text-[10px] text-muted">{nft.collection}</p>
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-[10px] text-muted">Floor</span>
-                  <span className="text-xs font-bold" style={{ color: nft.chain === 'solana' ? '#9945FF' : '#00A3E0' }}>
-                    {nft.floorPrice}
-                  </span>
+            )}
+
+            {/* NFTS VIEW */}
+            {view === 'nfts' && (
+              <div>
+                <div className="text-center py-8">
+                  <div className="text-5xl mb-4 opacity-30">💎</div>
+                  <p className="text-sm text-muted mb-2">No NFTs minted yet</p>
+                  <p className="text-xs text-muted2">Create content in the Studio, then publish as NFTs</p>
+                  <button className="mt-4 px-4 py-2 bg-rip text-white text-xs font-bold rounded-xl">
+                    Go to Studio →
+                  </button>
                 </div>
               </div>
-            </div>
-          ))}
-          {/* Mint new */}
-          <div className="bg-bg2 border border-border border-dashed rounded-xl flex items-center justify-center aspect-square cursor-pointer hover:border-rip transition">
-            <div className="text-center">
-              <div className="text-3xl mb-2 opacity-40">+</div>
-              <p className="text-xs text-muted">Mint New NFT</p>
-            </div>
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* Earnings */}
-      {view === 'earnings' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Sales', amount: '1.8 SOL', count: 3 },
-              { label: 'Royalties', amount: '0.25 SOL', count: 8 },
-              { label: 'Tips', amount: '0.05 SOL + 25 XRP', count: 2 },
-            ].map(e => (
-              <div key={e.label} className="bg-bg2 border border-border rounded-xl p-4">
-                <div className="text-xs text-muted uppercase mb-1">{e.label}</div>
-                <div className="font-display text-lg text-lime">{e.amount}</div>
-                <div className="text-[9px] text-muted">{e.count} transactions</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+            {/* STAKING VIEW */}
+            {view === 'staking' && (
+              <div className="space-y-4">
+                {/* Staking stats */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-bg2 border border-border rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-muted uppercase">Staked</p>
+                    <p className="font-display text-2xl text-lime">2,000 $RIP</p>
+                  </div>
+                  <div className="bg-bg2 border border-border rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-muted uppercase">APY</p>
+                    <p className="font-display text-2xl text-gold">24.5%</p>
+                  </div>
+                  <div className="bg-bg2 border border-border rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-muted uppercase">Rewards</p>
+                    <p className="font-display text-2xl text-cyan">482 $RIP</p>
+                  </div>
+                  <div className="bg-bg2 border border-border rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-muted uppercase">Lock Period</p>
+                    <p className="font-display text-2xl text-muted">30 days</p>
+                  </div>
+                </div>
 
-      {/* Activity */}
-      {view === 'activity' && (
-        <div className="space-y-2">
-          {SAMPLE_TXS.map(tx => (
-            <div key={tx.id} className="flex items-center gap-3 p-3 bg-bg2 border border-border rounded-xl">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                tx.type === 'sale' ? 'bg-lime/20' :
-                tx.type === 'royalty' ? 'bg-purple/20' :
-                tx.type === 'tip' ? 'bg-gold/20' : 'bg-cyan/20'
-              }`}>
-                {{ sale: '💰', royalty: '👑', tip: '🎁', subscription: '📋', mint: '💎' }[tx.type]}
-              </div>
-              <div className="flex-1">
-                <div className="text-xs font-bold text-white capitalize">{tx.type}</div>
-                {tx.from && <div className="text-[10px] text-muted">from {tx.from}</div>}
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-bold text-lime">+{tx.amount} {tx.currency}</div>
-                <div className="text-[9px] text-muted2">
-                  {new Date(tx.timestamp).toLocaleDateString()}
+                {/* Stake form */}
+                <div className="bg-bg2 border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-bold text-white mb-3">Stake $RIP</h3>
+                  <p className="text-xs text-muted mb-4">
+                    Stake your $RIP tokens to earn rewards and unlock premium features. 10% of platform revenue is distributed to stakers.
+                  </p>
+                  <div className="flex gap-2 mb-3">
+                    <input type="text" value={stakeAmount}
+                      onChange={e => setStakeAmount(e.target.value)}
+                      placeholder="Amount to stake..."
+                      className="flex-1 bg-bg3 border border-border rounded-lg px-4 py-2 text-sm text-white outline-none focus:border-lime" />
+                    <button onClick={() => setStakeAmount('12450')}
+                      className="px-3 py-2 bg-bg3 border border-border rounded-lg text-xs text-muted hover:text-white">
+                      MAX
+                    </button>
+                  </div>
+                  <button disabled={!stakeAmount || staking}
+                    className="w-full py-3 rounded-xl text-sm font-bold text-black bg-lime hover:brightness-110 transition disabled:opacity-50">
+                    {staking ? 'Staking...' : '🔒 Stake $RIP'}
+                  </button>
+                </div>
+
+                {/* Revenue split */}
+                <div className="bg-bg2 border border-border rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-white mb-3">Revenue Distribution</h3>
+                  <div className="space-y-2">
+                    {REVENUE_SPLIT.map(s => (
+                      <div key={s.label} className="flex items-center gap-3">
+                        <span className="text-xs text-white w-24">{s.label}</span>
+                        <div className="flex-1 h-2 bg-bg3 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${s.pct}%`, backgroundColor: s.color }} />
+                        </div>
+                        <span className="text-xs text-muted w-8 text-right">{s.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className={`w-2 h-2 rounded-full ${tx.status === 'confirmed' ? 'bg-lime' : 'bg-gold animate-pulse'}`} />
-            </div>
-          ))}
-        </div>
-      )}
+            )}
+
+            {/* HISTORY VIEW */}
+            {view === 'history' && (
+              <div className="space-y-2">
+                {MOCK_TXS.map(tx => (
+                  <div key={tx.id} className="flex items-center gap-3 bg-bg2 border border-border rounded-xl p-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+                      tx.type === 'reward' ? 'bg-lime/20' :
+                      tx.type === 'mint' ? 'bg-purple/20' :
+                      tx.type === 'stake' ? 'bg-cyan/20' :
+                      'bg-gold/20'
+                    }`}>
+                      {tx.type === 'reward' ? '🎁' :
+                       tx.type === 'mint' ? '💎' :
+                       tx.type === 'stake' ? '🔒' :
+                       '🛒'}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white capitalize">{tx.type}</span>
+                        <span className={`text-xs font-bold ${
+                          tx.amount.startsWith('+') ? 'text-lime' : 'text-rip'
+                        }`}>{tx.amount}</span>
+                      </div>
+                      <p className="text-[10px] text-muted">{tx.from} → {tx.to}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-muted">
+                        {new Date(tx.timestamp).toLocaleDateString()}
+                      </span>
+                      <div className={`text-[9px] ${tx.status === 'confirmed' ? 'text-lime' : 'text-gold'}`}>
+                        {tx.status}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
