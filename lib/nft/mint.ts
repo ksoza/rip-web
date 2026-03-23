@@ -18,7 +18,7 @@ export function buildMetadataJson(meta: NFTMetadata): string {
     image: meta.image,
     animation_url: meta.animation_url,
     external_url: meta.external_url || `https://remixip.icu/nft`,
-    seller_fee_basis_points: meta.royalties.sellerFeeBasisPoints,
+    seller_fee_basis_points: meta.royalties?.sellerFeeBasisPoints ?? 500,
     attributes: [
       { trait_type: 'Show', value: meta.show },
       { trait_type: 'Genre', value: meta.genre },
@@ -29,7 +29,7 @@ export function buildMetadataJson(meta: NFTMetadata): string {
     ],
     properties: {
       category: meta.animation_url ? 'video' : 'image',
-      creators: meta.royalties.creators.map(c => ({
+      creators: (meta.royalties?.creators ?? []).map(c => ({
         address: c.address,
         share: c.share,
       })),
@@ -54,8 +54,8 @@ export function buildSolanaMintInstruction(config: SolanaMintConfig) {
       name: config.metadata.name,
       symbol: 'RIP',
       uri: '', // Will be set after metadata upload
-      sellerFeeBasisPoints: config.metadata.royalties.sellerFeeBasisPoints,
-      creators: config.metadata.royalties.creators.map(c => ({
+      sellerFeeBasisPoints: config.metadata.royalties?.sellerFeeBasisPoints ?? 500,
+      creators: (config.metadata.royalties?.creators ?? []).map(c => ({
         address: c.address,
         share: c.share,
         verified: false,
