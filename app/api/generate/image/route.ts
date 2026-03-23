@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       success: true,
       url: result.url,
       provider: provider || 'dalle',
-      revised_prompt: result.revised_prompt,
+      revised_prompt: (result as any).revised_prompt,
     });
   } catch (err: any) {
     console.error('Image generation error:', err);
