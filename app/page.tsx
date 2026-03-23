@@ -2,7 +2,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase';
-import { LandingPage }  from '@/components/LandingPage';
 import { AppShell }     from '@/components/AppShell';
 import type { User }    from '@supabase/supabase-js';
 
@@ -13,8 +12,6 @@ export default function Home() {
   useEffect(() => {
     const sb = createSupabaseBrowser();
 
-    // First, check URL for auth callback (Google OAuth, email confirm, etc.)
-    // Supabase puts tokens in the URL hash after OAuth redirect
     sb.auth.getSession()
       .then(({ data: { session } }) => {
         setUser(session?.user ?? null);
@@ -26,10 +23,8 @@ export default function Home() {
         setLoading(false);
       });
 
-    // Listen for auth state changes (login, logout, token refresh)
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      // If user just signed in, make sure we're not stuck on loading
       if (_event === 'SIGNED_IN') {
         setLoading(false);
       }
@@ -53,5 +48,6 @@ export default function Home() {
     );
   }
 
-  return user ? <AppShell user={user} /> : <LandingPage />;
+  // Always show AppShell — features front and center, no login wall
+  return <AppShell user={user} />;
 }
