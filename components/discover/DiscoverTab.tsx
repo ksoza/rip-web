@@ -4,6 +4,8 @@
 // Creators post AI-generated episodes/scenes, others watch/like/remix/follow
 import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { MediaCarousels } from './MediaCarousel';
+import type { MediaItem } from './MediaCarousel';
 
 // ── Types ───────────────────────────────────────────────────────
 type FeedItem = {
@@ -138,6 +140,7 @@ const MEDIA_ICONS: Record<string, string> = {
 };
 
 const TABS = [
+  { id: 'browse',    label: '🎬 Browse IPs' },
   { id: 'trending',  label: '🔥 Trending' },
   { id: 'latest',    label: '✨ Latest' },
   { id: 'following', label: '👥 Following' },
@@ -145,12 +148,19 @@ const TABS = [
 ];
 
 // ── Main Component ──────────────────────────────────────────────
-export function DiscoverTab({ user, profile }: { user: User; profile: any }) {
-  const [tab, setTab] = useState('trending');
+export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: {
+  user: User;
+  profile: any;
+  onNavigateToStudio?: (showName: string, category: string) => void;
+  onReimagine?: (item: MediaItem) => void;
+}) {
+  const [tab, setTab] = useState('browse');
   const [feed, setFeed] = useState<FeedItem[]>(SAMPLE_FEED);
   const [selectedGenre, setSelectedGenre] = useState('');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState('');
+  const [following, setFollowing] = useState<Set<string>>(new Set());
+  const [reimagineToast, setReimagineToast] = useState('');
 
   // Filter feed
   const filteredFeed = feed.filter(item => {
@@ -169,21 +179,73 @@ export function DiscoverTab({ user, profile }: { user: User; profile: any }) {
     ));
   }
 
+  // Toggle follow
+  function toggleFollow(handle: string) {
+    setFollowing(prev => {
+      const next = new Set(prev);
+      if (next.has(handle)) next.delete(handle);
+      else next.add(handle);
+      return next;
+    });
+  }
+
+  // Handle media selection from carousel → opens Creation Wizard
+  function handleSelectMedia(item: MediaItem) {
+    if (onReimagine) {
+      // Full wizard flow: carousel → character → prompt → storyboard → result
+      onReimagine(item as any);
+    } else if (onNavigateToStudio) {
+      onNavigateToStudio(item.title, item.category);
+    } else {
+      setReimagineToast(item.title);
+      setTimeout(() => setReimagineToast(''), 3000);
+    }
+  }
+
+  // Handle remix from feed
+  function handleRemix(item: FeedItem) {
+    if (onNavigateToStudio) {
+      onNavigateToStudio(item.show, item.genre);
+    } else {
+      setReimagineToast(item.show);
+      setTimeout(() => setReimagineToast(''), 3000);
+    }
+  }
+
   return (
     <div>
+      {/* Toast Notification */}
+      {reimagineToast && (
+        <div className="fixed top-20 right-6 z-50 animate-slide-up">
+          <div className="bg-bg2 border border-rip rounded-xl px-5 py-3 shadow-lg flex items-center gap-3">
+            <span className="text-lg">☽</span>
+            <div>
+              <p className="text-sm font-bold text-white">Opening Studio...</p>
+              <p className="text-[10px] text-muted">Reimagining <span className="text-rip">{reimagineToast}</span></p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-5">
         <h1 className="font-display text-4xl tracking-widest text-white">☽ <span className="text-cyan">DISCOVER</span></h1>
-        <p className="text-muted text-sm mt-1">Watch, like, and remix AI-generated shows, scenes, and music</p>
+        <p className="text-muted text-sm mt-1">Browse IPs, watch community creations, and start reimagining</p>
       </div>
 
       {/* Search */}
       <div className="mb-5">
         <div className="relative">
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search shows, creators, tags..."
+            placeholder="Search shows, movies, creators, tags..."
             className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 pl-10 text-white text-sm outline-none focus:border-bord2 placeholder:text-muted2" />
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted">🔍</span>
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white text-sm transition-colors">
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
@@ -200,6 +262,11 @@ export function DiscoverTab({ user, profile }: { user: User; profile: any }) {
           </button>
         ))}
       </div>
+
+      {/* ── Browse IPs Tab: TV Show & Movie Carousels ──────────── */}
+      {tab === 'browse' && (
+        <MediaCarousels onSelectMedia={handleSelectMedia} />
+      )}
 
       {/* Genre Filter */}
       {tab === 'genres' && (
@@ -225,31 +292,34 @@ export function DiscoverTab({ user, profile }: { user: User; profile: any }) {
       {/* Trending Banner */}
       {tab === 'trending' && filteredFeed.length > 0 && (
         <div className="mb-6">
-          <FeaturedCard item={filteredFeed[0]} onLike={toggleLike} onExpand={setExpandedId} />
+          <FeaturedCard item={filteredFeed[0]} onLike={toggleLike} onExpand={setExpandedId} onRemix={handleRemix} />
         </div>
       )}
 
-      {/* Feed Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {(tab === 'trending' ? filteredFeed.slice(1) : filteredFeed).map(item => (
-          <FeedCard key={item.id} item={item} onLike={toggleLike} expanded={expandedId === item.id} onExpand={setExpandedId} />
-        ))}
-      </div>
+      {/* Feed Grid — show for all tabs except 'browse' */}
+      {tab !== 'browse' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(tab === 'trending' ? filteredFeed.slice(1) : filteredFeed).map(item => (
+            <FeedCard key={item.id} item={item} onLike={toggleLike} expanded={expandedId === item.id} onExpand={setExpandedId} onRemix={handleRemix} />
+          ))}
+        </div>
+      )}
 
       {/* Empty State */}
-      {filteredFeed.length === 0 && (
+      {tab !== 'browse' && filteredFeed.length === 0 && (
         <div className="text-center py-20">
           <div className="text-6xl mb-4">🎬</div>
           <h3 className="font-display text-2xl text-white mb-2">Nothing yet!</h3>
           <p className="text-muted text-sm mb-4">Be the first to create and share in this category.</p>
-          <button className="px-6 py-3 rounded-xl font-bold text-sm text-white transition hover:brightness-110"
+          <button onClick={() => onNavigateToStudio?.('', '')}
+            className="px-6 py-3 rounded-xl font-bold text-sm text-white transition hover:brightness-110"
             style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
             ☽ Create Something
           </button>
         </div>
       )}
 
-      {/* Creator Spotlight (sidebar for larger screens) */}
+      {/* Creator Spotlight */}
       <div className="mt-8">
         <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">🌟 Top Creators</div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -269,8 +339,14 @@ export function DiscoverTab({ user, profile }: { user: User; profile: any }) {
                 <span>{fmtNum(c.followers)} followers</span>
                 <span>{c.works} works</span>
               </div>
-              <button className="mt-2 px-3 py-1 rounded-full text-[10px] font-bold border border-rip text-rip hover:bg-rip/10 transition-all">
-                Follow
+              <button
+                onClick={() => toggleFollow(c.handle)}
+                className={`mt-2 px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${
+                  following.has(c.handle)
+                    ? 'border-lime text-lime bg-lime/10'
+                    : 'border-rip text-rip hover:bg-rip/10'
+                }`}>
+                {following.has(c.handle) ? '✓ Following' : 'Follow'}
               </button>
             </div>
           ))}
@@ -281,7 +357,12 @@ export function DiscoverTab({ user, profile }: { user: User; profile: any }) {
 }
 
 // ── Featured Card (hero/banner) ─────────────────────────────────
-function FeaturedCard({ item, onLike, onExpand }: { item: FeedItem; onLike: (id: string) => void; onExpand: (id: string) => void }) {
+function FeaturedCard({ item, onLike, onExpand, onRemix }: {
+  item: FeedItem;
+  onLike: (id: string) => void;
+  onExpand: (id: string) => void;
+  onRemix: (item: FeedItem) => void;
+}) {
   return (
     <div className="relative bg-bg2 border border-border rounded-2xl overflow-hidden group cursor-pointer"
       onClick={() => onExpand(item.id)}>
@@ -294,10 +375,8 @@ function FeaturedCard({ item, onLike, onExpand }: { item: FeedItem; onLike: (id:
             {MEDIA_ICONS[item.mediaType] || '🎬'}
           </div>
         )}
-        {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-bg2 via-bg2/40 to-transparent" />
 
-        {/* Top badges */}
         <div className="absolute top-3 left-3 flex gap-2">
           <span className="px-2.5 py-1 rounded-full text-[10px] font-bold text-black" style={{ backgroundColor: GENRE_COLORS[item.genre] }}>
             {item.genre}
@@ -307,13 +386,11 @@ function FeaturedCard({ item, onLike, onExpand }: { item: FeedItem; onLike: (id:
           </span>
         </div>
 
-        {/* Media type icon */}
         <div className="absolute top-3 right-3 text-3xl opacity-60">
           {MEDIA_ICONS[item.mediaType]}
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-5 -mt-12 relative z-10">
         <div className="flex items-center gap-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-rip/20 flex items-center justify-center text-xs text-rip font-bold">
@@ -334,14 +411,16 @@ function FeaturedCard({ item, onLike, onExpand }: { item: FeedItem; onLike: (id:
             className={`flex items-center gap-1.5 text-sm transition-all ${item.liked ? 'text-rip' : 'text-muted hover:text-rip'}`}>
             {item.liked ? '❤️' : '🤍'} <span className="text-xs font-bold">{fmtNum(item.likes)}</span>
           </button>
-          <button className="flex items-center gap-1.5 text-sm text-muted hover:text-cyan transition-all">
+          <button onClick={(e) => { e.stopPropagation(); onRemix(item); }}
+            className="flex items-center gap-1.5 text-sm text-muted hover:text-cyan transition-all">
             🔄 <span className="text-xs font-bold">{fmtNum(item.remixes)}</span>
           </button>
           <span className="flex items-center gap-1.5 text-sm text-muted">
             👁 <span className="text-xs">{fmtNum(item.views)}</span>
           </span>
           <div className="flex-1" />
-          <button className="px-4 py-2 rounded-lg text-xs font-bold text-white transition hover:brightness-110"
+          <button onClick={(e) => { e.stopPropagation(); onRemix(item); }}
+            className="px-4 py-2 rounded-lg text-xs font-bold text-white transition hover:brightness-110 hover:scale-105 active:scale-95"
             style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
             ☽ Remix This
           </button>
@@ -352,14 +431,17 @@ function FeaturedCard({ item, onLike, onExpand }: { item: FeedItem; onLike: (id:
 }
 
 // ── Feed Card ───────────────────────────────────────────────────
-function FeedCard({ item, onLike, expanded, onExpand }: {
-  item: FeedItem; onLike: (id: string) => void; expanded: boolean; onExpand: (id: string) => void;
+function FeedCard({ item, onLike, expanded, onExpand, onRemix }: {
+  item: FeedItem;
+  onLike: (id: string) => void;
+  expanded: boolean;
+  onExpand: (id: string) => void;
+  onRemix: (item: FeedItem) => void;
 }) {
   return (
     <div className={`bg-bg2 border rounded-xl overflow-hidden hover:border-bord2 transition-all cursor-pointer ${
       expanded ? 'border-cyan' : 'border-border'
     }`} onClick={() => onExpand(expanded ? '' : item.id)}>
-      {/* Thumbnail / Media preview */}
       <div className="h-36 relative bg-bg3">
         {item.thumbnail ? (
           <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
@@ -369,20 +451,17 @@ function FeedCard({ item, onLike, expanded, onExpand }: {
           </div>
         )}
 
-        {/* Genre badge */}
         <div className="absolute top-2 left-2">
           <span className="px-2 py-0.5 rounded-full text-[8px] font-bold text-black" style={{ backgroundColor: GENRE_COLORS[item.genre] }}>
             {item.genre}
           </span>
         </div>
 
-        {/* Media icon */}
         <div className="absolute bottom-2 right-2 text-lg opacity-60">
           {MEDIA_ICONS[item.mediaType]}
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-3">
         <div className="flex items-center gap-2 mb-1.5">
           <div className="w-5 h-5 rounded-full bg-rip/20 flex items-center justify-center text-[8px] text-rip font-bold">
@@ -399,14 +478,12 @@ function FeedCard({ item, onLike, expanded, onExpand }: {
           <p className="text-xs text-muted leading-relaxed mb-2 animate-slide-up">{item.description}</p>
         )}
 
-        {/* Tags */}
         <div className="flex flex-wrap gap-1 mb-2">
           {item.tags.slice(0, 3).map(tag => (
             <span key={tag} className="text-[8px] px-1.5 py-0.5 rounded bg-bg3 text-muted2">#{tag}</span>
           ))}
         </div>
 
-        {/* Stats */}
         <div className="flex items-center gap-3 text-[10px] text-muted pt-2 border-t border-border">
           <button onClick={(e) => { e.stopPropagation(); onLike(item.id); }}
             className={`flex items-center gap-1 transition-all ${item.liked ? 'text-rip' : 'hover:text-rip'}`}>
@@ -414,7 +491,8 @@ function FeedCard({ item, onLike, expanded, onExpand }: {
           </button>
           <span className="flex items-center gap-1">🔄 {fmtNum(item.remixes)}</span>
           <span className="flex items-center gap-1">👁 {fmtNum(item.views)}</span>
-          <button className="ml-auto px-2 py-0.5 rounded text-[9px] font-bold border border-rip/30 text-rip hover:bg-rip/10 transition-all">
+          <button onClick={(e) => { e.stopPropagation(); onRemix(item); }}
+            className="ml-auto px-2 py-0.5 rounded text-[9px] font-bold border border-rip/30 text-rip hover:bg-rip/10 transition-all active:scale-95">
             ☽ Remix
           </button>
         </div>
