@@ -1,7 +1,7 @@
 'use client';
 // components/studio/StudioTab.tsx
 // Creative Studio V2 — Multi-mode creation suite
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useStudioStore, genId } from '@/lib/store';
 import type { StudioMode, Asset } from '@/lib/store';
@@ -57,9 +57,11 @@ type Props = {
   user: User;
   profile: any;
   onProfileUpdate: (fn: any) => void;
+  preselectedShow?: string;
+  preselectedCategory?: string;
 };
 
-export function StudioTab({ user, profile, onProfileUpdate }: Props) {
+export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, preselectedCategory }: Props) {
   const store = useStudioStore();
   const { mode, setMode, assets, addAsset, characters, addCharacter } = store;
 
@@ -112,7 +114,7 @@ export function StudioTab({ user, profile, onProfileUpdate }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* Main Panel (3 cols) */}
         <div className={mode === 'timeline' ? 'lg:col-span-4' : 'lg:col-span-3'}>
-          {mode === 'script'    && <ScriptPanel user={user} profile={profile} onProfileUpdate={onProfileUpdate} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} genLeft={genLeft} />}
+          {mode === 'script'    && <ScriptPanel user={user} profile={profile} onProfileUpdate={onProfileUpdate} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} genLeft={genLeft} preselectedShow={preselectedShow} preselectedCategory={preselectedCategory} />}
           {mode === 'character' && <CharacterPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} characters={characters} addCharacter={addCharacter} />}
           {mode === 'scene'     && <ScenePanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} characters={characters} />}
           {mode === 'video'     && <VideoPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
@@ -210,15 +212,21 @@ export function StudioTab({ user, profile, onProfileUpdate }: Props) {
 // ═══════════════════════════════════════════════════════════════
 // SCRIPT PANEL — Story & dialogue writing (existing + enhanced)
 // ═══════════════════════════════════════════════════════════════
-function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, error, setError, saveAsset, genLeft }: any) {
-  const [cat, setCat]           = useState('TV Show');
-  const [show, setShow]         = useState('');
+function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, error, setError, saveAsset, genLeft, preselectedShow, preselectedCategory }: any) {
+  const [cat, setCat]           = useState(preselectedCategory || 'TV Show');
+  const [show, setShow]         = useState(preselectedShow || '');
   const [type, setType]         = useState('episode');
   const [idea, setIdea]         = useState('');
   const [xover, setXover]       = useState('');
   const [textProvider, setTextProvider] = useState('claude');
   const [result, setResult]     = useState<any>(null);
   const [copied, setCopied]     = useState(false);
+
+  // Pre-fill when navigating from Discover tab
+  useEffect(() => {
+    if (preselectedShow) setShow(preselectedShow);
+    if (preselectedCategory) setCat(preselectedCategory);
+  }, [preselectedShow, preselectedCategory]);
 
   const canGen = show.trim() && idea.trim() && genLeft > 0 && !loading;
 
