@@ -149,7 +149,7 @@ const TABS = [
 
 // ── Main Component ──────────────────────────────────────────────
 export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: {
-  user: User;
+  user: User | null;
   profile: any;
   onNavigateToStudio?: (showName: string, category: string) => void;
   onReimagine?: (item: MediaItem) => void;
