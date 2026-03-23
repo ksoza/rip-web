@@ -45,7 +45,21 @@ interface MemoryState {
   lastUpdated: string;
 }
 
-type GhokuTab = 'search' | 'intel' | 'chat' | 'brain' | 'neural' | 'memory';
+type GhokuTab = 'search' | 'intel' | 'chat' | 'brain' | 'models' | 'neural' | 'memory';
+
+const HF_TASKS = [
+  { id: '', label: 'All', icon: '🌐' },
+  { id: 'text-generation', label: 'Text Gen', icon: '💬' },
+  { id: 'text-to-image', label: 'Image Gen', icon: '🎨' },
+  { id: 'text-to-video', label: 'Video Gen', icon: '🎬' },
+  { id: 'text-to-audio', label: 'Audio', icon: '🎵' },
+  { id: 'text-to-speech', label: 'TTS', icon: '🗣️' },
+  { id: 'image-to-image', label: 'Img2Img', icon: '🖼️' },
+  { id: 'automatic-speech-recognition', label: 'ASR', icon: '🎤' },
+  { id: 'translation', label: 'Translate', icon: '🌍' },
+  { id: 'summarization', label: 'Summary', icon: '📝' },
+  { id: 'feature-extraction', label: 'Embed', icon: '🧮' },
+];
 
 // ── Helpers ─────────────────────────────────────────────────────
 function formatNum(n: number): string {
@@ -115,6 +129,17 @@ export function GhokuBrain() {
   // Neural state
   const [neuralActive, setNeuralActive] = useState(false);
   const [spikeLog, setSpikeLog] = useState<string[]>([]);
+
+  // HuggingFace Models state
+  const [hfQuery, setHfQuery] = useState('');
+  const [hfTask, setHfTask] = useState('');
+  const [hfModels, setHfModels] = useState<any[]>([]);
+  const [hfLoading, setHfLoading] = useState(false);
+  const [hfSelected, setHfSelected] = useState<string | null>(null);
+  const [hfPlayground, setHfPlayground] = useState('');
+  const [hfResult, setHfResult] = useState<any>(null);
+  const [hfInferring, setHfInferring] = useState(false);
+  const [hfError, setHfError] = useState('');
 
   // Memory state
   const [memory, setMemory] = useState<MemoryState>(defaultMemory);
@@ -284,6 +309,65 @@ export function GhokuBrain() {
     return () => clearInterval(interval);
   }, [neuralActive]);
 
+  // ── HuggingFace Search ──────────────────────────────
+  const hfSearch = async (query?: string) => {
+    setHfLoading(true);
+    setHfError('');
+    try {
+      const resp = await fetch('/api/ghoku/huggingface', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'search', query: query || hfQuery, task: hfTask || undefined }),
+      });
+      const data = await resp.json();
+      if (data.error) { setHfError(data.error); return; }
+      setHfModels(data.models || []);
+    } catch (e: any) { setHfError(e.message); }
+    setHfLoading(false);
+  };
+
+  const hfTrending = async (task?: string) => {
+    setHfLoading(true);
+    setHfError('');
+    try {
+      const resp = await fetch('/api/ghoku/huggingface', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'trending', task: task || hfTask || undefined }),
+      });
+      const data = await resp.json();
+      if (data.error) { setHfError(data.error); return; }
+      setHfModels(data.models || []);
+    } catch (e: any) { setHfError(e.message); }
+    setHfLoading(false);
+  };
+
+  const hfInfer = async () => {
+    if (!hfSelected || !hfPlayground.trim()) return;
+    setHfInferring(true);
+    setHfResult(null);
+    setHfError('');
+    try {
+      const resp = await fetch('/api/ghoku/huggingface', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'inference', modelId: hfSelected, inputs: hfPlayground }),
+      });
+      const data = await resp.json();
+      if (data.error) { setHfError(data.error); return; }
+      setHfResult(data.result);
+    } catch (e: any) { setHfError(e.message); }
+    setHfInferring(false);
+  };
+
+  // Load trending on first visit to models tab
+  useEffect(() => {
+    if (tab === 'models' && hfModels.length === 0 && !hfLoading) {
+      hfTrending();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   // ── Quick-connect chips ─────────────────────────────
   const QUICK_CHIPS = [
     'Solana', 'Stripe', 'Supabase', 'OpenAI', 'XRPL',
@@ -298,6 +382,7 @@ export function GhokuBrain() {
     { id: 'intel',  icon: '📊', label: 'Intel' },
     { id: 'chat',   icon: '🧠', label: 'Oracle' },
     { id: 'brain',  icon: '⚡', label: 'Brain' },
+    { id: 'models', icon: '🤗', label: 'Models' },
     { id: 'neural', icon: '🧬', label: 'Neural' },
     { id: 'memory', icon: '💾', label: 'Memory' },
   ];
@@ -695,6 +780,191 @@ export function GhokuBrain() {
             </div>
           </div>
         )}
+
+        {/* HUGGINGFACE MODELS TAB */}
+        {tab === 'models' && (
+          <div className="p-4">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">🤗</div>
+              <h2 className="font-display text-2xl text-white">HuggingFace Models</h2>
+              <p className="text-sm text-muted max-w-lg mx-auto mt-1">
+                Search 500K+ open-source AI models. Test them live in the playground.
+              </p>
+            </div>
+
+            {/* Search bar */}
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                value={hfQuery}
+                onChange={e => setHfQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && hfSearch()}
+                placeholder="Search models... (e.g. stable-diffusion, llama, whisper)"
+                className="flex-1 bg-bg2 border border-border rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-cyan placeholder:text-muted2"
+              />
+              <button onClick={() => hfSearch()} disabled={hfLoading}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-black bg-cyan hover:brightness-110 transition disabled:opacity-50">
+                {hfLoading ? '...' : '🔍'}
+              </button>
+              <button onClick={() => hfTrending()} disabled={hfLoading}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-bg2 border border-border text-muted hover:text-white hover:border-gold transition disabled:opacity-50"
+                title="Trending models">
+                🔥
+              </button>
+            </div>
+
+            {/* Task filter chips */}
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {HF_TASKS.map(t => (
+                <button key={t.id}
+                  onClick={() => { setHfTask(t.id === hfTask ? '' : t.id); }}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                    hfTask === t.id
+                      ? 'bg-cyan/20 text-cyan border border-cyan/40'
+                      : 'bg-bg2 border border-border text-muted hover:text-white hover:border-white/20'
+                  }`}>
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+
+            {hfError && (
+              <div className="bg-rip/10 border border-rip/30 rounded-xl p-3 mb-4 text-xs text-rip">
+                ⚠️ {hfError}
+              </div>
+            )}
+
+            {/* Results */}
+            {hfLoading ? (
+              <div className="text-center py-12 text-muted">
+                <div className="text-3xl mb-2 animate-pulse">🤗</div>
+                <p className="text-sm">Searching HuggingFace...</p>
+              </div>
+            ) : hfModels.length > 0 ? (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                {hfModels.map((m: any) => {
+                  const modelId = m.modelId || m.id;
+                  const isSelected = hfSelected === modelId;
+                  return (
+                    <div key={modelId}
+                      className={`bg-bg2 border rounded-xl p-3 cursor-pointer transition hover:border-cyan/40 ${
+                        isSelected ? 'border-cyan bg-cyan/5' : 'border-border'
+                      }`}
+                      onClick={() => setHfSelected(isSelected ? null : modelId)}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm font-bold text-white truncate">{modelId}</h3>
+                          <div className="flex items-center gap-3 mt-1">
+                            {m.pipeline_tag && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan/10 text-cyan border border-cyan/20">
+                                {m.pipeline_tag}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted">⬇️ {formatNum(m.downloads || 0)}</span>
+                            <span className="text-[10px] text-muted">❤️ {formatNum(m.likes || 0)}</span>
+                            {m.library_name && (
+                              <span className="text-[10px] text-muted2">📦 {m.library_name}</span>
+                            )}
+                          </div>
+                        </div>
+                        <a href={`https://huggingface.co/${modelId}`} target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="text-[10px] text-muted hover:text-cyan transition shrink-0">
+                          ↗ HF
+                        </a>
+                      </div>
+
+                      {/* Expanded playground */}
+                      {isSelected && (
+                        <div className="mt-3 pt-3 border-t border-border" onClick={e => e.stopPropagation()}>
+                          <p className="text-[9px] text-muted uppercase tracking-widest mb-2">⚡ Live Playground</p>
+                          <div className="flex gap-2">
+                            <input
+                              value={hfPlayground}
+                              onChange={e => setHfPlayground(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && hfInfer()}
+                              placeholder={
+                                m.pipeline_tag === 'text-to-image' ? 'A cyberpunk cat riding a skateboard...' :
+                                m.pipeline_tag === 'text-generation' ? 'Once upon a time in a galaxy...' :
+                                m.pipeline_tag === 'translation' ? 'Hello, how are you?' :
+                                m.pipeline_tag === 'summarization' ? 'Paste text to summarize...' :
+                                m.pipeline_tag === 'text-to-speech' ? 'Hello! Welcome to RemixIP.' :
+                                'Enter your input...'
+                              }
+                              className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-lime placeholder:text-muted2"
+                            />
+                            <button onClick={hfInfer} disabled={hfInferring || !hfPlayground.trim()}
+                              className="px-4 py-2 rounded-lg text-xs font-bold text-black bg-lime hover:brightness-110 transition disabled:opacity-50">
+                              {hfInferring ? '⏳' : '▶ Run'}
+                            </button>
+                          </div>
+
+                          {hfInferring && (
+                            <div className="mt-2 text-xs text-muted animate-pulse">
+                              Running inference... (model may need ~20-30s to warm up)
+                            </div>
+                          )}
+                          {hfResult && !hfInferring && (
+                            <div className="mt-2 bg-bg border border-border rounded-lg p-3">
+                              {hfResult.loading ? (
+                                <p className="text-xs text-gold">⏳ Model loading... try again in ~{Math.ceil(hfResult.estimated_time || 30)}s</p>
+                              ) : hfResult.type === 'image' ? (
+                                <img src={hfResult.data} alt="Generated" className="max-w-full rounded-lg" />
+                              ) : hfResult.type === 'audio' ? (
+                                <audio controls src={hfResult.data} className="w-full" />
+                              ) : Array.isArray(hfResult) ? (
+                                <pre className="text-xs text-lime font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                  {hfResult.map((r: any) => r.generated_text || r.translation_text || r.summary_text || JSON.stringify(r, null, 2)).join('\n')}
+                                </pre>
+                              ) : (
+                                <pre className="text-xs text-lime font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                  {typeof hfResult === 'string' ? hfResult : JSON.stringify(hfResult, null, 2)}
+                                </pre>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Cross-tab actions */}
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => {
+                                setChatMessages(prev => [...prev, { role: 'user', content: `How do I use the HuggingFace model "${modelId}" in a Next.js project? Give me working code.` }]);
+                                setTab('chat');
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-bg border border-border text-muted hover:text-cyan hover:border-cyan transition">
+                              🧠 Ask Oracle
+                            </button>
+                            <button
+                              onClick={() => {
+                                setBrainInput(`Integrate HuggingFace model "${modelId}" into my Next.js project`);
+                                setTab('brain');
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-bg border border-border text-muted hover:text-lime hover:border-lime transition">
+                              ⚡ Build with Brain
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-4xl mb-3">🤗</div>
+                <p className="text-sm text-muted">Search for models or browse trending</p>
+                <div className="flex flex-wrap justify-center gap-2 mt-4">
+                  {['stable-diffusion', 'llama', 'whisper', 'musicgen', 'flux', 'bark', 'mistral'].map(q => (
+                    <button key={q} onClick={() => { setHfQuery(q); hfSearch(q); }}
+                      className="px-3 py-1.5 bg-bg2 border border-border rounded-full text-xs text-muted hover:text-cyan hover:border-cyan transition">
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
 
         {/* NEURAL TAB */}
         {tab === 'neural' && (
