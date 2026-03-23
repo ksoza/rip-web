@@ -8,6 +8,8 @@ import { GhokuBrain }   from './ghoku/GhokuBrain';
 import { WalletTab }    from './wallet/WalletTab';
 import { RipLogo }      from './RipLogo';
 import { SettingsTab }  from './AllTabs';
+import { CreationWizard } from './create/CreationWizard';
+import type { MediaItem } from './create/CreationWizard';
 
 // ── Nav Tabs ────────────────────────────────────────────────────
 const NAV = [
@@ -26,9 +28,14 @@ type Profile = {
 };
 
 export function AppShell({ user }: { user: User }) {
-  const [tab, setTab]                   = useState('studio');
+  const [tab, setTab]                   = useState('discover');
   const [profile, setProfile]           = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [studioShowName, setStudioShowName] = useState('');
+  const [studioCategory, setStudioCategory] = useState('');
+  // Creation Wizard state
+  const [wizardMedia, setWizardMedia]   = useState<MediaItem | null>(null);
+  const [showWizard, setShowWizard]     = useState(false);
   const supabase = createSupabaseBrowser();
 
   // ── Load profile ────────────────────────────────────────────
@@ -45,8 +52,6 @@ export function AppShell({ user }: { user: User }) {
         if (data) {
           setProfile(data);
         } else if (error?.code === 'PGRST116') {
-          // Profile doesn't exist yet — auth callback should have created it,
-          // but create a fallback just in case
           const defaultProfile: Profile = {
             username: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'user',
             tier: 'free',
@@ -55,7 +60,6 @@ export function AppShell({ user }: { user: User }) {
           };
           setProfile(defaultProfile);
 
-          // Background upsert attempt
           await supabase.from('profiles').upsert({
             id: user.id,
             username: defaultProfile.username,
@@ -81,10 +85,41 @@ export function AppShell({ user }: { user: User }) {
     loadProfile();
   }, [user.id]);
 
+  // ── Reimagine: opens the Creation Wizard ────────────────────
+  function handleReimagine(mediaItem: MediaItem) {
+    setWizardMedia(mediaItem);
+    setShowWizard(true);
+  }
+
+  // ── Navigate from Discover → Studio with pre-selected show ──
+  function handleNavigateToStudio(showName: string, category: string) {
+    setStudioShowName(showName);
+    setStudioCategory(category);
+    setTab('studio');
+  }
+
+  // ── Open editor from wizard result ──────────────────────────
+  function handleOpenEditor(resultData: any) {
+    setShowWizard(false);
+    setStudioShowName(resultData.media.title);
+    setStudioCategory(resultData.media.category);
+    setTab('studio');
+  }
+
   const genLeft = profile ? profile.generations_limit - profile.generations_used : 0;
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">
+
+      {/* ── Creation Wizard Overlay ────────────────────────────── */}
+      {showWizard && wizardMedia && (
+        <CreationWizard
+          user={user}
+          selectedMedia={wizardMedia}
+          onClose={() => setShowWizard(false)}
+          onOpenEditor={handleOpenEditor}
+        />
+      )}
 
       {/* ── Top Bar ────────────────────────────────────────────── */}
       <header className="border-b border-border bg-bg/95 backdrop-blur sticky top-0 z-50 px-4 sm:px-6 py-3 flex items-center justify-between">
@@ -108,13 +143,11 @@ export function AppShell({ user }: { user: User }) {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Generation counter */}
           <span className="text-xs text-muted hidden sm:block">
             {profileLoading ? '...' : profile?.tier === 'free'
               ? `${genLeft} free gen${genLeft !== 1 ? 's' : ''}`
               : `${profile?.tier} plan`}
           </span>
-          {/* Avatar */}
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-rip to-purple flex items-center justify-center text-white text-xs font-bold cursor-pointer"
             onClick={() => setTab('settings')}>
             {profile?.username?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
@@ -125,11 +158,11 @@ export function AppShell({ user }: { user: User }) {
       {/* ── Content ────────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
         <div className={`mx-auto py-6 pb-28 ${tab === 'studio' ? 'max-w-6xl px-4 sm:px-6' : 'max-w-5xl px-4 sm:px-6'}`}>
-          {tab === 'studio'   && <StudioTab    user={user} profile={profile} onProfileUpdate={setProfile} />}
-          {tab === 'discover' && <DiscoverTab  user={user} profile={profile} />}
+          {tab === 'studio'   && <StudioTab user={user} profile={profile} onProfileUpdate={setProfile} preselectedShow={studioShowName} preselectedCategory={studioCategory} />}
+          {tab === 'discover' && <DiscoverTab user={user} profile={profile} onNavigateToStudio={handleNavigateToStudio} onReimagine={handleReimagine} />}
           {tab === 'ghoku'    && <GhokuBrain />}
           {tab === 'wallet'   && <WalletTab />}
-          {tab === 'settings' && <SettingsTab  user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} />}
+          {tab === 'settings' && <SettingsTab user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} />}
         </div>
       </main>
 
