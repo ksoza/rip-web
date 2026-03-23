@@ -3,7 +3,7 @@
 
 export type Chain = 'solana' | 'xrpl';
 
-export type NFTMediaType = 'episode' | 'scene' | 'movie' | 'music' | 'collection';
+export type NFTMediaType = 'episode' | 'scene' | 'movie' | 'music' | 'collection' | 'poster';
 
 export interface NFTMetadata {
   name: string;
@@ -14,22 +14,25 @@ export interface NFTMetadata {
 
   attributes: NFTAttribute[];
 
-  // RiP-specific
-  show: string;
-  genre: string;
+  // RiP-specific (optional for builder flexibility)
+  show?: string;
+  genre?: string;
   episode?: number;
   season?: number;
-  mediaType: NFTMediaType;
+  mediaType?: NFTMediaType;
   duration?: number;        // seconds
 
-  // Creator info
-  creator: {
+  // Creator info (optional — set by platform)
+  creator?: {
     handle: string;
     address: string;        // Wallet address
   };
 
-  // Royalty config
-  royalties: RoyaltyConfig;
+  // Royalty config (optional — set by platform)
+  royalties?: RoyaltyConfig;
+
+  // Optional properties (Metaplex standard)
+  properties?: Record<string, any>;
 }
 
 export interface NFTAttribute {
@@ -71,6 +74,22 @@ export interface XRPLMintConfig {
 // ── Unified Mint Request ────────────────────────────────────────
 export type MintConfig = SolanaMintConfig | XRPLMintConfig;
 
+// ── Mint Request (client-facing) ────────────────────────────────
+export interface MintRequest {
+  chain: Chain;
+  title: string;
+  description: string;
+  thumbnail: string;        // Cover art / image URL
+  mediaUrl?: string;        // Video/audio URL
+  imageUrl?: string;        // Alias for thumbnail
+  show?: string;
+  genre?: string;
+  mediaType: NFTMediaType;
+  attributes: NFTAttribute[];
+  royaltyBasisPoints?: number;
+  maxSupply?: number;
+}
+
 // ── Mint Result ─────────────────────────────────────────────────
 export interface MintResult {
   success: boolean;
@@ -81,16 +100,37 @@ export interface MintResult {
   explorerUrl?: string;
 }
 
-// ── Collection ──────────────────────────────────────────────────
-export interface NFTCollection {
+// ── NFT Item (display) ─────────────────────────────────────────
+export interface NFTItem {
   id: string;
   name: string;
   description: string;
   image: string;
+  animationUrl?: string;
   chain: Chain;
-  address: string;          // On-chain collection address
-  creator: string;
-  itemCount: number;
+  mintAddress: string;
+  owner: string;
+  collection?: string;
+  attributes: NFTAttribute[];
+  createdAt: string;
+}
+
+// ── Collection ──────────────────────────────────────────────────
+export interface NFTCollection {
+  id: string;
+  name: string;
+  symbol?: string;
+  description: string;
+  image: string;
+  chain: Chain;
+  address?: string;         // On-chain collection address
+  creatorAddress?: string;  // Creator wallet
+  creator?: string;
+  royaltyBps?: number;
+  items?: NFTItem[];
+  itemCount?: number;
+  totalMinted?: number;
   floorPrice?: number;
   totalVolume?: number;
+  verified?: boolean;
 }
