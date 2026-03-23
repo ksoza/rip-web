@@ -2,14 +2,20 @@
 import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
-import { StudioTab }   from './studio/StudioTab';
-import { RipLogo }     from './RipLogo';
-import { FeedTab, SettingsTab } from './AllTabs';
+import { StudioTab }    from './studio/StudioTab';
+import { DiscoverTab }  from './discover/DiscoverTab';
+import { GhokuBrain }   from './ghoku/GhokuBrain';
+import { WalletTab }    from './wallet/WalletTab';
+import { RipLogo }      from './RipLogo';
+import { SettingsTab }  from './AllTabs';
 
-const TABS = [
-  { id: 'studio',   icon: '🎬', label: 'Studio'  },
-  { id: 'feed',     icon: '📡', label: 'Feed'    },
-  { id: 'settings', icon: '🔧', label: 'Settings'},
+// ── Nav Tabs ────────────────────────────────────────────────────
+const NAV = [
+  { id: 'studio',   icon: '🎬', label: 'Studio',   color: '#ff2d78' },
+  { id: 'discover', icon: '🌐', label: 'Discover',  color: '#00d4ff' },
+  { id: 'ghoku',    icon: '🧠', label: 'Gh.O.K.U.', color: '#8aff00' },
+  { id: 'wallet',   icon: '💎', label: 'Wallet',    color: '#a855f7' },
+  { id: 'settings', icon: '⚙️', label: 'Settings',  color: '#666' },
 ];
 
 type Profile = {
@@ -20,16 +26,16 @@ type Profile = {
 };
 
 export function AppShell({ user }: { user: User }) {
-  const [tab, setTab]         = useState('studio');
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [tab, setTab]                   = useState('studio');
+  const [profile, setProfile]           = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const supabase = createSupabaseBrowser();
 
+  // ── Load profile ────────────────────────────────────────────
   useEffect(() => {
     async function loadProfile() {
       setProfileLoading(true);
       try {
-        // Try to fetch profile
         const { data, error } = await supabase
           .from('profiles')
           .select('username,tier,generations_used,generations_limit')
@@ -39,9 +45,8 @@ export function AppShell({ user }: { user: User }) {
         if (data) {
           setProfile(data);
         } else if (error?.code === 'PGRST116') {
-          // Profile doesn't exist yet — the database trigger may not have fired yet
-          // (can happen if the trigger wasn't set up or there's a race condition)
-          // Create a fallback profile client-side
+          // Profile doesn't exist yet — auth callback should have created it,
+          // but create a fallback just in case
           const defaultProfile: Profile = {
             username: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'user',
             tier: 'free',
@@ -50,8 +55,7 @@ export function AppShell({ user }: { user: User }) {
           };
           setProfile(defaultProfile);
 
-          // Try to upsert the profile via the API (as a background task)
-          // The DB trigger should handle this, but just in case
+          // Background upsert attempt
           await supabase.from('profiles').upsert({
             id: user.id,
             username: defaultProfile.username,
@@ -63,7 +67,6 @@ export function AppShell({ user }: { user: User }) {
         }
       } catch (err) {
         console.error('Profile load error:', err);
-        // Provide fallback profile so the app doesn't break
         setProfile({
           username: user.email?.split('@')[0] || 'user',
           tier: 'free',
@@ -83,45 +86,64 @@ export function AppShell({ user }: { user: User }) {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
 
-      {/* Top Bar */}
-      <header className="border-b border-border bg-bg/95 backdrop-blur sticky top-0 z-50 px-5 py-3 flex items-center justify-between">
-        <RipLogo size="sm" />
+      {/* ── Top Bar ────────────────────────────────────────────── */}
+      <header className="border-b border-border bg-bg/95 backdrop-blur sticky top-0 z-50 px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
+          <RipLogo size="sm" />
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-1 ml-6">
+            {NAV.map(n => (
+              <button key={n.id} onClick={() => setTab(n.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  tab === n.id
+                    ? 'text-white'
+                    : 'text-muted hover:text-white'
+                }`}
+                style={tab === n.id ? { backgroundColor: n.color + '15', color: n.color } : {}}>
+                <span className="text-sm">{n.icon}</span>
+                {n.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Generation counter */}
           <span className="text-xs text-muted hidden sm:block">
             {profileLoading ? '...' : profile?.tier === 'free'
-              ? `${genLeft} free generation${genLeft !== 1 ? 's' : ''} left`
+              ? `${genLeft} free gen${genLeft !== 1 ? 's' : ''}`
               : `${profile?.tier} plan`}
           </span>
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-rip to-purple flex items-center justify-center text-white text-xs font-bold">
+          {/* Avatar */}
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-rip to-purple flex items-center justify-center text-white text-xs font-bold cursor-pointer"
+            onClick={() => setTab('settings')}>
             {profile?.username?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
           </div>
         </div>
       </header>
 
-      {/* Tab Content */}
+      {/* ── Content ────────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-28">
-          {tab === 'studio'   && <StudioTab   user={user} profile={profile} onProfileUpdate={setProfile} />}
-          {tab === 'feed'     && <FeedTab     user={user} />}
-          {tab === 'settings' && <SettingsTab user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} />}
+        <div className={`mx-auto py-6 pb-28 ${tab === 'studio' ? 'max-w-6xl px-4 sm:px-6' : 'max-w-5xl px-4 sm:px-6'}`}>
+          {tab === 'studio'   && <StudioTab    user={user} profile={profile} onProfileUpdate={setProfile} />}
+          {tab === 'discover' && <DiscoverTab  user={user} profile={profile} />}
+          {tab === 'ghoku'    && <GhokuBrain />}
+          {tab === 'wallet'   && <WalletTab />}
+          {tab === 'settings' && <SettingsTab  user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} />}
         </div>
       </main>
 
-      {/* Bottom Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-bg2 border-t border-border z-50">
-        <div className="max-w-5xl mx-auto flex">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 transition-colors ${
-                tab === t.id ? 'text-rip' : 'text-muted hover:text-white'
+      {/* ── Mobile Bottom Tab Bar ──────────────────────────────── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg2/95 backdrop-blur border-t border-border z-50 safe-bottom">
+        <div className="flex">
+          {NAV.map(n => (
+            <button key={n.id} onClick={() => setTab(n.id)}
+              className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${
+                tab === n.id ? '' : 'text-muted'
               }`}
-            >
-              <span className="text-xl leading-none">{t.icon}</span>
-              <span className={`text-[9px] font-bold uppercase tracking-wide ${tab === t.id ? 'text-rip' : ''}`}>
-                {t.label}
-              </span>
+              style={tab === n.id ? { color: n.color } : {}}>
+              <span className="text-xl leading-none">{n.icon}</span>
+              <span className="text-[9px] font-bold uppercase tracking-wide">{n.label}</span>
             </button>
           ))}
         </div>
