@@ -1,10 +1,11 @@
 // app/api/create/imagine/route.ts
 // Scene image generation via HuggingFace Inference API
+// Supports aspect ratio, negative prompts, multiple models
 import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
-// Available models on HuggingFace (free tier)
+// Available models on HuggingFace
 const MODELS: Record<string, string> = {
   'flux-schnell':  'black-forest-labs/FLUX.1-schnell',
   'flux-dev':      'black-forest-labs/FLUX.1-dev',
@@ -15,7 +16,14 @@ const MODELS: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, model = 'flux-schnell', sceneId, negative_prompt } = await req.json();
+    const {
+      prompt,
+      model = 'flux-schnell',
+      sceneId,
+      negative_prompt,
+      width,
+      height,
+    } = await req.json();
 
     if (!prompt) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
@@ -28,17 +36,25 @@ export async function POST(req: NextRequest) {
 
     const modelId = MODELS[model] || MODELS['flux-schnell'];
 
-    // Build the enhanced prompt for better cinematic results
-    const enhancedPrompt = `${prompt}, cinematic lighting, high detail, professional quality, 4k`;
+    // The prompt already includes style from the client side
+    const enhancedPrompt = `${prompt}, high detail, professional quality, 4k`;
 
     const body: Record<string, unknown> = {
       inputs: enhancedPrompt,
     };
 
+    // Add parameters (negative prompt, dimensions)
+    const params: Record<string, unknown> = {};
     if (negative_prompt) {
-      body.parameters = {
-        negative_prompt: negative_prompt || 'blurry, low quality, distorted, watermark, text, ugly',
-      };
+      params.negative_prompt = negative_prompt;
+    }
+    // Only some models support width/height
+    if (width && height && !model.startsWith('flux')) {
+      params.width = Math.min(width, 1024);
+      params.height = Math.min(height, 1024);
+    }
+    if (Object.keys(params).length > 0) {
+      body.parameters = params;
     }
 
     // Call HuggingFace Inference API
@@ -64,7 +80,10 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const errText = await res.text();
       console.error(`HF image error (${res.status}):`, errText);
-      return NextResponse.json({ error: `Image generation failed: ${res.status}` }, { status: 500 });
+      return NextResponse.json({
+        error: `Image generation failed: ${res.status}`,
+        details: errText.slice(0, 200),
+      }, { status: res.status >= 500 ? 500 : res.status });
     }
 
     const contentType = res.headers.get('content-type') || '';
@@ -79,9 +98,25 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Unexpected response
+    // Some models return JSON with image data
     const textResult = await res.text();
-    return NextResponse.json({ error: 'Unexpected response format', details: textResult.slice(0, 200) }, { status: 500 });
+    try {
+      const jsonResult = JSON.parse(textResult);
+      if (jsonResult[0]?.generated_image || jsonResult[0]?.blob) {
+        return NextResponse.json({
+          image: jsonResult[0].generated_image || jsonResult[0].blob,
+          sceneId,
+          model: modelId,
+        });
+      }
+    } catch {
+      // Not JSON
+    }
+
+    return NextResponse.json({
+      error: 'Unexpected response format',
+      details: textResult.slice(0, 200),
+    }, { status: 500 });
 
   } catch (error: any) {
     console.error('Image generation error:', error);
