@@ -1,0 +1,123 @@
+// app/api/create/storyboard/route.ts
+// AI-powered storyboard generation using Anthropic Claude
+import { NextRequest, NextResponse } from 'next/server';
+
+export const maxDuration = 30;
+
+export async function POST(req: NextRequest) {
+  try {
+    const {
+      mediaTitle, character, prompt, tone, format,
+      crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
+      model = 'claude',
+    } = await req.json();
+
+    if (!prompt || !character) {
+      return NextResponse.json({ error: 'Missing prompt or character' }, { status: 400 });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
+    }
+
+    // Build the duration guide based on format
+    const durationGuide: Record<string, string> = {
+      short:    '60 seconds total (5 scenes, ~12s each)',
+      episode:  '10 minutes total (5-7 scenes, 1-2 min each)',
+      feature:  '30 minutes total (7-10 scenes, 3-5 min each)',
+      clip:     '30 seconds total (3-4 scenes, ~8s each)',
+      trailer:  '90 seconds total (5-6 scenes, ~15s each)',
+      series:   '20 minutes total (8-10 scenes, 2-3 min each)',
+    };
+
+    const qaContext = qaAnswers?.length
+      ? qaAnswers.map((qa: { q: string; a: string }, i: number) =>
+          `Q${i + 1}: ${qa.q}\nA${i + 1}: ${qa.a}`
+        ).join('\n')
+      : '';
+
+    const systemPrompt = `You are an elite storyboard writer for fan-made TV/film remixes. You create vivid, cinematic scene breakdowns that can guide AI image and video generation.
+
+Always respond with valid JSON only — no markdown, no code fences.`;
+
+    const userPrompt = `Create a detailed storyboard for this fan-made creation:
+
+IP / Show: ${mediaTitle}
+Character: ${character.name} (${character.role})
+User's Vision: ${prompt}
+Tone: ${tone}
+Format: ${format} — ${durationGuide[format] || '60 seconds total'}
+${crossover ? `Crossover with: ${crossover}` : ''}
+${isCustomIP ? `Custom IP Description: ${customIPDesc}` : ''}
+${isMashup ? `Mashup Mode: Combining multiple IPs` : ''}
+
+${qaContext ? `Additional context from Q&A:\n${qaContext}` : ''}
+
+Generate a storyboard as a JSON array of scenes. Each scene needs:
+- sceneNum (number)
+- description (2-3 sentences describing what happens)
+- duration (time range like "0:00-0:12")
+- visual (detailed visual description for AI image generation — describe camera angle, lighting, colors, composition, character poses/expressions)
+- emoji (single relevant emoji)
+
+The visual field is CRITICAL — it will be fed directly to an image generation AI. Be specific about:
+- Art style (cinematic, animated, noir, watercolor, etc.)
+- Camera angle (wide shot, close-up, bird's eye, etc.)
+- Lighting (dramatic shadows, golden hour, neon glow, etc.)
+- Character appearance and expression
+- Setting details
+
+Respond with ONLY valid JSON: { "scenes": [...], "title": "..." }`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        messages: [
+          { role: 'user', content: userPrompt },
+        ],
+        system: systemPrompt,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Anthropic error:', errText);
+      return NextResponse.json({ error: `AI generation failed: ${res.status}` }, { status: 500 });
+    }
+
+    const data = await res.json();
+    const textContent = data.content?.[0]?.text || '';
+
+    // Parse JSON from response
+    let storyboard;
+    try {
+      // Try direct parse first
+      storyboard = JSON.parse(textContent);
+    } catch {
+      // Try to extract JSON from response
+      const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        storyboard = JSON.parse(jsonMatch[0]);
+      } else {
+        return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({
+      scenes: storyboard.scenes || storyboard,
+      title: storyboard.title || `${character.name}: ${prompt.slice(0, 50)}`,
+    });
+
+  } catch (error: any) {
+    console.error('Storyboard generation error:', error);
+    return NextResponse.json({ error: error.message || 'Generation failed' }, { status: 500 });
+  }
+}
