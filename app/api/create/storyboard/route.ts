@@ -1,23 +1,24 @@
 // app/api/create/storyboard/route.ts
-// AI-powered storyboard generation using Anthropic Claude
+// AI-powered storyboard generation using Anthropic Claude SDK
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 30;
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
     const {
       mediaTitle, character, prompt, tone, format,
       crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
-      model = 'claude',
     } = await req.json();
 
     if (!prompt || !character) {
       return NextResponse.json({ error: 'Missing prompt or character' }, { status: 400 });
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
     }
 
@@ -39,12 +40,12 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are an elite storyboard writer for fan-made TV/film remixes. You create vivid, cinematic scene breakdowns that can guide AI image and video generation.
 
-Always respond with valid JSON only — no markdown, no code fences.`;
+Always respond with valid JSON only — no markdown, no code fences, no explanation.`;
 
     const userPrompt = `Create a detailed storyboard for this fan-made creation:
 
 IP / Show: ${mediaTitle}
-Character: ${character.name} (${character.role})
+Character: ${character.name} (${character.role || 'main character'})
 User's Vision: ${prompt}
 Tone: ${tone}
 Format: ${format} — ${durationGuide[format] || '60 seconds total'}
@@ -54,7 +55,7 @@ ${isMashup ? `Mashup Mode: Combining multiple IPs` : ''}
 
 ${qaContext ? `Additional context from Q&A:\n${qaContext}` : ''}
 
-Generate a storyboard as a JSON array of scenes. Each scene needs:
+Generate a storyboard as a JSON object. Each scene needs:
 - sceneNum (number)
 - description (2-3 sentences describing what happens)
 - duration (time range like "0:00-0:12")
@@ -70,36 +71,21 @@ The visual field is CRITICAL — it will be fed directly to an image generation 
 
 Respond with ONLY valid JSON: { "scenes": [...], "title": "..." }`;
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        messages: [
-          { role: 'user', content: userPrompt },
-        ],
-        system: systemPrompt,
-      }),
+    // Call Claude using the SDK (same pattern as generate/route.ts)
+    const message = await anthropic.messages.create({
+      model:      'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('Anthropic error:', errText);
-      return NextResponse.json({ error: `AI generation failed: ${res.status}` }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const textContent = data.content?.[0]?.text || '';
+    const textContent = message.content
+      .map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '')
+      .join('\n');
 
     // Parse JSON from response
     let storyboard;
     try {
-      // Try direct parse first
       storyboard = JSON.parse(textContent);
     } catch {
       // Try to extract JSON from response
@@ -107,6 +93,7 @@ Respond with ONLY valid JSON: { "scenes": [...], "title": "..." }`;
       if (jsonMatch) {
         storyboard = JSON.parse(jsonMatch[0]);
       } else {
+        console.error('Failed to parse AI response:', textContent.slice(0, 500));
         return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 });
       }
     }
@@ -118,6 +105,9 @@ Respond with ONLY valid JSON: { "scenes": [...], "title": "..." }`;
 
   } catch (error: any) {
     console.error('Storyboard generation error:', error);
-    return NextResponse.json({ error: error.message || 'Generation failed' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Generation failed' },
+      { status: error.status || 500 }
+    );
   }
 }
