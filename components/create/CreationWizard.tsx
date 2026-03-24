@@ -167,6 +167,29 @@ const FORMATS = [
   { id: 'trailer',   label: 'Trailer',         desc: 'Hype / teaser', emoji: '🎞️' },
 ];
 
+// ── Art Style Presets (what Runway/Pika/Midjourney offer) ────────
+const STYLES = [
+  { id: 'cinematic',   label: 'Cinematic',     emoji: '🎬', prompt: 'cinematic film still, professional cinematography, dramatic lighting, shallow depth of field, anamorphic lens, color graded' },
+  { id: 'anime',       label: 'Anime',         emoji: '🌸', prompt: 'anime style, Studio Ghibli inspired, vibrant colors, detailed cel shading, Japanese animation' },
+  { id: 'comic',       label: 'Comic Book',    emoji: '💥', prompt: 'comic book art style, bold outlines, halftone dots, vibrant panels, dynamic composition, speech bubble aesthetic' },
+  { id: 'photorealistic', label: 'Photorealistic', emoji: '📷', prompt: 'photorealistic, ultra HD, 8k, raw photo, hyperrealistic detail, natural lighting' },
+  { id: 'watercolor',  label: 'Watercolor',    emoji: '🎨', prompt: 'watercolor painting, soft edges, flowing colors, artistic brush strokes, paper texture' },
+  { id: 'noir',        label: 'Film Noir',     emoji: '🌑', prompt: 'film noir style, high contrast black and white, dramatic shadows, venetian blinds lighting, 1940s aesthetic' },
+  { id: '3d_render',   label: '3D Render',     emoji: '🧊', prompt: '3D rendered, Pixar quality, subsurface scattering, global illumination, octane render' },
+  { id: 'retro',       label: 'Retro/VHS',     emoji: '📼', prompt: 'retro VHS aesthetic, scan lines, chromatic aberration, 80s color palette, CRT screen effect' },
+  { id: 'pixel',       label: 'Pixel Art',     emoji: '👾', prompt: '16-bit pixel art style, retro game aesthetic, clean pixel work, limited color palette' },
+  { id: 'oil_paint',   label: 'Oil Painting',  emoji: '🖼️', prompt: 'oil painting masterpiece, rich impasto texture, museum quality, classical fine art composition' },
+];
+
+// ── Aspect Ratios (critical for TikTok/IG vs YouTube) ────────
+const ASPECT_RATIOS = [
+  { id: '16:9',  label: '16:9',  desc: 'YouTube / Widescreen',  emoji: '🖥️', width: 1024, height: 576 },
+  { id: '9:16',  label: '9:16',  desc: 'TikTok / Reels / Shorts', emoji: '📱', width: 576, height: 1024 },
+  { id: '1:1',   label: '1:1',   desc: 'Instagram / Twitter',   emoji: '⬛', width: 1024, height: 1024 },
+  { id: '4:3',   label: '4:3',   desc: 'Classic TV',            emoji: '📺', width: 1024, height: 768 },
+  { id: '21:9',  label: '21:9',  desc: 'Ultra-Wide / Cinema',   emoji: '🎞️', width: 1024, height: 440 },
+];
+
 // ═══════════════════════════════════════════════════════════════
 //  MAIN WIZARD COMPONENT
 // ═══════════════════════════════════════════════════════════════
@@ -219,6 +242,18 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   const [storyboardError, setStoryboardError] = useState('');
   const [sceneImages, setSceneImages] = useState<Record<string, string>>({});
   const [genError, setGenError] = useState('');
+
+  // ── Pro features state ───────────────────────────────────────
+  const [artStyle, setArtStyle]           = useState('cinematic');
+  const [aspectRatio, setAspectRatio]     = useState('16:9');
+  const [negativePrompt, setNegativePrompt] = useState('blurry, low quality, distorted, watermark, text, ugly, deformed');
+  const [showAdvanced, setShowAdvanced]   = useState(false);
+  const [genElapsed, setGenElapsed]       = useState(0);
+  const [sceneNarration, setSceneNarration] = useState<Record<string, string>>({});
+  const [narrationLoading, setNarrationLoading] = useState(false);
+  const [regeneratingScene, setRegeneratingScene] = useState<string | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Characters for this IP
   const characters = CHARACTER_DB[selectedMedia.title] || [];
@@ -297,78 +332,152 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
     }
   }
 
+  // ── Build enhanced prompt with style + aspect info ────────────
+  function buildImagePrompt(sceneVisual: string): string {
+    const style = STYLES.find(s => s.id === artStyle);
+    return `${sceneVisual}, ${style?.prompt || 'cinematic lighting, high detail, professional quality'}`;
+  }
+
+  // ── Generate a single scene image (used for gen + regen) ─────
+  async function generateSceneImage(scene: StoryboardScene): Promise<string | null> {
+    const arInfo = ASPECT_RATIOS.find(a => a.id === aspectRatio) || ASPECT_RATIOS[0];
+    let attempts = 0;
+    while (attempts < 3) {
+      const res = await fetch('/api/create/imagine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: buildImagePrompt(scene.visual),
+          model: imageModel,
+          sceneId: scene.id,
+          negative_prompt: negativePrompt,
+          width: arInfo.width,
+          height: arInfo.height,
+        }),
+      });
+
+      if (res.status === 503) {
+        const data = await res.json().catch(() => ({}));
+        const wait = Math.min((data.estimated_time || 20) * 1000, 60000);
+        await new Promise(r => setTimeout(r, wait));
+        attempts++;
+        continue;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Image generation failed (${res.status})`);
+      }
+
+      const data = await res.json();
+      if (data.image) return data.image;
+      throw new Error('No image returned');
+    }
+    return null;
+  }
+
+  // ── Regenerate a single scene ────────────────────────────────
+  async function regenerateScene(sceneId: string) {
+    const scene = scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+    setRegeneratingScene(sceneId);
+    try {
+      const img = await generateSceneImage(scene);
+      if (img) {
+        setSceneImages(prev => ({ ...prev, [sceneId]: img }));
+      }
+    } catch (err: any) {
+      console.error('Regen error:', err);
+    } finally {
+      setRegeneratingScene(null);
+    }
+  }
+
+  // ── Generate narration for all scenes ────────────────────────
+  async function generateNarration() {
+    setNarrationLoading(true);
+    for (const scene of scenes) {
+      try {
+        const res = await fetch('/api/create/narrate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: scene.description, sceneId: scene.id }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.audio) {
+            setSceneNarration(prev => ({ ...prev, [scene.id]: data.audio }));
+          }
+        }
+      } catch (err) {
+        console.error(`Narration error scene ${scene.sceneNum}:`, err);
+      }
+    }
+    setNarrationLoading(false);
+  }
+
+  // ── Download all scene images ────────────────────────────────
+  function downloadAllImages() {
+    setDownloadingAll(true);
+    Object.entries(sceneImages).forEach(([sceneId, dataUrl], idx) => {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${displayTitle.replace(/[^a-zA-Z0-9]/g, '_')}_scene_${idx + 1}.png`;
+      link.click();
+    });
+    setTimeout(() => setDownloadingAll(false), 1000);
+  }
+
+  // ── Download single image ───────────────────────────────────
+  function downloadImage(sceneId: string, idx: number) {
+    const dataUrl = sceneImages[sceneId];
+    if (!dataUrl) return;
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `${displayTitle.replace(/[^a-zA-Z0-9]/g, '_')}_scene_${idx + 1}.png`;
+    link.click();
+  }
+
   // ── Real AI image generation for each scene ──────────────────
   async function startGeneration() {
     setStep('generating');
     setGenProgress(0);
     setGenError('');
     setSceneImages({});
+    setGenElapsed(0);
+
+    // Start elapsed timer
+    elapsedRef.current = setInterval(() => {
+      setGenElapsed(prev => prev + 1);
+    }, 1000);
 
     const totalScenes = scenes.length;
-    const newImages: Record<string, string> = {};
     let completed = 0;
 
     for (let i = 0; i < totalScenes; i++) {
       const scene = scenes[i];
-      setGenStage(`Generating scene ${i + 1}/${totalScenes}: ${scene.description.slice(0, 50)}...`);
+      setGenStage(`🎨 Scene ${i + 1}/${totalScenes}: ${scene.description.slice(0, 50)}...`);
 
       try {
-        // Retry logic for model loading (503)
-        let attempts = 0;
-        let imageData: string | null = null;
-
-        while (attempts < 3 && !imageData) {
-          const res = await fetch('/api/create/imagine', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: scene.visual,
-              model: imageModel,
-              sceneId: scene.id,
-              negative_prompt: 'blurry, low quality, distorted, watermark, text, ugly, deformed',
-            }),
-          });
-
-          if (res.status === 503) {
-            // Model loading — wait and retry
-            const data = await res.json().catch(() => ({}));
-            const wait = Math.min((data.estimated_time || 20) * 1000, 60000);
-            setGenStage(`Scene ${i + 1}: Model loading... (${Math.round(wait / 1000)}s)`);
-            await new Promise(r => setTimeout(r, wait));
-            attempts++;
-            continue;
-          }
-
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || `Image generation failed (${res.status})`);
-          }
-
-          const data = await res.json();
-          if (data.image) {
-            imageData = data.image;
-          } else {
-            throw new Error('No image returned');
-          }
-        }
-
-        if (imageData) {
-          newImages[scene.id] = imageData;
-          setSceneImages(prev => ({ ...prev, [scene.id]: imageData! }));
+        const img = await generateSceneImage(scene);
+        if (img) {
+          setSceneImages(prev => ({ ...prev, [scene.id]: img }));
         }
       } catch (err: any) {
         console.error(`Scene ${i + 1} generation error:`, err);
-        // Continue with other scenes even if one fails
+        setGenError(prev => prev ? `${prev}, Scene ${i + 1}` : `Failed: Scene ${i + 1}`);
       }
 
       completed++;
       setGenProgress(Math.round((completed / totalScenes) * 100));
     }
 
+    // Stop elapsed timer
+    if (elapsedRef.current) clearInterval(elapsedRef.current);
+
     setGenStage('Complete! ✨');
     setGenProgress(100);
 
-    // Build result with images
     setTimeout(() => {
       setResultData({
         title: `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
@@ -706,21 +815,61 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                 </div>
               )}
 
-              {/* ── AI Model Selection ──────────────────────────────── */}
+              {/* ── Art Style ──────────────────────────────────────── */}
+              <div className="mb-4">
+                <label className="text-[10px] text-muted font-bold uppercase tracking-widest block mb-2">🎨 Art Style</label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {STYLES.map(s => (
+                    <button key={s.id} onClick={() => setArtStyle(s.id)}
+                      className={`p-2.5 rounded-xl text-center transition-all ${
+                        artStyle === s.id
+                          ? 'bg-rip/15 border-2 border-rip text-white scale-[1.02]'
+                          : 'bg-bg2 border border-border text-muted hover:text-white hover:border-bord2'
+                      }`}>
+                      <span className="text-xl block mb-1">{s.emoji}</span>
+                      <span className="text-[10px] font-bold">{s.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Aspect Ratio ────────────────────────────────────── */}
+              <div className="mb-4">
+                <label className="text-[10px] text-muted font-bold uppercase tracking-widest block mb-2">📐 Aspect Ratio</label>
+                <div className="flex flex-wrap gap-2">
+                  {ASPECT_RATIOS.map(a => (
+                    <button key={a.id} onClick={() => setAspectRatio(a.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                        aspectRatio === a.id
+                          ? 'bg-cyan/15 border border-cyan text-cyan'
+                          : 'bg-bg2 border border-border text-muted hover:text-white'
+                      }`}>
+                      <span>{a.emoji}</span> {a.label}
+                      <span className="text-[9px] text-muted font-normal hidden sm:inline">· {a.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── AI Model + Advanced ────────────────────────────── */}
               <div className="mb-4 bg-bg2 border border-lime/30 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg">🤖</span>
-                  <div className="text-[9px] text-lime uppercase tracking-widest font-bold">AI Model Selection</div>
+                  <div className="text-[9px] text-lime uppercase tracking-widest font-bold">AI Engine</div>
+                  <button onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="ml-auto text-[9px] text-muted hover:text-white transition-all">
+                    {showAdvanced ? '▲ Hide Advanced' : '▼ Advanced'}
+                  </button>
                 </div>
 
                 <div className="mb-3">
                   <label className="text-[10px] text-muted font-bold block mb-1.5">Image Generation Model</label>
                   <div className="flex flex-wrap gap-2">
                     {[
-                      { id: 'flux-schnell', name: 'FLUX.1 Schnell', desc: 'Fast, good quality', emoji: '⚡' },
-                      { id: 'flux-dev', name: 'FLUX.1 Dev', desc: 'Best quality, slower', emoji: '🎨' },
-                      { id: 'sdxl', name: 'SDXL', desc: 'Stable Diffusion XL', emoji: '🖼️' },
-                      { id: 'playground', name: 'Playground v2.5', desc: 'Aesthetic focused', emoji: '✨' },
+                      { id: 'flux-schnell', name: 'FLUX.1 Schnell', desc: 'Fast', emoji: '⚡' },
+                      { id: 'flux-dev', name: 'FLUX.1 Dev', desc: 'Best quality', emoji: '🎨' },
+                      { id: 'sdxl', name: 'SDXL', desc: 'Stable Diffusion', emoji: '🖼️' },
+                      { id: 'playground', name: 'Playground v2.5', desc: 'Aesthetic', emoji: '✨' },
                     ].map(m => (
                       <button key={m.id} onClick={() => setImageModel(m.id)}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -729,18 +878,33 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                             : 'bg-bg3 border border-border text-muted hover:text-white'
                         }`}>
                         <span>{m.emoji}</span> {m.name}
-                        <span className="text-[9px] text-muted font-normal hidden sm:inline">· {m.desc}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="text-[10px] text-muted">
-                  📝 Story AI: <span className="text-purple font-bold">Claude Sonnet</span> · 
-                  🎨 Images: <span className="text-lime font-bold">{
+                {/* Advanced settings (collapsible) */}
+                {showAdvanced && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-3">
+                    <div>
+                      <label className="text-[10px] text-muted font-bold block mb-1">Negative Prompt</label>
+                      <textarea value={negativePrompt}
+                        onChange={e => setNegativePrompt(e.target.value)}
+                        placeholder="Things to avoid in generation..."
+                        className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-muted/50 resize-none focus:border-lime/50 focus:outline-none"
+                        rows={2} />
+                      <p className="text-[9px] text-muted mt-1">Comma-separated list of things to exclude from generated images</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-[10px] text-muted mt-3">
+                  📝 <span className="text-purple font-bold">Claude Sonnet</span> → 
+                  🎨 <span className="text-lime font-bold">{
                     { 'flux-schnell': 'FLUX.1 Schnell', 'flux-dev': 'FLUX.1 Dev', 'sdxl': 'SDXL', 'playground': 'Playground v2.5' }[imageModel] || imageModel
-                  }</span> · 
-                  🎬 Video: <span className="text-muted/50">Coming soon</span>
+                  }</span> → 
+                  🖼️ <span className="text-cyan font-bold">{aspectRatio}</span> → 
+                  🎬 <span className="text-rip font-bold">{STYLES.find(s => s.id === artStyle)?.label || 'Cinematic'}</span>
                 </div>
               </div>
 
@@ -785,7 +949,23 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
           {step === 'storyboard' && (
             <div>
               <h3 className="font-display text-2xl text-white mb-1">Storyboard</h3>
-              <p className="text-sm text-muted mb-6">Review and edit your scenes before generation. Click any scene to modify it.</p>
+              <p className="text-sm text-muted mb-2">Review and edit your scenes before generation. Click any scene to modify it.</p>
+
+              {/* Config summary bar */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                <span className="px-2.5 py-1 rounded-full bg-rip/10 border border-rip/30 text-rip text-[10px] font-bold">
+                  🎨 {STYLES.find(s => s.id === artStyle)?.label || 'Cinematic'}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-cyan/10 border border-cyan/30 text-cyan text-[10px] font-bold">
+                  📐 {aspectRatio}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold">
+                  🤖 {({ 'flux-schnell': 'FLUX Schnell', 'flux-dev': 'FLUX Dev', 'sdxl': 'SDXL', 'playground': 'Playground' } as Record<string, string>)[imageModel] || imageModel}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-purple/10 border border-purple/30 text-purple text-[10px] font-bold">
+                  🎭 {scenes.length} scenes
+                </span>
+              </div>
 
               <div className="space-y-3 mb-6">
                 {scenes.map((scene) => (
@@ -871,13 +1051,28 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
             <div className="flex flex-col items-center justify-center py-20">
               <div className="text-6xl mb-6 animate-pulse">🎬</div>
               <h3 className="font-display text-3xl text-white mb-2">Creating Your Vision</h3>
-              <p className="text-sm text-muted mb-8 text-center max-w-md">
+              <p className="text-sm text-muted mb-4 text-center max-w-md">
                 Bringing {selectedCharacter?.name}&apos;s story to life in the {displayTitle} universe...
               </p>
 
+              {/* Elapsed timer */}
+              <div className="flex items-center gap-2 mb-6">
+                <span className="text-xs text-muted">⏱️ Elapsed:</span>
+                <span className="font-mono text-sm text-white font-bold">
+                  {Math.floor(genElapsed / 60)}:{String(genElapsed % 60).padStart(2, '0')}
+                </span>
+                <span className="mx-2 text-muted">·</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rip/10 border border-rip/30 text-rip font-bold">
+                  {STYLES.find(s => s.id === artStyle)?.label}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan/10 border border-cyan/30 text-cyan font-bold">
+                  {aspectRatio}
+                </span>
+              </div>
+
               {/* Progress bar */}
               <div className="w-full max-w-md mb-4">
-                <div className="h-2 bg-bg3 rounded-full overflow-hidden">
+                <div className="h-3 bg-bg3 rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all duration-500"
                     style={{ width: `${genProgress}%`, background: 'linear-gradient(90deg,#ff2d78,#a855f7,#00d4ff)' }} />
                 </div>
@@ -939,10 +1134,12 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                   ) : (
                     <span className="text-8xl opacity-30">{resultData.media.emoji}</span>
                   )}
-                  <div className="absolute bottom-3 left-3 flex gap-2">
+                  <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
                     <span className="px-2 py-1 rounded-full bg-black/50 backdrop-blur text-white text-[10px] font-bold">{resultData.media.category}</span>
                     <span className="px-2 py-1 rounded-full bg-black/50 backdrop-blur text-white text-[10px] font-bold">{TONES.find(t => t.id === resultData.tone)?.label}</span>
                     <span className="px-2 py-1 rounded-full bg-black/50 backdrop-blur text-white text-[10px] font-bold">{FORMATS.find(f => f.id === resultData.format)?.label}</span>
+                    <span className="px-2 py-1 rounded-full bg-rip/40 backdrop-blur text-white text-[10px] font-bold">🎨 {STYLES.find(s => s.id === artStyle)?.label}</span>
+                    <span className="px-2 py-1 rounded-full bg-cyan/40 backdrop-blur text-white text-[10px] font-bold">📐 {aspectRatio}</span>
                   </div>
                   {/* Fan-made watermark */}
                   <div className="absolute top-3 right-3 px-2 py-1 rounded bg-black/40 backdrop-blur text-white/70 text-[8px] font-mono">
@@ -955,10 +1152,22 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                 </div>
               </div>
 
-              {/* Generated scene gallery */}
+              {/* Generated scene gallery — with regen, download, narration per scene */}
               {Object.keys(sceneImages).length > 0 && (
                 <div className="mb-6">
-                  <h4 className="text-xs font-bold text-muted uppercase tracking-widest mb-3">🎬 Generated Scenes</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-bold text-muted uppercase tracking-widest">🎬 Generated Scenes</h4>
+                    <div className="flex gap-2">
+                      <button onClick={generateNarration} disabled={narrationLoading}
+                        className="px-3 py-1.5 rounded-lg bg-purple/10 border border-purple/30 text-purple text-[10px] font-bold hover:bg-purple/20 transition-all disabled:opacity-50">
+                        {narrationLoading ? '🔊 Generating...' : '🔊 Narrate All'}
+                      </button>
+                      <button onClick={downloadAllImages} disabled={downloadingAll}
+                        className="px-3 py-1.5 rounded-lg bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold hover:bg-lime/20 transition-all disabled:opacity-50">
+                        {downloadingAll ? '⏳ Downloading...' : '⬇️ Download All'}
+                      </button>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {scenes.map((scene, i) => (
                       <div key={scene.id} className="relative group">
@@ -970,10 +1179,43 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                             {scene.emoji}
                           </div>
                         )}
+                        {/* Overlay label */}
                         <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent rounded-b-xl">
                           <span className="text-[10px] text-white font-bold">Scene {scene.sceneNum}</span>
                           <p className="text-[9px] text-white/60 line-clamp-1">{scene.description.slice(0, 60)}</p>
                         </div>
+                        {/* Action buttons overlay */}
+                        <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button onClick={() => regenerateScene(scene.id)}
+                            disabled={regeneratingScene === scene.id}
+                            title="Regenerate"
+                            className="w-7 h-7 rounded-lg bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-xs hover:border-rip transition-all disabled:animate-spin">
+                            🔄
+                          </button>
+                          <button onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = sceneImages[scene.id];
+                            link.download = `scene-${scene.sceneNum}-${displayTitle.replace(/\s+/g, '-').slice(0, 20)}.png`;
+                            link.click();
+                          }}
+                            title="Download"
+                            className="w-7 h-7 rounded-lg bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-xs hover:border-lime transition-all">
+                            ⬇️
+                          </button>
+                        </div>
+                        {/* Narration audio player */}
+                        {sceneNarration[scene.id] && (
+                          <div className="absolute top-1 left-1">
+                            <audio src={sceneNarration[scene.id]} controls
+                              className="w-24 h-6 opacity-80 hover:opacity-100" />
+                          </div>
+                        )}
+                        {/* Regen spinner overlay */}
+                        {regeneratingScene === scene.id && (
+                          <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center">
+                            <span className="text-2xl animate-spin">🎨</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -995,10 +1237,11 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
               {/* Action buttons grid */}
               <div className="grid grid-cols-2 gap-3 mb-6">
                 {/* Download */}
-                <button className="p-4 bg-bg2 border border-border rounded-xl hover:border-lime transition-all group text-left">
-                  <span className="text-2xl mb-2 block group-hover:scale-110 transition-transform">⬇️</span>
-                  <div className="text-sm font-bold text-white">Download</div>
-                  <div className="text-[10px] text-muted">MP4 / MOV / GIF</div>
+                <button onClick={downloadAllImages} disabled={downloadingAll}
+                  className="p-4 bg-bg2 border border-border rounded-xl hover:border-lime transition-all group text-left disabled:opacity-50">
+                  <span className="text-2xl mb-2 block group-hover:scale-110 transition-transform">{downloadingAll ? '⏳' : '⬇️'}</span>
+                  <div className="text-sm font-bold text-white">{downloadingAll ? 'Downloading...' : 'Download'}</div>
+                  <div className="text-[10px] text-muted">{Object.keys(sceneImages).length} scene images</div>
                 </button>
 
                 {/* Edit (opens timeline editor) */}
