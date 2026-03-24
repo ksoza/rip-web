@@ -213,6 +213,13 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [shareToast, setShareToast] = useState('');
 
+  // AI Model selection
+  const [imageModel, setImageModel] = useState('flux-schnell');
+  const [storyboardLoading, setStoryboardLoading] = useState(false);
+  const [storyboardError, setStoryboardError] = useState('');
+  const [sceneImages, setSceneImages] = useState<Record<string, string>>({});
+  const [genError, setGenError] = useState('');
+
   // Characters for this IP
   const characters = CHARACTER_DB[selectedMedia.title] || [];
 
@@ -238,78 +245,141 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
     `Describe the setting — is it the original world, a new universe, or a mashup?`,
   ];
 
-  // ── Generate storyboard from answers ────────────────────────
-  function generateStoryboard() {
-    const charName = selectedCharacter?.name || 'Character';
-    const selectedTone = TONES.find(t => t.id === tone)?.label || 'Dramatic';
-    const emojis = ['🎬', '💫', '🔥', '🌟', '🎭', '💎'];
+  // ── Generate storyboard from answers (REAL AI) ───────────────
+  async function generateStoryboard() {
+    setStoryboardLoading(true);
+    setStoryboardError('');
 
-    const generatedScenes: StoryboardScene[] = [
-      { id: 'sc1', sceneNum: 1, description: `Opening: ${charName} in a familiar setting from ${displayTitle}. The mood shifts as something unexpected happens.`, duration: format === 'short' ? '0:00-0:08' : '0:00-0:45', visual: `Wide shot of ${displayTitle}'s iconic location`, emoji: emojis[0] },
-      { id: 'sc2', sceneNum: 2, description: `${charName} encounters the core conflict: ${prompt.slice(0, 80)}...`, duration: format === 'short' ? '0:08-0:20' : '0:45-2:30', visual: `Close-up reaction shot, ${selectedTone.toLowerCase()} lighting`, emoji: emojis[1] },
-      { id: 'sc3', sceneNum: 3, description: `The tension builds. ${aiQuestions[0]?.a ? aiQuestions[0].a.slice(0, 60) + '...' : `${charName} must make a choice.`}`, duration: format === 'short' ? '0:20-0:35' : '2:30-5:00', visual: `Dynamic camera movement, heightened ${selectedTone.toLowerCase()} atmosphere`, emoji: emojis[2] },
-      { id: 'sc4', sceneNum: 4, description: `Climax: The reimagined twist plays out. ${charName} ${aiQuestions[1]?.a ? aiQuestions[1].a.slice(0, 50) : 'faces their destiny'}.`, duration: format === 'short' ? '0:35-0:50' : '5:00-8:00', visual: `Epic wide shot transitioning to intimate close-up`, emoji: emojis[3] },
-      { id: 'sc5', sceneNum: 5, description: `Resolution: The aftermath reveals a new perspective on ${displayTitle}'s universe.`, duration: format === 'short' ? '0:50-1:00' : '8:00-10:00', visual: `Callback to opening shot with a twist, fade to black`, emoji: emojis[4] },
-    ];
-
-    if (crossover || isMashup) {
-      const crossoverWith = isMashup ? mashupShows.filter(Boolean).join(' + ') : crossover;
-      generatedScenes.splice(2, 0, {
-        id: 'sc_xover', sceneNum: 3, description: `Crossover moment: Characters from ${crossoverWith} collide in the ${displayTitle} universe, creating unexpected dynamics.`, duration: format === 'short' ? '0:15-0:25' : '2:00-3:30', visual: `Split-screen merging into single frame`, emoji: '🌀',
+    try {
+      const res = await fetch('/api/create/storyboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mediaTitle: displayTitle,
+          character: selectedCharacter,
+          prompt,
+          tone: TONES.find(t => t.id === tone)?.label || 'Dramatic',
+          format,
+          crossover: crossover || (isMashup ? mashupShows.filter(Boolean).join(' + ') : ''),
+          qaAnswers: aiQuestions.filter(q => q.a),
+          isCustomIP,
+          isMashup,
+          customIPDesc,
+        }),
       });
-      // Renumber
-      generatedScenes.forEach((s, i) => s.sceneNum = i + 1);
-    }
 
-    setScenes(generatedScenes);
-    setStep('storyboard');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'AI generation failed' }));
+        throw new Error(errData.error || `Generation failed (${res.status})`);
+      }
+
+      const data = await res.json();
+      const aiScenes: StoryboardScene[] = (data.scenes || []).map((s: any, i: number) => ({
+        id: `sc_${i + 1}`,
+        sceneNum: s.sceneNum || i + 1,
+        description: s.description || '',
+        duration: s.duration || '',
+        visual: s.visual || '',
+        emoji: s.emoji || ['🎬', '💫', '🔥', '🌟', '🎭', '💎'][i % 6],
+      }));
+
+      if (aiScenes.length === 0) {
+        throw new Error('AI returned no scenes — try rephrasing your prompt');
+      }
+
+      setScenes(aiScenes);
+      setStep('storyboard');
+    } catch (err: any) {
+      console.error('Storyboard error:', err);
+      setStoryboardError(err.message || 'Failed to generate storyboard');
+    } finally {
+      setStoryboardLoading(false);
+    }
   }
 
-  // ── Simulated generation ────────────────────────────────────
-  function startGeneration() {
+  // ── Real AI image generation for each scene ──────────────────
+  async function startGeneration() {
     setStep('generating');
     setGenProgress(0);
+    setGenError('');
+    setSceneImages({});
 
-    const stages = [
-      'Analyzing script & characters...',
-      'Building visual style guide...',
-      'Generating scene compositions...',
-      'Rendering key frames...',
-      'Applying character consistency...',
-      'Adding transitions & effects...',
-      'Composing soundtrack...',
-      'Adding voiceover...',
-      'Final render & polish...',
-      'Applying fan-made watermark...',
-    ];
+    const totalScenes = scenes.length;
+    const newImages: Record<string, string> = {};
+    let completed = 0;
 
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 12 + 3;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setGenProgress(100);
-        setGenStage('Complete! ✨');
+    for (let i = 0; i < totalScenes; i++) {
+      const scene = scenes[i];
+      setGenStage(`Generating scene ${i + 1}/${totalScenes}: ${scene.description.slice(0, 50)}...`);
 
-        // Build result
-        setTimeout(() => {
-          setResultData({
-            title: `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
-            media: selectedMedia,
-            character: selectedCharacter!,
-            prompt,
-            tone,
-            format,
-            scenes,
+      try {
+        // Retry logic for model loading (503)
+        let attempts = 0;
+        let imageData: string | null = null;
+
+        while (attempts < 3 && !imageData) {
+          const res = await fetch('/api/create/imagine', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: scene.visual,
+              model: imageModel,
+              sceneId: scene.id,
+              negative_prompt: 'blurry, low quality, distorted, watermark, text, ugly, deformed',
+            }),
           });
-          setStep('result');
-        }, 800);
-      } else {
-        setGenProgress(Math.min(progress, 99));
-        const stageIdx = Math.floor((progress / 100) * stages.length);
-        setGenStage(stages[Math.min(stageIdx, stages.length - 1)]);
+
+          if (res.status === 503) {
+            // Model loading — wait and retry
+            const data = await res.json().catch(() => ({}));
+            const wait = Math.min((data.estimated_time || 20) * 1000, 60000);
+            setGenStage(`Scene ${i + 1}: Model loading... (${Math.round(wait / 1000)}s)`);
+            await new Promise(r => setTimeout(r, wait));
+            attempts++;
+            continue;
+          }
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `Image generation failed (${res.status})`);
+          }
+
+          const data = await res.json();
+          if (data.image) {
+            imageData = data.image;
+          } else {
+            throw new Error('No image returned');
+          }
+        }
+
+        if (imageData) {
+          newImages[scene.id] = imageData;
+          setSceneImages(prev => ({ ...prev, [scene.id]: imageData! }));
+        }
+      } catch (err: any) {
+        console.error(`Scene ${i + 1} generation error:`, err);
+        // Continue with other scenes even if one fails
       }
+
+      completed++;
+      setGenProgress(Math.round((completed / totalScenes) * 100));
+    }
+
+    setGenStage('Complete! ✨');
+    setGenProgress(100);
+
+    // Build result with images
+    setTimeout(() => {
+      setResultData({
+        title: `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
+        media: selectedMedia,
+        character: selectedCharacter!,
+        prompt,
+        tone,
+        format,
+        scenes,
+      });
+      setStep('result');
     }, 600);
   }
 
@@ -636,6 +706,53 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                 </div>
               )}
 
+              {/* ── AI Model Selection ──────────────────────────────── */}
+              <div className="mb-4 bg-bg2 border border-lime/30 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">🤖</span>
+                  <div className="text-[9px] text-lime uppercase tracking-widest font-bold">AI Model Selection</div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="text-[10px] text-muted font-bold block mb-1.5">Image Generation Model</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'flux-schnell', name: 'FLUX.1 Schnell', desc: 'Fast, good quality', emoji: '⚡' },
+                      { id: 'flux-dev', name: 'FLUX.1 Dev', desc: 'Best quality, slower', emoji: '🎨' },
+                      { id: 'sdxl', name: 'SDXL', desc: 'Stable Diffusion XL', emoji: '🖼️' },
+                      { id: 'playground', name: 'Playground v2.5', desc: 'Aesthetic focused', emoji: '✨' },
+                    ].map(m => (
+                      <button key={m.id} onClick={() => setImageModel(m.id)}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                          imageModel === m.id
+                            ? 'bg-lime/15 border border-lime text-lime'
+                            : 'bg-bg3 border border-border text-muted hover:text-white'
+                        }`}>
+                        <span>{m.emoji}</span> {m.name}
+                        <span className="text-[9px] text-muted font-normal hidden sm:inline">· {m.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-muted">
+                  📝 Story AI: <span className="text-purple font-bold">Claude Sonnet</span> · 
+                  🎨 Images: <span className="text-lime font-bold">{
+                    { 'flux-schnell': 'FLUX.1 Schnell', 'flux-dev': 'FLUX.1 Dev', 'sdxl': 'SDXL', 'playground': 'Playground v2.5' }[imageModel] || imageModel
+                  }</span> · 
+                  🎬 Video: <span className="text-muted/50">Coming soon</span>
+                </div>
+              </div>
+
+              {/* Storyboard error */}
+              {storyboardError && (
+                <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
+                  <span>❌</span>
+                  <p className="text-xs text-red-400">{storyboardError}</p>
+                  <button onClick={() => setStoryboardError('')} className="ml-auto text-muted hover:text-white text-xs">✕</button>
+                </div>
+              )}
+
               {/* Navigation */}
               <div className="flex gap-3">
                 <button onClick={() => setStep('character')}
@@ -643,14 +760,20 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                   ← Back
                 </button>
                 <button onClick={generateStoryboard}
-                  disabled={!prompt.trim()}
+                  disabled={!prompt.trim() || storyboardLoading}
                   className={`flex-1 py-3.5 rounded-xl font-display text-lg tracking-wide transition-all ${
-                    prompt.trim()
+                    prompt.trim() && !storyboardLoading
                       ? 'text-white hover:brightness-110'
                       : 'text-muted bg-bg3 border border-border cursor-not-allowed'
                   }`}
-                  style={prompt.trim() ? { background: 'linear-gradient(90deg,#ff2d78,#a855f7)' } : {}}>
-                  Generate Storyboard →
+                  style={prompt.trim() && !storyboardLoading ? { background: 'linear-gradient(90deg,#ff2d78,#a855f7)' } : {}}>
+                  {storyboardLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="animate-spin">🧠</span> AI Writing Scenes...
+                    </span>
+                  ) : (
+                    'Generate Storyboard →'
+                  )}
                 </button>
               </div>
             </div>
@@ -764,11 +887,31 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                 <p className="text-xs font-bold text-white">{Math.round(genProgress)}%</p>
               </div>
 
-              {/* Scene previews appearing */}
-              <div className="mt-10 grid grid-cols-3 gap-3 w-full max-w-md">
-                {scenes.slice(0, Math.ceil(genProgress / 25)).map(scene => (
-                  <div key={scene.id} className="aspect-video bg-bg2 border border-border rounded-lg flex items-center justify-center text-2xl animate-pulse">
-                    {scene.emoji}
+              {/* Generation error */}
+              {genError && (
+                <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2 w-full max-w-md">
+                  <span>❌</span>
+                  <p className="text-xs text-red-400">{genError}</p>
+                </div>
+              )}
+
+              {/* Scene images appearing as they generate */}
+              <div className="mt-10 grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-lg">
+                {scenes.map((scene, i) => (
+                  <div key={scene.id} className="relative">
+                    {sceneImages[scene.id] ? (
+                      <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
+                        className="aspect-video object-cover rounded-lg border border-lime/30" />
+                    ) : (
+                      <div className={`aspect-video bg-bg2 border border-border rounded-lg flex items-center justify-center text-2xl ${
+                        i <= Math.ceil((genProgress / 100) * scenes.length) ? 'animate-pulse' : 'opacity-30'
+                      }`}>
+                        {scene.emoji}
+                      </div>
+                    )}
+                    <span className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-white font-bold">
+                      {scene.sceneNum}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -786,14 +929,16 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                 <p className="text-sm text-muted">{resultData.media.title} × {resultData.character.name}</p>
               </div>
 
-              {/* Preview card */}
+              {/* Preview card — show hero image or fallback gradient */}
               <div className="bg-bg2 border border-border rounded-2xl overflow-hidden mb-6">
-                <div className="aspect-video flex items-center justify-center relative"
-                  style={{ background: resultData.media.gradient }}>
-                  <span className="text-8xl opacity-30">{resultData.media.emoji}</span>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <button className="w-16 h-16 bg-white/20 backdrop-blur rounded-full flex items-center justify-center text-3xl hover:bg-white/30 transition-all">▶</button>
-                  </div>
+                <div className="aspect-video flex items-center justify-center relative overflow-hidden"
+                  style={Object.keys(sceneImages).length > 0 ? {} : { background: resultData.media.gradient }}>
+                  {Object.keys(sceneImages).length > 0 ? (
+                    <img src={sceneImages[scenes[0]?.id] || Object.values(sceneImages)[0]}
+                      alt="Hero scene" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-8xl opacity-30">{resultData.media.emoji}</span>
+                  )}
                   <div className="absolute bottom-3 left-3 flex gap-2">
                     <span className="px-2 py-1 rounded-full bg-black/50 backdrop-blur text-white text-[10px] font-bold">{resultData.media.category}</span>
                     <span className="px-2 py-1 rounded-full bg-black/50 backdrop-blur text-white text-[10px] font-bold">{TONES.find(t => t.id === resultData.tone)?.label}</span>
@@ -809,6 +954,31 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                   <p className="text-xs text-muted">{resultData.character.emoji} {resultData.character.name} · {resultData.prompt.slice(0, 80)}...</p>
                 </div>
               </div>
+
+              {/* Generated scene gallery */}
+              {Object.keys(sceneImages).length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-bold text-muted uppercase tracking-widest mb-3">🎬 Generated Scenes</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {scenes.map((scene, i) => (
+                      <div key={scene.id} className="relative group">
+                        {sceneImages[scene.id] ? (
+                          <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
+                            className="aspect-video object-cover rounded-xl border border-border group-hover:border-rip transition-all" />
+                        ) : (
+                          <div className="aspect-video bg-bg3 border border-border rounded-xl flex items-center justify-center text-2xl opacity-40">
+                            {scene.emoji}
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent rounded-b-xl">
+                          <span className="text-[10px] text-white font-bold">Scene {scene.sceneNum}</span>
+                          <p className="text-[9px] text-white/60 line-clamp-1">{scene.description.slice(0, 60)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Watermark notice */}
               <div className="bg-[#1a1a08] border border-gold/30 rounded-xl p-3 mb-6 flex items-center gap-3">
