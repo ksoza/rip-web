@@ -4,7 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { StudioTab }    from './studio/StudioTab';
 import { DiscoverTab }  from './discover/DiscoverTab';
-import { GhokuBrain }   from './ghoku/GhokuBrain';
+import { GhostfaceBrain }   from './ghostface/GhostfaceBrain';
 import { WalletTab }    from './wallet/WalletTab';
 import { RipLogo }      from './RipLogo';
 import { SettingsTab }  from './AllTabs';
@@ -15,7 +15,7 @@ import type { MediaItem } from './create/CreationWizard';
 const NAV = [
   { id: 'discover', icon: '🌐', label: 'Discover',  color: '#00d4ff' },
   { id: 'studio',   icon: '🎬', label: 'Studio',   color: '#ff2d78' },
-  { id: 'ghoku',    icon: '🧠', label: 'Gh.O.K.U.', color: '#8aff00' },
+  { id: 'ghostface',    icon: '🧠', label: 'GhOSTface', color: '#8aff00' },
   { id: 'wallet',   icon: '💎', label: 'Wallet',    color: '#a855f7' },
   { id: 'settings', icon: '⚙️', label: 'Settings',  color: '#666' },
 ];
@@ -181,8 +181,8 @@ export function AppShell({ user }: { user: User | null }) {
         return <DiscoverTab user={user} profile={profile} onNavigateToStudio={handleNavigateToStudio} onReimagine={handleReimagine} />;
       case 'studio':
         return user ? <StudioTab user={user} profile={profile} onProfileUpdate={setProfile} preselectedShow={studioShowName} preselectedCategory={studioCategory} /> : null;
-      case 'ghoku':
-        return <GhokuBrain />;
+      case 'ghostface':
+        return <GhostfaceBrain />;
       case 'wallet':
         return user ? <WalletTab /> : null;
       case 'settings':
