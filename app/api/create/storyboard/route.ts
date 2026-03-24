@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
     const {
       mediaTitle, character, prompt, tone, format,
       crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
+      artStyle, artStylePrompt,
     } = await req.json();
 
     if (!prompt || !character) {
@@ -62,8 +63,10 @@ Generate a storyboard as a JSON object. Each scene needs:
 - visual (detailed visual description for AI image generation — describe camera angle, lighting, colors, composition, character poses/expressions)
 - emoji (single relevant emoji)
 
-The visual field is CRITICAL — it will be fed directly to an image generation AI. Be specific about:
-- Art style (cinematic, animated, noir, watercolor, etc.)
+The visual field is CRITICAL — it will be fed directly to an image generation AI.
+${artStyle ? `MANDATORY ART STYLE for all scenes: ${artStyle}. Include "${artStylePrompt || artStyle}" styling in every visual description.` : ''}
+Be specific about:
+- Art style (use the ${artStyle || 'cinematic'} style consistently across ALL scenes)
 - Camera angle (wide shot, close-up, bird's eye, etc.)
 - Lighting (dramatic shadows, golden hour, neon glow, etc.)
 - Character appearance and expression
