@@ -73,26 +73,30 @@ export interface TMDBMovieDetails {
 
 // ── API client ───────────────────────────────────────────────
 class TMDBClient {
-  private apiKey: string;
+  private apiKey: string;       // v3 API key (short hex string)
+  private readToken: string;    // v4 Read Access Token (JWT)
 
   constructor() {
     this.apiKey = process.env.TMDB_API_KEY || process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
+    this.readToken = process.env.TMDB_READ_ACCESS_TOKEN || process.env.NEXT_PUBLIC_TMDB_READ_ACCESS_TOKEN || '';
   }
 
   private async fetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
     const url = new URL(`${TMDB_BASE}${endpoint}`);
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
+    // Prefer v4 Bearer token auth (uses Read Access Token JWT)
+    const bearerToken = this.readToken || this.apiKey;
     const res = await fetch(url.toString(), {
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        'Authorization': `Bearer ${bearerToken}`,
         'Accept': 'application/json',
       },
       next: { revalidate: 86400 }, // Cache for 24h in Next.js
     });
 
     if (!res.ok) {
-      // Fallback: try query param auth (for v3 API keys vs v4 bearer tokens)
+      // Fallback: try v3 query param auth (uses API key)
       const fallbackUrl = new URL(`${TMDB_BASE}${endpoint}`);
       fallbackUrl.searchParams.set('api_key', this.apiKey);
       Object.entries(params).forEach(([k, v]) => fallbackUrl.searchParams.set(k, v));
