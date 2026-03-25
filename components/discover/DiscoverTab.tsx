@@ -27,6 +27,7 @@ type FeedItem = {
   createdAt: string;
   tags: string[];
   mediaType: 'scene' | 'episode' | 'video' | 'music';
+  trendingScore?: number;
 };
 
 type Creator = {
@@ -223,7 +224,89 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     loadFeed();
   }, [loadFeed]);
 
-  // Filter feed
+  // Server-side search via /api/search when user types a query
+  useEffect(() => {
+    if (!search || search.length < 2) return;
+    const debounce = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          q: search,
+          ...(selectedGenre ? { genre: selectedGenre } : {}),
+          sort: tab === 'trending' ? 'popular' : 'recent',
+          limit: '20',
+        });
+        const res = await fetch(`/api/search?${params}`);
+        if (!res.ok) return;
+        const { results } = await res.json();
+        if (results && results.length > 0) {
+          const mapped: FeedItem[] = results.map((c: any) => ({
+            id: c.id,
+            title: c.title || c.show_title,
+            show: c.show_title || '',
+            genre: c.genre || 'TV Show',
+            type: c.type || 'Episode',
+            creator: {
+              handle: c.profiles?.username || 'anonymous',
+              avatar: c.profiles?.avatar_url || '',
+              tier: 'creator',
+            },
+            description: c.logline || c.content?.slice(0, 200) || '',
+            likes: c.like_count || 0,
+            remixes: c.remix_count || 0,
+            views: c.view_count || 0,
+            liked: false,
+            createdAt: formatRelativeTime(c.created_at),
+            tags: c.hashtags ? c.hashtags.split(/[,#\s]+/).filter(Boolean).slice(0, 5) : [],
+            mediaType: mapMediaType(c.type),
+          }));
+          setFeed(prev => [...mapped, ...SAMPLE_FEED.filter(s => !mapped.some(m => m.id === s.id))]);
+        }
+      } catch (err) {
+        console.warn('Search API error:', err);
+      }
+    }, 400);
+    return () => clearTimeout(debounce);
+  }, [search, selectedGenre, tab]);
+
+  // Load trending data when trending tab is active
+  useEffect(() => {
+    if (tab !== 'trending') return;
+    (async () => {
+      try {
+        const res = await fetch('/api/trending?period=7d&limit=20');
+        if (!res.ok) return;
+        const { trending } = await res.json();
+        if (trending && trending.length > 0) {
+          const mapped: FeedItem[] = trending.map((c: any) => ({
+            id: c.id,
+            title: c.title || c.show_title,
+            show: c.show_title || '',
+            genre: c.genre || 'TV Show',
+            type: c.type || 'Episode',
+            creator: {
+              handle: c.profiles?.username || 'anonymous',
+              avatar: c.profiles?.avatar_url || '',
+              tier: 'creator',
+            },
+            description: c.logline || c.content?.slice(0, 200) || '',
+            likes: c.like_count || c.recent_likes || 0,
+            remixes: c.remix_count || 0,
+            views: c.view_count || 0,
+            liked: false,
+            createdAt: formatRelativeTime(c.created_at),
+            tags: c.hashtags ? c.hashtags.split(/[,#\s]+/).filter(Boolean).slice(0, 5) : [],
+            mediaType: mapMediaType(c.type),
+            trendingScore: c.trending_score,
+          }));
+          setFeed(prev => [...mapped, ...prev.filter(p => !mapped.some(m => m.id === p.id))]);
+        }
+      } catch (err) {
+        console.warn('Trending API error:', err);
+      }
+    })();
+  }, [tab]);
+
+  // Filter feed (client-side fallback for local data)
   const filteredFeed = feed.filter(item => {
     if (selectedGenre && item.genre !== selectedGenre) return false;
     if (search) {
