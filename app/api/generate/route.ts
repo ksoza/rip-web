@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createSupabaseAdmin }       from '@/lib/supabase';
+import { isNexosConfigured, nexosChat } from '@/lib/nexos';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -68,14 +69,25 @@ HASHTAGS: [12-15 hashtags: show-specific, genre, #RemixIP #RiP #FanStudio #FanFi
 
 DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/owners of ${showTitle}.`;
 
-    // ── Call Claude ───────────────────────────────────────────────
-    const message = await anthropic.messages.create({
-      model:      'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages:   [{ role: 'user', content: prompt }],
-    });
+    // ── Call AI (nexos.ai gateway or direct Claude) ─────────────
+    let text: string;
 
-    const text = message.content.map(b => b.type === 'text' ? b.text : '').join('\n');
+    if (isNexosConfigured()) {
+      // Route through nexos.ai gateway
+      const nexosResponse = await nexosChat(
+        [{ role: 'user', content: prompt }],
+        { model: 'claude-sonnet-4.5', max_tokens: 1024 },
+      );
+      text = nexosResponse.choices[0]?.message?.content || '';
+    } else {
+      // Direct Anthropic call (fallback)
+      const message = await anthropic.messages.create({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages:   [{ role: 'user', content: prompt }],
+      });
+      text = message.content.map(b => b.type === 'text' ? b.text : '').join('\n');
+    }
     const g    = (re: RegExp) => text.match(re)?.[1]?.trim() || '';
 
     const result = {

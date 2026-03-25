@@ -1,6 +1,8 @@
 // app/api/generate/video/route.ts
 // Video generation via Luma Dream Machine, Runway ML, Kling
+// nexos.ai can be used for prompt enhancement before video generation
 import { NextRequest, NextResponse } from 'next/server';
+import { isNexosConfigured, nexosGenerate } from '@/lib/nexos';
 
 export async function POST(req: NextRequest) {
   try {

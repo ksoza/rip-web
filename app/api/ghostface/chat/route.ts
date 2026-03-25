@@ -1,11 +1,43 @@
 // app/api/ghostface/chat/route.ts
-// GhOSTface Oracle Chat — AI-powered repo analysis and code generation
+// GhOSTface Oracle Chat — Agentic AI brain with real tool-using capabilities
+// Routes through nexos.ai when configured, falls back to direct Anthropic
 import { NextRequest, NextResponse } from 'next/server';
+import { runGhostfaceAgent } from '@/lib/agents/ghostface-agent';
+import type { AgentMessage } from '@/lib/agents/ghostface-agent';
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, repo, context, memory, history } = await req.json();
+    const { message, repo, context, memory, history, useAgent = true } = await req.json();
 
+    if (!message) {
+      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+    }
+
+    // ── Agentic mode (default) ────────────────────────────────
+    if (useAgent) {
+      const agentHistory: AgentMessage[] = [];
+      if (history && Array.isArray(history)) {
+        for (const h of history.slice(-8)) {
+          if (h.role === 'user' || h.role === 'assistant') {
+            agentHistory.push({ role: h.role, content: h.content });
+          }
+        }
+      }
+
+      const result = await runGhostfaceAgent(message, agentHistory, {
+        repo,
+        memory,
+        code: context,
+      });
+
+      return NextResponse.json({
+        response: result.response,
+        toolsUsed: result.toolsUsed,
+        agent: true,
+      });
+    }
+
+    // ── Legacy mode (direct API call, no tools) ───────────────
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -83,7 +115,7 @@ README (first 2000 chars): ${repo.readme?.slice(0, 2000)}`;
     const data = await response.json();
     const text = data.content?.[0]?.text || 'No response generated.';
 
-    return NextResponse.json({ response: text });
+    return NextResponse.json({ response: text, agent: false });
   } catch (err: any) {
     console.error('GhOSTface chat error:', err);
     return NextResponse.json(

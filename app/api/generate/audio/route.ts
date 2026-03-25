@@ -1,6 +1,8 @@
 // app/api/generate/audio/route.ts
 // Voice generation (ElevenLabs), sound effects (AudioGen), music (MusicGen)
+// nexos.ai TTS available as an alternative voice provider
 import { NextRequest, NextResponse } from 'next/server';
+import { isNexosConfigured, nexosTTS } from '@/lib/nexos';
 
 export async function POST(req: NextRequest) {
   try {
@@ -121,6 +123,27 @@ export async function POST(req: NextRequest) {
           type: 'music', provider: 'musicgen',
           url: typeof prediction.output === 'string' ? prediction.output : prediction.output?.[0],
           duration,
+        });
+      }
+
+      // ── nexos.ai TTS (OpenAI-compatible) ─────────────────────
+      case 'nexos-tts': {
+        if (!isNexosConfigured()) {
+          return NextResponse.json({ error: 'NEXOS_API_KEY not configured' }, { status: 503 });
+        }
+
+        const audioBuffer = await nexosTTS(text || prompt, {
+          model: model || 'tts-1',
+          voice: voiceId || 'alloy',
+        });
+        const base64 = Buffer.from(audioBuffer).toString('base64');
+        const dataUrl = `data:audio/mpeg;base64,${base64}`;
+
+        return NextResponse.json({
+          type: 'voice',
+          provider: 'nexos-tts',
+          url: dataUrl,
+          duration: Math.ceil((text || prompt).length / 15),
         });
       }
 
