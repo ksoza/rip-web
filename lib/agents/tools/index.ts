@@ -12,3 +12,9 @@ export type { SearchResult } from './web-search';
 
 export { analyzeCode } from './code-analysis';
 export type { CodeAnalysis } from './code-analysis';
+
+export { triggerN8nWorkflow, listN8nWorkflows, executeN8nWorkflow, RIP_WORKFLOWS } from './n8n-trigger';
+export type { N8nToolResult, RipWorkflowEvent } from './n8n-trigger';
+
+export { queryCreations, getPlatformStats, saveAgentMemory, searchTMDB } from './supabase-ops';
+export type { SupabaseToolResult } from './supabase-ops';

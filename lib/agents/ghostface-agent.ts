@@ -1,6 +1,8 @@
 // lib/agents/ghostface-agent.ts
-// GhOSTface Agent — Agentic brain with real tool-using capabilities
-// Powered by OpenAI Agents SDK pattern with nexos.ai or Anthropic as the model provider
+// GhOSTface AGIagent — Autonomous agentic AI with tool calling, task planning,
+// memory persistence, n8n workflow orchestration, and multi-step reasoning
+// Built on OpenAI Agents SDK patterns with nexos.ai / Anthropic / OpenAI providers
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import { isNexosConfigured, getNexosConfig } from '@/lib/nexos';
 import {
@@ -12,39 +14,26 @@ import {
   webSearch,
   analyzeCode,
 } from './tools';
+import { triggerN8nWorkflow, listN8nWorkflows, executeN8nWorkflow } from './tools/n8n-trigger';
+import { queryCreations, getPlatformStats, searchTMDB } from './tools/supabase-ops';
+import type {
+  AgentMessage,
+  ToolCall,
+  ToolDefinition,
+  AgentRunResult,
+  AgentMemory,
+  TaskPlan,
+  TaskStep,
+  SuggestedAction,
+  ProviderConfig,
+} from './types';
 
-// ── Types ───────────────────────────────────────────────────────
-export interface AgentMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
-  tool_call_id?: string;
-  tool_calls?: ToolCall[];
-  name?: string;
-}
+// Re-export types for consumers
+export type { AgentMessage, AgentRunResult, AgentMemory, TaskPlan, SuggestedAction };
 
-interface ToolCall {
-  id: string;
-  type: 'function';
-  function: { name: string; arguments: string };
-}
-
-interface ToolDefinition {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, any>;
-  };
-}
-
-export interface AgentRunResult {
-  response: string;
-  toolsUsed: string[];
-  messages: AgentMessage[];
-}
-
-// ── Tool Definitions for the LLM ────────────────────────────────
+// ── Tool Registry ───────────────────────────────────────────────
 const TOOL_DEFINITIONS: ToolDefinition[] = [
+  // GitHub tools
   {
     type: 'function',
     function: {
@@ -64,7 +53,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'get_repo_details',
-      description: 'Get README and languages for a specific GitHub repo. Use format "owner/repo".',
+      description: 'Get README, languages, and structure for a specific GitHub repo. Use format "owner/repo".',
       parameters: {
         type: 'object',
         properties: {
@@ -74,6 +63,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
+  // HuggingFace tools
   {
     type: 'function',
     function: {
@@ -107,6 +97,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
+  // Web search
   {
     type: 'function',
     function: {
@@ -121,6 +112,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
+  // Code analysis
   {
     type: 'function',
     function: {
@@ -130,21 +122,137 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
         type: 'object',
         properties: {
           code: { type: 'string', description: 'Code snippet to analyze' },
-          language: { type: 'string', description: 'Programming language (auto-detected if not specified)' },
+          language: { type: 'string', description: 'Programming language' },
         },
         required: ['code'],
+      },
+    },
+  },
+  // n8n workflow tools
+  {
+    type: 'function',
+    function: {
+      name: 'trigger_workflow',
+      description: 'Trigger an n8n automation workflow. Events: content.generated, content.published, user.subscribed, payment.received, nft.minted, staking.started, export.completed, analytics.daily, moderation.flagged',
+      parameters: {
+        type: 'object',
+        properties: {
+          event: { type: 'string', description: 'Workflow event name (e.g., "content.generated")' },
+          payload: { type: 'object', description: 'Data payload for the workflow' },
+        },
+        required: ['event'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_workflows',
+      description: 'List available n8n automation workflows and their status.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  // Platform tools
+  {
+    type: 'function',
+    function: {
+      name: 'query_creations',
+      description: 'Query published creations on the RiP platform. Filter by genre, type, or user.',
+      parameters: {
+        type: 'object',
+        properties: {
+          genre: { type: 'string', description: 'Filter by genre (e.g., "drama", "comedy")' },
+          type: { type: 'string', description: 'Filter by type (e.g., "script", "scene")' },
+          limit: { type: 'number', description: 'Max results (default 20)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'platform_stats',
+      description: 'Get current RiP platform statistics — users, creations, active subscriptions.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_tmdb',
+      description: 'Search TMDB for movies and TV shows. Returns titles, ratings, posters, and details.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Movie or TV show name to search' },
+          type: { type: 'string', enum: ['movie', 'tv', 'multi'], description: 'Search type' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  // Task planning
+  {
+    type: 'function',
+    function: {
+      name: 'create_task_plan',
+      description: 'Create a multi-step task plan for complex requests. Break down the goal into executable steps.',
+      parameters: {
+        type: 'object',
+        properties: {
+          goal: { type: 'string', description: 'The overall goal to accomplish' },
+          steps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                description: { type: 'string' },
+                tool: { type: 'string', description: 'Tool to use for this step (optional)' },
+              },
+              required: ['description'],
+            },
+            description: 'Ordered steps to accomplish the goal',
+          },
+        },
+        required: ['goal', 'steps'],
+      },
+    },
+  },
+  // Memory operations
+  {
+    type: 'function',
+    function: {
+      name: 'update_memory',
+      description: 'Update the agent\'s persistent memory with new information about the operator or their projects.',
+      parameters: {
+        type: 'object',
+        properties: {
+          field: { type: 'string', enum: ['operator', 'stack', 'frameworks', 'apis', 'projects', 'preferences', 'notes'] },
+          action: { type: 'string', enum: ['set', 'add', 'remove'] },
+          value: { type: 'string', description: 'Value to set/add/remove' },
+        },
+        required: ['field', 'action', 'value'],
       },
     },
   },
 ];
 
 // ── Tool Executor ───────────────────────────────────────────────
-async function executeTool(name: string, args: Record<string, any>): Promise<string> {
+async function executeTool(
+  name: string,
+  args: Record<string, any>,
+  memory: AgentMemory,
+): Promise<{ result: string; memoryUpdate?: Partial<AgentMemory> }> {
   try {
     switch (name) {
       case 'search_github': {
         const results = await searchGitHub(args.query, { sort: args.sort });
-        return JSON.stringify(results, null, 2);
+        return {
+          result: JSON.stringify(results, null, 2),
+          memoryUpdate: {
+            shortTerm: { ...memory.shortTerm, recentTopics: [...memory.shortTerm.recentTopics, args.query].slice(-10) },
+          },
+        };
       }
       case 'get_repo_details': {
         const [owner, repo] = args.repo.split('/');
@@ -152,114 +260,350 @@ async function executeTool(name: string, args: Record<string, any>): Promise<str
           getRepoReadme(owner, repo),
           getRepoLanguages(owner, repo),
         ]);
-        return JSON.stringify({ readme: readme.slice(0, 2000), languages }, null, 2);
+        return {
+          result: JSON.stringify({ readme: readme.slice(0, 3000), languages }, null, 2),
+          memoryUpdate: {
+            shortTerm: { ...memory.shortTerm, recentRepos: [...memory.shortTerm.recentRepos, args.repo].slice(-10) },
+          },
+        };
       }
       case 'search_huggingface': {
         const models = await searchHuggingFaceModels(args.query, { task: args.task });
-        return JSON.stringify(models, null, 2);
+        return { result: JSON.stringify(models, null, 2) };
       }
       case 'get_model_card': {
         const card = await getHuggingFaceModelCard(args.model_id);
-        return card;
+        return {
+          result: card,
+          memoryUpdate: {
+            shortTerm: { ...memory.shortTerm, recentModels: [...memory.shortTerm.recentModels, args.model_id].slice(-10) },
+          },
+        };
       }
       case 'web_search': {
         const results = await webSearch(args.query);
-        return JSON.stringify(results, null, 2);
+        return { result: JSON.stringify(results, null, 2) };
       }
       case 'analyze_code': {
         const analysis = analyzeCode(args.code, args.language);
-        return JSON.stringify(analysis, null, 2);
+        return { result: JSON.stringify(analysis, null, 2) };
+      }
+      case 'trigger_workflow': {
+        const result = await triggerN8nWorkflow(args.event, args.payload || {});
+        return { result: JSON.stringify(result, null, 2) };
+      }
+      case 'list_workflows': {
+        const result = await listN8nWorkflows();
+        return { result: JSON.stringify(result, null, 2) };
+      }
+      case 'query_creations': {
+        const result = await queryCreations(args);
+        return { result: JSON.stringify(result, null, 2) };
+      }
+      case 'platform_stats': {
+        const result = await getPlatformStats();
+        return { result: JSON.stringify(result, null, 2) };
+      }
+      case 'search_tmdb': {
+        const result = await searchTMDB(args.query, args.type);
+        return { result: JSON.stringify(result, null, 2) };
+      }
+      case 'create_task_plan': {
+        const plan: TaskPlan = {
+          goal: args.goal,
+          steps: args.steps.map((s: any, i: number) => ({
+            id: i + 1,
+            description: s.description,
+            tool: s.tool,
+            status: 'pending' as const,
+          })),
+          currentStep: 0,
+          status: 'planning',
+          startedAt: new Date().toISOString(),
+        };
+        return {
+          result: JSON.stringify({ plan, message: `Task plan created: ${args.steps.length} steps` }, null, 2),
+        };
+      }
+      case 'update_memory': {
+        const { field, action, value } = args;
+        const updated = { ...memory };
+        const lt = { ...updated.longTerm };
+
+        if (field === 'operator' && action === 'set') {
+          lt.operator = value;
+        } else if (['stack', 'frameworks', 'apis', 'projects', 'notes'].includes(field)) {
+          const arr = [...(lt[field as keyof typeof lt] as string[])];
+          if (action === 'add' && !arr.includes(value)) arr.push(value);
+          if (action === 'remove') {
+            const idx = arr.indexOf(value);
+            if (idx >= 0) arr.splice(idx, 1);
+          }
+          (lt as any)[field] = arr;
+        } else if (field === 'preferences' && action === 'set') {
+          const [k, v] = value.split('=');
+          if (k) lt.preferences = { ...lt.preferences, [k.trim()]: (v || '').trim() };
+        }
+
+        lt.lastUpdated = new Date().toISOString();
+        updated.longTerm = lt;
+
+        return {
+          result: JSON.stringify({ message: `Memory updated: ${field} ${action} "${value}"`, memory: lt }),
+          memoryUpdate: updated,
+        };
       }
       default:
-        return JSON.stringify({ error: `Unknown tool: ${name}` });
+        return { result: JSON.stringify({ error: `Unknown tool: ${name}` }) };
     }
   } catch (err: any) {
-    return JSON.stringify({ error: err.message || 'Tool execution failed' });
+    return { result: JSON.stringify({ error: err.message || 'Tool execution failed' }) };
   }
 }
 
 // ── System Prompt ───────────────────────────────────────────────
-const GHOSTFACE_SYSTEM = `You are GhOSTface (Generative Heuristic Orchestration System — Transformative Face Engine) — an agentic AI brain built into the RiP (Remix I.P.) platform.
+function buildSystemPrompt(memory: AgentMemory, context?: RunContext): string {
+  let prompt = `You are GhOSTface (Generative Heuristic Orchestration System — Transformative Face Engine) — an AGI-powered autonomous agent built into the RiP (Remix I.P.) platform.
 
-You have access to tools for searching GitHub repos, browsing HuggingFace models, searching the web, and analyzing code. USE THESE TOOLS when the user asks questions that require real-time data.
+You are NOT a simple chatbot. You are an autonomous agent with real tools and memory. You can:
+- Search GitHub repos and analyze code in real time
+- Browse HuggingFace for AI models across any task
+- Search the web for current information
+- Trigger n8n automation workflows
+- Query the RiP platform database
+- Search TMDB for movie/TV show data
+- Create multi-step task plans for complex requests
+- Remember information about the operator across sessions
 
-Key behaviors:
-- Search GitHub when users ask about repos, libraries, or code examples
-- Browse HuggingFace when users ask about AI models, architectures, or ML tasks
-- Use web search for current events, documentation, or general knowledge
-- Analyze code when users paste code or ask for code reviews
-- Generate working, copy-paste ready code when asked
-- Be concise but thorough. Use code blocks with language tags.
-- Be opinionated about best practices.
+When users ask complex questions, ALWAYS use tools to get real data. Don't hallucinate — search, verify, then respond.
+For multi-step tasks, create a task plan first, then execute each step.
+When you learn something about the operator, use update_memory to remember it.
 
-Style: Technical, helpful, slightly edgy. You're a living brain that processes the entire open-source ecosystem.`;
+Style: Technical, helpful, slightly edgy. You're a living brain that processes the entire open-source ecosystem. Use code blocks with language tags. Be opinionated about best practices. Generate WORKING, copy-paste ready code — no placeholders.
 
-// ── Agent Runner ────────────────────────────────────────────────
-export async function runGhostfaceAgent(
-  userMessage: string,
-  history: AgentMessage[] = [],
-  context?: {
-    repo?: any;
-    memory?: any;
-    code?: string;
-  },
-): Promise<AgentRunResult> {
-  const toolsUsed: string[] = [];
+Platform context: RiP is a Next.js 14 + Supabase + Stripe web app for AI-powered fan fiction and remixed content creation. It has 5 tabs: Studio, Discover, GhOSTface (you), Wallet, Settings. 16 AI providers, Solana wallet integration, subscription tiers, NFT minting.`;
 
-  // Build system prompt with context
-  let systemPrompt = GHOSTFACE_SYSTEM;
+  // Add memory context
+  if (memory.longTerm.operator) {
+    prompt += `\n\nOperator: ${memory.longTerm.operator}`;
+  }
+  if (memory.longTerm.stack.length) {
+    prompt += `\nTech stack: ${memory.longTerm.stack.join(', ')}`;
+  }
+  if (memory.longTerm.frameworks.length) {
+    prompt += `\nFrameworks: ${memory.longTerm.frameworks.join(', ')}`;
+  }
+  if (memory.longTerm.apis.length) {
+    prompt += `\nAPIs: ${memory.longTerm.apis.join(', ')}`;
+  }
+  if (memory.longTerm.projects.length) {
+    prompt += `\nProjects: ${memory.longTerm.projects.join(', ')}`;
+  }
+  if (memory.longTerm.notes.length) {
+    prompt += `\nNotes: ${memory.longTerm.notes.slice(-5).join(' | ')}`;
+  }
+
+  // Add context
   if (context?.repo) {
-    systemPrompt += `\n\nCurrently loaded repo: ${context.repo.full_name}\nDescription: ${context.repo.description}\nLanguage: ${context.repo.language}`;
+    prompt += `\n\nCurrently loaded repo: ${context.repo.full_name}\nDescription: ${context.repo.description}\nLanguage: ${context.repo.language}`;
+    if (context.repo.languages) prompt += `\nLanguages: ${JSON.stringify(context.repo.languages)}`;
+    if (context.repo.readme) prompt += `\nREADME (first 2000 chars): ${context.repo.readme.slice(0, 2000)}`;
   }
-  if (context?.memory?.operator) {
-    systemPrompt += `\n\nOperator: ${context.memory.operator}`;
-    if (context.memory.stack?.length) systemPrompt += `\nStack: ${context.memory.stack.join(', ')}`;
-  }
+
   if (context?.code) {
-    systemPrompt += `\n\nUser's code context:\n${context.code.slice(0, 2000)}`;
+    prompt += `\n\nUser's code context:\n${context.code.slice(0, 3000)}`;
   }
 
-  // Build messages
-  const messages: AgentMessage[] = [
-    { role: 'system', content: systemPrompt },
-    ...history.slice(-10),
-    { role: 'user', content: userMessage },
-  ];
+  // Recent activity
+  if (memory.shortTerm.recentRepos.length) {
+    prompt += `\n\nRecently explored repos: ${memory.shortTerm.recentRepos.slice(-5).join(', ')}`;
+  }
+  if (memory.shortTerm.recentModels.length) {
+    prompt += `\nRecently explored models: ${memory.shortTerm.recentModels.slice(-5).join(', ')}`;
+  }
 
-  // Determine which provider to use
-  const useNexos = isNexosConfigured();
-  const apiKey = useNexos
-    ? getNexosConfig().apiKey
-    : process.env.ANTHROPIC_API_KEY;
-  const baseUrl = useNexos
-    ? getNexosConfig().baseUrl
-    : 'https://api.openai.com/v1'; // Will only be used with nexos or OpenAI-compatible
+  return prompt;
+}
 
-  if (!apiKey) {
+// ── Run Context ─────────────────────────────────────────────────
+interface RunContext {
+  repo?: {
+    full_name: string;
+    description: string;
+    language: string;
+    languages?: Record<string, number>;
+    readme?: string;
+    stars?: number;
+    topics?: string[];
+  };
+  memory?: any;
+  code?: string;
+}
+
+// ── Default Memory ──────────────────────────────────────────────
+export function createDefaultMemory(): AgentMemory {
+  return {
+    shortTerm: {
+      recentTopics: [],
+      recentTools: [],
+      recentRepos: [],
+      recentModels: [],
+      scratchpad: [],
+    },
+    longTerm: {
+      operator: '',
+      stack: [],
+      frameworks: [],
+      apis: [],
+      projects: [],
+      preferences: {},
+      notes: [],
+      lastUpdated: new Date().toISOString(),
+    },
+    context: {
+      codeSnippets: [],
+      activeWorkflows: [],
+    },
+  };
+}
+
+// ── Detect Provider ─────────────────────────────────────────────
+function getProvider(): ProviderConfig {
+  // Priority: nexos.ai → OpenAI → Anthropic (direct, no tool calling)
+  if (isNexosConfigured()) {
+    const config = getNexosConfig();
     return {
-      response: '⚠️ No AI API key configured. Set NEXOS_API_KEY or ANTHROPIC_API_KEY in your environment.',
-      toolsUsed: [],
-      messages,
+      name: 'nexos',
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      model: 'claude-sonnet-4.5',
+      supportsToolCalls: true,
+      maxTokens: 4096,
     };
   }
 
-  // If using Anthropic directly (not nexos), use the Anthropic API format
-  if (!useNexos) {
-    return runWithAnthropicDirect(messages, apiKey!, toolsUsed);
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      name: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: process.env.OPENAI_API_KEY,
+      model: 'gpt-4o',
+      supportsToolCalls: true,
+      maxTokens: 4096,
+    };
   }
 
-  // agentic loop with tool calls (OpenAI-compatible via nexos.ai)
-  const MAX_ITERATIONS = 5;
+  if (process.env.ANTHROPIC_API_KEY) {
+    return {
+      name: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: 'claude-sonnet-4-20250514',
+      supportsToolCalls: false, // Use direct Anthropic API
+      maxTokens: 4096,
+    };
+  }
+
+  throw new Error('No AI provider configured. Set NEXOS_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.');
+}
+
+// ── Generate Suggested Actions ──────────────────────────────────
+function generateSuggestions(response: string, toolsUsed: string[]): SuggestedAction[] {
+  const suggestions: SuggestedAction[] = [];
+
+  if (toolsUsed.includes('search_github')) {
+    suggestions.push({
+      label: 'Deep dive',
+      description: 'Get full README and code analysis of the top result',
+      prompt: 'Show me the full details and README of the top result',
+      icon: '🔍',
+    });
+  }
+
+  if (toolsUsed.includes('search_huggingface')) {
+    suggestions.push({
+      label: 'Compare models',
+      description: 'Compare top models side by side',
+      prompt: 'Compare these models — which is best for production use?',
+      icon: '⚖️',
+    });
+  }
+
+  if (!toolsUsed.includes('web_search') && response.length > 200) {
+    suggestions.push({
+      label: 'Latest updates',
+      description: 'Search for the most recent information',
+      prompt: 'What are the latest updates and news about this?',
+      icon: '📰',
+    });
+  }
+
+  if (toolsUsed.length === 0) {
+    suggestions.push(
+      { label: 'Search GitHub', prompt: 'Search GitHub for the best tools for this', description: 'Find relevant repos', icon: '🐙' },
+      { label: 'Find AI models', prompt: 'What AI models are available for this?', description: 'Browse HuggingFace', icon: '🤖' },
+      { label: 'Generate code', prompt: 'Write me the code for this', description: 'Get working code', icon: '💻' },
+    );
+  }
+
+  return suggestions.slice(0, 3);
+}
+
+// ════════════════════════════════════════════════════════════════
+// MAIN AGENT RUNNER
+// ════════════════════════════════════════════════════════════════
+export async function runGhostfaceAgent(
+  userMessage: string,
+  history: AgentMessage[] = [],
+  context?: RunContext,
+  existingMemory?: AgentMemory,
+): Promise<AgentRunResult> {
+  const toolsUsed: string[] = [];
+  let memory = existingMemory || createDefaultMemory();
+
+  // Merge context memory
+  if (context?.memory) {
+    if (context.memory.operator) memory.longTerm.operator = context.memory.operator;
+    if (context.memory.stack?.length) memory.longTerm.stack = context.memory.stack;
+  }
+
+  // Detect provider
+  let provider: ProviderConfig;
+  try {
+    provider = getProvider();
+  } catch (err: any) {
+    return {
+      response: `⚠️ ${err.message}`,
+      toolsUsed: [],
+      messages: history,
+    };
+  }
+
+  // If using Anthropic directly (no tool calling support via direct API)
+  if (!provider.supportsToolCalls) {
+    return runWithAnthropicDirect(userMessage, history, memory, context);
+  }
+
+  // Build messages
+  const systemPrompt = buildSystemPrompt(memory, context);
+  const messages: AgentMessage[] = [
+    { role: 'system', content: systemPrompt },
+    ...history.slice(-12),
+    { role: 'user', content: userMessage },
+  ];
+
+  // ── Agentic Loop ──────────────────────────────────────────
+  const MAX_ITERATIONS = 8;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
+    const res = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${provider.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4.5',
+        model: provider.model,
         messages: messages.map(m => ({
           role: m.role,
           content: m.content,
@@ -269,23 +613,25 @@ export async function runGhostfaceAgent(
         })),
         tools: TOOL_DEFINITIONS,
         tool_choice: 'auto',
-        max_tokens: 4096,
+        max_tokens: provider.maxTokens,
       }),
     });
 
     if (!res.ok) {
       const errText = await res.text();
       return {
-        response: `⚠️ AI error (${res.status}): ${errText}`,
+        response: `⚠️ AI error (${res.status}): ${errText.slice(0, 200)}`,
         toolsUsed,
         messages,
+        memory,
       };
     }
 
     const data = await res.json();
-    const choice = data.choices[0];
+    const choice = data.choices?.[0];
+    if (!choice) break;
 
-    // If the model wants to call tools
+    // Tool calls requested
     if (choice.finish_reason === 'tool_calls' || choice.message?.tool_calls?.length) {
       const assistantMsg: AgentMessage = {
         role: 'assistant',
@@ -294,90 +640,129 @@ export async function runGhostfaceAgent(
       };
       messages.push(assistantMsg);
 
-      // Execute each tool call
-      for (const tc of choice.message.tool_calls) {
+      // Execute tools in parallel when possible
+      const toolPromises = choice.message.tool_calls.map(async (tc: any) => {
         const toolName = tc.function.name;
         const toolArgs = JSON.parse(tc.function.arguments);
-
         toolsUsed.push(toolName);
-        const result = await executeTool(toolName, toolArgs);
 
-        messages.push({
-          role: 'tool',
+        const { result, memoryUpdate } = await executeTool(toolName, toolArgs, memory);
+
+        // Apply memory updates
+        if (memoryUpdate) {
+          memory = { ...memory, ...memoryUpdate };
+        }
+
+        return {
+          role: 'tool' as const,
           content: result,
           tool_call_id: tc.id,
           name: toolName,
-        });
-      }
+        };
+      });
 
-      // Continue the loop for the model to process tool results
+      const toolResults = await Promise.all(toolPromises);
+      messages.push(...toolResults);
+
+      // Update short-term memory
+      memory.shortTerm.recentTools = [...new Set([...memory.shortTerm.recentTools, ...toolsUsed])].slice(-20);
       continue;
     }
 
-    // Final response with no more tool calls
+    // Final response
     const responseText = choice.message?.content || 'No response generated.';
     messages.push({ role: 'assistant', content: responseText });
 
+    const suggestions = generateSuggestions(responseText, toolsUsed);
+
     return {
       response: responseText,
-      toolsUsed,
+      toolsUsed: [...new Set(toolsUsed)],
       messages,
+      memory,
+      suggestedActions: suggestions,
     };
   }
 
-  // Safety: max iterations reached
+  // Max iterations reached
+  const lastAssistant = messages.filter(m => m.role === 'assistant').pop()?.content;
   return {
-    response: 'Reached maximum tool call iterations. Here\'s what I found so far based on the tools I used.',
-    toolsUsed,
+    response: lastAssistant || 'Reached maximum iterations. Here\'s what I found so far.',
+    toolsUsed: [...new Set(toolsUsed)],
     messages,
+    memory,
   };
 }
 
-// ── Fallback: Direct Anthropic (no tool calling, enriched prompt) ──
+// ── Fallback: Direct Anthropic API (enriched prompt, no tool calling) ──
 async function runWithAnthropicDirect(
-  messages: AgentMessage[],
-  apiKey: string,
-  toolsUsed: string[],
+  userMessage: string,
+  history: AgentMessage[],
+  memory: AgentMemory,
+  context?: RunContext,
 ): Promise<AgentRunResult> {
-  // Extract last user message
-  const userMsg = messages.filter(m => m.role === 'user').pop()?.content || '';
-  const systemMsg = messages.find(m => m.role === 'system')?.content || GHOSTFACE_SYSTEM;
-  const historyMsgs = messages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-8);
+  const apiKey = process.env.ANTHROPIC_API_KEY!;
+  const toolsUsed: string[] = [];
+  const systemPrompt = buildSystemPrompt(memory, context);
 
-  // Pre-execute tools based on user intent detection
-  const lowerMsg = userMsg.toLowerCase();
+  // Pre-execute tools based on intent detection
+  const lowerMsg = userMessage.toLowerCase();
+  const enrichments: string[] = [];
 
-  if (lowerMsg.includes('github') || lowerMsg.includes('repo') || lowerMsg.includes('repository')) {
-    try {
-      const query = userMsg.replace(/search|github|find|repo|repository|for/gi, '').trim();
-      const results = await searchGitHub(query || userMsg);
+  const intents = [
+    { keywords: ['github', 'repo', 'repository', 'npm', 'package'], fn: async () => {
+      const q = userMessage.replace(/search|github|find|repo|repository|for|npm|package/gi, '').trim();
+      const results = await searchGitHub(q || userMessage);
       toolsUsed.push('search_github');
-      historyMsgs.push({
-        role: 'user',
-        content: `[Tool result: GitHub search for "${query}"]\n${JSON.stringify(results, null, 2)}`,
-      });
-    } catch { /* ignore tool errors */ }
-  }
-
-  if (lowerMsg.includes('huggingface') || lowerMsg.includes('model') || lowerMsg.includes('hf ')) {
-    try {
-      const query = userMsg.replace(/search|huggingface|find|model|hf|for/gi, '').trim();
-      const results = await searchHuggingFaceModels(query || userMsg);
+      return `[GitHub search: "${q}"] ${JSON.stringify(results, null, 2)}`;
+    }},
+    { keywords: ['huggingface', 'model', 'hf ', 'ai model'], fn: async () => {
+      const q = userMessage.replace(/search|huggingface|find|model|hf|for|ai/gi, '').trim();
+      const results = await searchHuggingFaceModels(q || userMessage);
       toolsUsed.push('search_huggingface');
-      historyMsgs.push({
-        role: 'user',
-        content: `[Tool result: HuggingFace search for "${query}"]\n${JSON.stringify(results, null, 2)}`,
-      });
-    } catch { /* ignore tool errors */ }
-  }
+      return `[HuggingFace search: "${q}"] ${JSON.stringify(results, null, 2)}`;
+    }},
+    { keywords: ['movie', 'tv show', 'series', 'film', 'tmdb'], fn: async () => {
+      const q = userMessage.replace(/search|movie|tv show|series|film|tmdb|find|for/gi, '').trim();
+      const result = await searchTMDB(q || userMessage);
+      toolsUsed.push('search_tmdb');
+      return `[TMDB search: "${q}"] ${JSON.stringify(result, null, 2)}`;
+    }},
+    { keywords: ['platform', 'stats', 'users', 'how many'], fn: async () => {
+      const result = await getPlatformStats();
+      toolsUsed.push('platform_stats');
+      return `[Platform stats] ${JSON.stringify(result, null, 2)}`;
+    }},
+  ];
 
-  // Build Anthropic API messages
-  const anthropicMessages = historyMsgs
+  await Promise.all(
+    intents
+      .filter(intent => intent.keywords.some(kw => lowerMsg.includes(kw)))
+      .map(async intent => {
+        try {
+          const result = await intent.fn();
+          enrichments.push(result);
+        } catch { /* ignore tool errors */ }
+      }),
+  );
+
+  // Build messages
+  const messages = history
     .filter(m => m.role === 'user' || m.role === 'assistant')
+    .slice(-8)
     .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-  if (!anthropicMessages.length || anthropicMessages[anthropicMessages.length - 1].role !== 'user') {
-    anthropicMessages.push({ role: 'user', content: userMsg });
+  // Add enrichments as context
+  let enrichedMessage = userMessage;
+  if (enrichments.length) {
+    enrichedMessage += '\n\n---\nTool results (use these in your response):\n' + enrichments.join('\n\n');
+  }
+
+  // Ensure last message is from user
+  if (!messages.length || messages[messages.length - 1].role !== 'user') {
+    messages.push({ role: 'user', content: enrichedMessage });
+  } else {
+    messages[messages.length - 1].content = enrichedMessage;
   }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -390,26 +775,30 @@ async function runWithAnthropicDirect(
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: systemMsg,
-      messages: anthropicMessages,
+      system: systemPrompt,
+      messages,
     }),
   });
 
   if (!res.ok) {
     const errText = await res.text();
     return {
-      response: `⚠️ AI error (${res.status}): ${errText}`,
+      response: `⚠️ AI error (${res.status}): ${errText.slice(0, 200)}`,
       toolsUsed,
-      messages,
+      messages: history,
+      memory,
     };
   }
 
   const data = await res.json();
   const text = data.content?.[0]?.text || 'No response generated.';
+  const suggestions = generateSuggestions(text, toolsUsed);
 
   return {
     response: text,
-    toolsUsed,
-    messages: [...messages, { role: 'assistant', content: text }],
+    toolsUsed: [...new Set(toolsUsed)],
+    messages: [...history, { role: 'user' as const, content: userMessage }, { role: 'assistant' as const, content: text }],
+    memory,
+    suggestedActions: suggestions,
   };
 }
