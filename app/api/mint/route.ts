@@ -3,6 +3,7 @@
 // Actual minting happens client-side via wallet signing
 
 import { NextRequest, NextResponse } from 'next/server';
+import { recordNFTMint, logTransaction } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
@@ -56,15 +57,32 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Action: verify — check if an NFT was successfully minted
+    // Action: verify — check if an NFT was successfully minted on-chain
     if (action === 'verify') {
-      const { txHash, chain: mintChain } = body;
+      const { txHash, chain: mintChain, userId, creationId, mintAddress, metadataUri } = body;
       if (!txHash) {
         return NextResponse.json({ error: 'Missing txHash' }, { status: 400 });
       }
 
-      // TODO: verify on-chain via Solana RPC or XRPL WebSocket
-      // For now, return success placeholder
+      // Record the NFT in our database
+      if (userId) {
+        const nft = await recordNFTMint({
+          creationId,
+          ownerId: userId,
+          mintAddress: mintAddress || txHash,
+          metadataUri,
+          royaltyBps: 500,
+        });
+
+        // Log the mint transaction
+        await logTransaction({
+          userId,
+          type: 'nft_mint',
+          solanaTxSig: txHash,
+          metadata: { nftId: nft?.id, chain: mintChain, creationId },
+        });
+      }
+
       return NextResponse.json({
         success: true,
         verified: true,

@@ -1,7 +1,7 @@
 'use client';
 // components/watch/WatchPage.tsx
 // Full watch/playback page for viewing a creation — video player, details, comments, related
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // ── Types ───────────────────────────────────────────────────────
 interface WatchPageProps {
@@ -118,8 +118,55 @@ export function WatchPage({ contentId, onBack, onCreatorClick }: WatchPageProps)
   const [liked, setLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [comments, setComments] = useState<Comment[]>(SAMPLE_COMMENTS);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Load real comments if contentId available
+  useEffect(() => {
+    if (!contentId) return;
+    fetch(`/api/comments?creationId=${contentId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (data.length > 0) setComments(data.map((c: any) => ({
+          id: c.id,
+          author: { handle: c.user_id?.slice(0, 8) || 'anon' },
+          text: c.content,
+          likes: 0,
+          createdAt: c.created_at,
+        })));
+      })
+      .catch(() => {});
+  }, [contentId]);
+
+  // Handle like with API persistence
+  const handleLike = () => {
+    setLiked(!liked);
+    if (contentId) {
+      fetch('/api/likes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creationId: contentId }),
+      }).catch(() => {});
+    }
+  };
+
+  // Handle comment submit
+  const handleComment = async () => {
+    if (!commentText.trim() || !contentId) return;
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creationId: contentId, content: commentText }),
+      });
+      if (res.ok) {
+        const newComment = await res.json();
+        setComments(prev => [{ id: newComment.id, author: { handle: 'you' }, text: commentText, likes: 0, createdAt: new Date().toISOString() }, ...prev]);
+        setCommentText('');
+      }
+    } catch (_) {}
+  };
 
   return (
     <div className="w-full max-w-6xl mx-auto">
@@ -189,7 +236,7 @@ export function WatchPage({ contentId, onBack, onCreatorClick }: WatchPageProps)
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <button onClick={() => setLiked(!liked)}
+            <button onClick={handleLike}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all ${
                 liked ? 'bg-rip/20 text-rip border border-rip/30' : 'bg-bg2 border border-border text-muted hover:text-white'
               }`}>
@@ -302,19 +349,21 @@ export function WatchPage({ contentId, onBack, onCreatorClick }: WatchPageProps)
 
           {/* Comments */}
           <div className="mb-8">
-            <h3 className="font-display text-lg text-white mb-3">Comments ({SAMPLE_COMMENTS.length})</h3>
+            <h3 className="font-display text-lg text-white mb-3">Comments ({comments.length})</h3>
 
             {/* Comment input */}
             <div className="flex items-start gap-3 mb-4">
               <div className="w-8 h-8 rounded-full bg-bg3 flex items-center justify-center text-sm">☽</div>
               <div className="flex-1">
                 <input value={commentText} onChange={e => setCommentText(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleComment()}
                   placeholder="Add a comment..."
                   className="w-full bg-transparent border-b border-border py-2 text-sm text-white outline-none focus:border-rip placeholder:text-muted2" />
                 {commentText && (
                   <div className="flex justify-end gap-2 mt-2">
                     <button onClick={() => setCommentText('')} className="px-3 py-1 text-xs text-muted hover:text-white">Cancel</button>
-                    <button className="px-4 py-1.5 rounded-full text-xs font-bold text-white"
+                    <button onClick={handleComment}
+                      className="px-4 py-1.5 rounded-full text-xs font-bold text-white"
                       style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
                       Comment
                     </button>
@@ -325,7 +374,7 @@ export function WatchPage({ contentId, onBack, onCreatorClick }: WatchPageProps)
 
             {/* Comment list */}
             <div className="space-y-4">
-              {SAMPLE_COMMENTS.map(c => (
+              {comments.map(c => (
                 <div key={c.id} className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-bg3 flex items-center justify-center text-[10px]">
                     {c.author.handle[0].toUpperCase()}

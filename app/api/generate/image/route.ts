@@ -2,6 +2,7 @@
 // Image generation: DALL·E 3, Seedream, Flux via Replicate, or nexos.ai gateway
 import { NextRequest, NextResponse } from 'next/server';
 import { isNexosConfigured, nexosImageGenerate } from '@/lib/nexos';
+import { logGeneration } from '@/lib/db';
 
 async function generateWithDalle(prompt: string, options: any = {}) {
   const key = process.env.OPENAI_API_KEY;
@@ -104,6 +105,16 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: `Unknown provider: ${selectedProvider}` }, { status: 400 });
       }
     }
+
+    // Log generation
+    await logGeneration({
+      userId,
+      creationType: 'image',
+      model: selectedProvider,
+      prompt: enhancedPrompt.slice(0, 500),
+      result: { url: result.url },
+      success: true,
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

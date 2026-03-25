@@ -231,11 +231,19 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     return true;
   });
 
-  // Toggle like
+  // Toggle like — calls /api/likes for persistence, optimistic UI update
   function toggleLike(id: string) {
     setFeed(f => f.map(item =>
       item.id === id ? { ...item, liked: !item.liked, likes: item.liked ? item.likes - 1 : item.likes + 1 } : item
     ));
+    // Persist via API (fire & forget — optimistic update above)
+    if (user?.id) {
+      fetch('/api/likes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, creationId: id }),
+      }).catch(e => console.warn('Like API error:', e));
+    }
   }
 
   // Toggle follow

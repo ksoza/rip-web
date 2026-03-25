@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createSupabaseAdmin }       from '@/lib/supabase';
 import { isNexosConfigured, nexosChat } from '@/lib/nexos';
+import { logGeneration } from '@/lib/db';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -71,16 +72,18 @@ DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/o
 
     // ── Call AI (nexos.ai gateway or direct Claude) ─────────────
     let text: string;
+    const genStart = Date.now();
+    let modelUsed = 'unknown';
 
     if (isNexosConfigured()) {
-      // Route through nexos.ai gateway
+      modelUsed = 'nexos/claude-sonnet-4.5';
       const nexosResponse = await nexosChat(
         [{ role: 'user', content: prompt }],
         { model: 'claude-sonnet-4.5', max_tokens: 1024 },
       );
       text = nexosResponse.choices[0]?.message?.content || '';
     } else {
-      // Direct Anthropic call (fallback)
+      modelUsed = 'claude-sonnet-4-20250514';
       const message = await anthropic.messages.create({
         model:      'claude-sonnet-4-20250514',
         max_tokens: 1024,
@@ -88,6 +91,7 @@ DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/o
       });
       text = message.content.map(b => b.type === 'text' ? b.text : '').join('\n');
     }
+    const genDuration = Date.now() - genStart;
     const g    = (re: RegExp) => text.match(re)?.[1]?.trim() || '';
 
     const result = {
@@ -114,6 +118,17 @@ DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/o
       })
       .select()
       .single();
+
+    // ── Log generation to generations table ───────────────────────
+    await logGeneration({
+      userId,
+      creationType: typeLabel,
+      model: modelUsed,
+      prompt: prompt.slice(0, 500),
+      result: { title: result.title, creationId: creation?.id },
+      durationMs: genDuration,
+      success: true,
+    });
 
     // ── Increment generation counter ──────────────────────────────
     await supabase

@@ -3,6 +3,7 @@
 // nexos.ai can be used for prompt enhancement before video generation
 import { NextRequest, NextResponse } from 'next/server';
 import { isNexosConfigured, nexosGenerate } from '@/lib/nexos';
+import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
@@ -154,6 +155,16 @@ export async function POST(req: NextRequest) {
       default:
         return NextResponse.json({ error: `Unknown video provider: ${provider}` }, { status: 400 });
     }
+
+    // Log generation
+    await logGeneration({
+      userId,
+      creationType: 'video',
+      model: provider,
+      prompt: prompt.slice(0, 500),
+      result: { url: result.url, id: result.id },
+      success: true,
+    }).catch(() => {});
 
     return NextResponse.json({ type: 'video', provider, ...result, prompt });
 

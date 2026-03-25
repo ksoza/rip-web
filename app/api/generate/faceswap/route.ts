@@ -1,6 +1,7 @@
 // app/api/generate/faceswap/route.ts
 // Face swap for character consistency across scenes
 import { NextRequest, NextResponse } from 'next/server';
+import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,10 +21,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'lucataco/faceswap',
-        input: {
-          source_image: sourceUrl,
-          target_image: targetUrl,
-        },
+        input: { source_image: sourceUrl, target_image: targetUrl },
       }),
     });
 
@@ -37,9 +35,7 @@ export async function POST(req: NextRequest) {
     const deadline = Date.now() + 120000;
     while (prediction.status !== 'succeeded' && prediction.status !== 'failed' && Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 2000));
-      const poll = await fetch(prediction.urls.get, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const poll = await fetch(prediction.urls.get, { headers: { 'Authorization': `Bearer ${token}` } });
       prediction = await poll.json();
     }
 
@@ -49,14 +45,9 @@ export async function POST(req: NextRequest) {
 
     const output = typeof prediction.output === 'string' ? prediction.output : prediction.output?.[0];
 
-    return NextResponse.json({
-      type: 'faceswap',
-      provider: 'insightface',
-      url: output,
-      sourceUrl,
-      targetUrl,
-    });
+    await logGeneration({ userId, creationType: 'faceswap', model: 'insightface', prompt: `swap: ${sourceUrl.slice(-30)} → ${targetUrl.slice(-30)}`, result: { url: output }, success: true }).catch(() => {});
 
+    return NextResponse.json({ type: 'faceswap', provider: 'insightface', url: output, sourceUrl, targetUrl });
   } catch (err: any) {
     console.error('Face swap error:', err);
     return NextResponse.json({ error: err.message || 'Face swap failed' }, { status: 500 });
