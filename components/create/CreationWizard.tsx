@@ -25,6 +25,8 @@ interface CharacterOption {
   role: string;
   emoji: string;
   isCustom?: boolean;
+  imageUrl?: string | null;  // TMDB headshot URL
+  tmdbId?: number;
 }
 
 interface StoryboardScene {
@@ -255,8 +257,45 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   const [downloadingAll, setDownloadingAll] = useState(false);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Characters for this IP
-  const characters = CHARACTER_DB[selectedMedia.title] || [];
+  // ── TMDB Characters (real images, full cast, no limits) ──────
+  const [tmdbCharacters, setTmdbCharacters] = useState<CharacterOption[]>([]);
+  const [tmdbLoading, setTmdbLoading] = useState(false);
+  const [charSearch, setCharSearch] = useState('');
+  const charScrollRef = useRef<HTMLDivElement>(null);
+
+  // Fetch FULL cast from TMDB API on mount (all characters, not just 4-5)
+  useEffect(() => {
+    if (isCustomIP || !selectedMedia?.id) return;
+    setTmdbLoading(true);
+    fetch(`/api/tmdb?action=cast&id=${selectedMedia.id}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.characters?.length) {
+          setTmdbCharacters(data.characters.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            role: c.character,
+            emoji: '🎭',
+            imageUrl: c.imageUrl,
+            tmdbId: c.tmdbId,
+          })));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setTmdbLoading(false));
+  }, [selectedMedia?.id, isCustomIP]);
+
+  // Use TMDB characters if available, fall back to hardcoded CHARACTER_DB
+  const fallbackChars = CHARACTER_DB[selectedMedia.title] || [];
+  const allCharacters = tmdbCharacters.length > 0 ? tmdbCharacters : fallbackChars;
+
+  // Filter characters by search
+  const characters = charSearch
+    ? allCharacters.filter(c =>
+        c.name.toLowerCase().includes(charSearch.toLowerCase()) ||
+        c.role.toLowerCase().includes(charSearch.toLowerCase())
+      )
+    : allCharacters;
 
   // Display title (accounts for custom)
   const displayTitle = isCustomIP ? (customIPName || 'Your Original IP') : isMashup ? (mashupShows.filter(Boolean).join(' × ') || 'Mashup') : selectedMedia.title;
@@ -617,41 +656,111 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
               {!isCustomIP && !isMashup && (
                 <>
                   <h3 className="font-display text-2xl text-white mb-1">Choose a Character</h3>
-                  <p className="text-sm text-muted mb-6">Pick an existing character from {selectedMedia.title} or create your own</p>
+                  <p className="text-sm text-muted mb-2">
+                    {tmdbCharacters.length > 0
+                      ? `${characters.length} characters from ${selectedMedia.title} · Swipe to browse all`
+                      : `Pick an existing character from ${selectedMedia.title} or create your own`}
+                  </p>
+                  {/* Character search */}
+                  {characters.length > 8 && (
+                    <div className="relative mb-4">
+                      <input
+                        value={charSearch}
+                        onChange={e => setCharSearch(e.target.value)}
+                        placeholder={`Search ${characters.length} characters...`}
+                        className="w-full bg-bg2 border border-border rounded-lg pl-8 pr-8 py-2 text-sm text-white outline-none focus:border-rip placeholder:text-muted2"
+                      />
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted text-sm">🔍</span>
+                      {charSearch && (
+                        <button onClick={() => setCharSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-white text-xs">✕</button>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
-              {/* Existing characters grid (for normal IPs and mashups with matching DB entries) */}
-              {characters.length > 0 && !isCustomIP && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                  {characters.map(char => (
-                    <button key={char.id} onClick={() => { setSelectedCharacter(char); setShowCustomForm(false); }}
-                      className={`relative p-4 rounded-xl border text-left transition-all hover:scale-[1.02] ${
-                        selectedCharacter?.id === char.id
-                          ? 'border-rip bg-rip/10 ring-1 ring-rip'
-                          : 'border-border bg-bg2 hover:border-bord2'
-                      }`}>
-                      <span className="text-3xl mb-2 block">{char.emoji}</span>
-                      <div className="text-sm font-bold text-white">{char.name}</div>
-                      <div className="text-[10px] text-muted mt-0.5">{char.role}</div>
-                      {selectedCharacter?.id === char.id && (
-                        <div className="absolute top-2 right-2 w-5 h-5 bg-rip rounded-full flex items-center justify-center text-white text-[10px]">✓</div>
-                      )}
-                    </button>
-                  ))}
-
-                  {/* Create custom character button */}
-                  <button onClick={() => { setShowCustomForm(true); setSelectedCharacter(null); }}
-                    className={`p-4 rounded-xl border border-dashed text-left transition-all hover:scale-[1.02] ${
-                      showCustomForm
-                        ? 'border-cyan bg-cyan/5 ring-1 ring-cyan'
-                        : 'border-border bg-bg2 hover:border-bord2'
-                    }`}>
-                    <span className="text-3xl mb-2 block">✨</span>
-                    <div className="text-sm font-bold text-white">Create New</div>
-                    <div className="text-[10px] text-muted mt-0.5">Original character</div>
-                  </button>
+              {/* Loading state */}
+              {tmdbLoading && !isCustomIP && (
+                <div className="flex items-center gap-2 mb-4 text-sm text-muted">
+                  <span className="animate-spin">⏳</span> Loading full cast from TMDB...
                 </div>
+              )}
+
+              {/* ── Character Carousel (swipeable, with images) ────── */}
+              {characters.length > 0 && !isCustomIP && (
+                <>
+                  {/* Horizontal scroll carousel */}
+                  <div
+                    ref={charScrollRef}
+                    className="flex gap-3 overflow-x-auto scroll-smooth pb-3 mb-2 snap-x"
+                    style={{ scrollbarWidth: 'none' }}
+                  >
+                    {characters.map(char => (
+                      <button
+                        key={char.id}
+                        onClick={() => { setSelectedCharacter(char); setShowCustomForm(false); }}
+                        className={`snap-start shrink-0 w-[120px] sm:w-[140px] group relative rounded-xl overflow-hidden border text-center transition-all hover:scale-[1.03] active:scale-[0.97] ${
+                          selectedCharacter?.id === char.id
+                            ? 'border-rip ring-2 ring-rip/50 bg-rip/5'
+                            : 'border-border bg-bg2 hover:border-bord2'
+                        }`}
+                      >
+                        {/* Character portrait */}
+                        <div className="aspect-square relative bg-bg3 overflow-hidden">
+                          {char.imageUrl ? (
+                            <img
+                              src={char.imageUrl}
+                              alt={char.name}
+                              loading="lazy"
+                              className="w-full h-full object-cover object-top"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          {/* Emoji fallback (shown when no image or image fails) */}
+                          <div className={`absolute inset-0 flex items-center justify-center ${char.imageUrl ? 'hidden' : ''}`}>
+                            <span className="text-4xl">{char.emoji}</span>
+                          </div>
+                          {/* Selection check */}
+                          {selectedCharacter?.id === char.id && (
+                            <div className="absolute top-1.5 right-1.5 w-6 h-6 bg-rip rounded-full flex items-center justify-center text-white text-xs shadow-lg">✓</div>
+                          )}
+                        </div>
+                        {/* Name and role */}
+                        <div className="p-2">
+                          <div className="text-xs font-bold text-white truncate">{char.name}</div>
+                          <div className="text-[9px] text-muted truncate">{char.role}</div>
+                        </div>
+                      </button>
+                    ))}
+
+                    {/* Create custom character button (at end of carousel) */}
+                    <button
+                      onClick={() => { setShowCustomForm(true); setSelectedCharacter(null); }}
+                      className={`snap-start shrink-0 w-[120px] sm:w-[140px] rounded-xl overflow-hidden border-2 border-dashed transition-all hover:scale-[1.03] ${
+                        showCustomForm ? 'border-cyan bg-cyan/5' : 'border-border bg-bg2 hover:border-bord2'
+                      }`}
+                    >
+                      <div className="aspect-square flex flex-col items-center justify-center">
+                        <span className="text-3xl mb-1">✨</span>
+                        <span className="text-xs font-bold text-white">Create New</span>
+                      </div>
+                      <div className="p-2">
+                        <div className="text-[9px] text-muted text-center">Original character</div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Character count indicator */}
+                  <div className="text-[10px] text-muted2 mb-4">
+                    {tmdbCharacters.length > 0
+                      ? `⟵ Swipe to see all ${characters.length} characters ⟶`
+                      : `${characters.length} characters available`
+                    }
+                  </div>
+                </>
               )}
 
               {/* Custom character form (shown for custom IP, mashup, or when "Create New" is clicked) */}
