@@ -101,6 +101,37 @@ export function SettingsTab({ user, profile, onSignOut }: {
         </div>
       )}
 
+      {/* Referral Program */}
+      <div>
+        <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Referral Program</div>
+        <div className="bg-bg2 border border-border rounded-xl p-4 mb-2">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-lime/10 flex items-center justify-center text-lg">🎁</div>
+            <div>
+              <p className="text-sm font-bold text-white">Invite Friends, Earn Rewards</p>
+              <p className="text-[10px] text-muted">Get 20% of their first payment as credit</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-bg3 rounded-lg py-2 text-center">
+              <div className="font-display text-lg text-white">—</div>
+              <div className="text-[8px] text-muted">Referred</div>
+            </div>
+            <div className="bg-bg3 rounded-lg py-2 text-center">
+              <div className="font-display text-lg text-lime">$0</div>
+              <div className="text-[8px] text-muted">Earned</div>
+            </div>
+            <div className="bg-bg3 rounded-lg py-2 text-center">
+              <div className="font-display text-lg text-cyan">5</div>
+              <div className="text-[8px] text-muted">Bonus Gens</div>
+            </div>
+          </div>
+          <p className="text-[9px] text-muted text-center">
+            New users who sign up with your link also get 5 bonus generations!
+          </p>
+        </div>
+      </div>
+
       {/* Legal */}
       <div>
         <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Legal</div>

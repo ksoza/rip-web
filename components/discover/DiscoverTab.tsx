@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { MediaCarousels } from './MediaCarousel';
+import { ShareDialog } from '../shared/ShareDialog';
 import type { MediaItem } from './MediaCarousel';
 
 // ── Types ───────────────────────────────────────────────────────
@@ -161,6 +162,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
   const [selectedGenre, setSelectedGenre] = useState('');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState('');
+  const [shareItem, setShareItem] = useState<FeedItem | null>(null);
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const [reimagineToast, setReimagineToast] = useState('');
 
@@ -279,6 +281,10 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     }
   }
 
+  function handleShare(item: FeedItem) {
+    setShareItem(item);
+  }
+
   return (
     <div>
       {/* Toast Notification */}
@@ -359,7 +365,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
       {/* Trending Banner */}
       {tab === 'trending' && filteredFeed.length > 0 && (
         <div className="mb-6">
-          <FeaturedCard item={filteredFeed[0]} onLike={toggleLike} onExpand={setExpandedId} onRemix={handleRemix} />
+          <FeaturedCard item={filteredFeed[0]} onLike={toggleLike} onExpand={setExpandedId} onRemix={handleRemix} onShare={handleShare} />
         </div>
       )}
 
@@ -367,7 +373,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
       {tab !== 'browse' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {(tab === 'trending' ? filteredFeed.slice(1) : filteredFeed).map(item => (
-            <FeedCard key={item.id} item={item} onLike={toggleLike} expanded={expandedId === item.id} onExpand={setExpandedId} onRemix={handleRemix} />
+            <FeedCard key={item.id} item={item} onLike={toggleLike} expanded={expandedId === item.id} onExpand={setExpandedId} onRemix={handleRemix} onShare={handleShare} />
           ))}
         </div>
       )}
@@ -419,16 +425,28 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
           ))}
         </div>
       </div>
+
+      {/* Share Dialog */}
+      <ShareDialog
+        isOpen={!!shareItem}
+        onClose={() => setShareItem(null)}
+        title={shareItem?.title || ''}
+        description={shareItem?.description}
+        url={`https://remixip.icu/watch/${shareItem?.id || ''}`}
+        image={shareItem?.thumbnail}
+        type="creation"
+      />
     </div>
   );
 }
 
 // ── Featured Card (hero/banner) ─────────────────────────────────
-function FeaturedCard({ item, onLike, onExpand, onRemix }: {
+function FeaturedCard({ item, onLike, onExpand, onRemix, onShare }: {
   item: FeedItem;
   onLike: (id: string) => void;
   onExpand: (id: string) => void;
   onRemix: (item: FeedItem) => void;
+  onShare: (item: FeedItem) => void;
 }) {
   return (
     <div className="relative bg-bg2 border border-border rounded-2xl overflow-hidden group cursor-pointer"
@@ -485,6 +503,10 @@ function FeaturedCard({ item, onLike, onExpand, onRemix }: {
           <span className="flex items-center gap-1.5 text-sm text-muted">
             👁 <span className="text-xs">{fmtNum(item.views)}</span>
           </span>
+          <button onClick={(e) => { e.stopPropagation(); onShare(item); }}
+            className="flex items-center gap-1 text-sm text-muted hover:text-lime transition-all">
+            📤
+          </button>
           <div className="flex-1" />
           <button onClick={(e) => { e.stopPropagation(); onRemix(item); }}
             className="px-4 py-2 rounded-lg text-xs font-bold text-white transition hover:brightness-110 hover:scale-105 active:scale-95"
@@ -498,12 +520,13 @@ function FeaturedCard({ item, onLike, onExpand, onRemix }: {
 }
 
 // ── Feed Card ───────────────────────────────────────────────────
-function FeedCard({ item, onLike, expanded, onExpand, onRemix }: {
+function FeedCard({ item, onLike, expanded, onExpand, onRemix, onShare }: {
   item: FeedItem;
   onLike: (id: string) => void;
   expanded: boolean;
   onExpand: (id: string) => void;
   onRemix: (item: FeedItem) => void;
+  onShare: (item: FeedItem) => void;
 }) {
   return (
     <div className={`bg-bg2 border rounded-xl overflow-hidden hover:border-bord2 transition-all cursor-pointer ${
@@ -558,6 +581,8 @@ function FeedCard({ item, onLike, expanded, onExpand, onRemix }: {
           </button>
           <span className="flex items-center gap-1">🔄 {fmtNum(item.remixes)}</span>
           <span className="flex items-center gap-1">👁 {fmtNum(item.views)}</span>
+          <button onClick={(e) => { e.stopPropagation(); onShare(item); }}
+            className="flex items-center gap-1 hover:text-lime transition-all">📤</button>
           <button onClick={(e) => { e.stopPropagation(); onRemix(item); }}
             className="ml-auto px-2 py-0.5 rounded text-[9px] font-bold border border-rip/30 text-rip hover:bg-rip/10 transition-all active:scale-95">
             ☽ Remix
