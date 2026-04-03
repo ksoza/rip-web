@@ -1,7 +1,7 @@
 // app/api/trending/route.ts
-// Trending content based on recent engagement (likes, views, comments)
-// Algorithm: weighted score over last 7 days
-// Score = (likes * 3) + (views * 1) + (comments * 2) + recency_bonus
+// Trending content based on recent engagement (likes, comments)
+// Algorithm: weighted score over configurable period
+// Score = (likes * 3) + (comments * 2) + recency_bonus
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase';
@@ -10,8 +10,8 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const period = searchParams.get('period') || '7d'; // 1d, 7d, 30d
-    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
-    const genre = searchParams.get('genre') || '';
+    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '20') || 20), 50);
+    const genre = searchParams.get('genre')?.trim().slice(0, 100) || '';
 
     const supabase = createSupabaseAdmin();
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     // Get recent creations with their engagement counts
     let query = supabase
       .from('creations')
-      .select('*, profiles!creations_user_id_fkey(username, display_name, avatar_url)')
+      .select('*, profiles!creations_user_id_fkey(username, avatar_url)')
       .eq('is_public', true)
       .gte('created_at', periodStart.toISOString())
       .order('created_at', { ascending: false })
@@ -35,12 +35,12 @@ export async function GET(req: NextRequest) {
     if (creationsError) throw creationsError;
 
     if (!creations || creations.length === 0) {
-      // Fallback: get all-time popular
+      // Fallback: get all-time popular by likes_count
       const { data: fallback } = await supabase
         .from('creations')
-        .select('*, profiles!creations_user_id_fkey(username, display_name, avatar_url)')
+        .select('*, profiles!creations_user_id_fkey(username, avatar_url)')
         .eq('is_public', true)
-        .order('like_count', { ascending: false, nullsFirst: false })
+        .order('likes_count', { ascending: false, nullsFirst: false })
         .limit(limit);
 
       return NextResponse.json({
@@ -77,15 +77,14 @@ export async function GET(req: NextRequest) {
     // Calculate trending score
     const now = Date.now();
     const scored = creations.map(c => {
-      const likes = likeCounts[c.id] || (c.like_count || 0);
+      const likes = likeCounts[c.id] || (c.likes_count || 0);
       const comments = commentCounts[c.id] || 0;
-      const views = c.view_count || 0;
 
-      // Recency bonus: newer content gets a boost
+      // Recency bonus: newer content gets a boost (decays over ~50 hours)
       const ageHours = (now - new Date(c.created_at).getTime()) / 3600000;
-      const recencyBonus = Math.max(0, 100 - ageHours * 2); // Decays over 50 hours
+      const recencyBonus = Math.max(0, 100 - ageHours * 2);
 
-      const score = (likes * 3) + (views * 1) + (comments * 2) + recencyBonus;
+      const score = (likes * 3) + (comments * 2) + recencyBonus;
 
       return { ...c, trending_score: Math.round(score * 10) / 10, recent_likes: likes, recent_comments: comments };
     });
@@ -102,6 +101,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('Trending error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to fetch trending' },
+      { status: 500 },
+    );
   }
 }

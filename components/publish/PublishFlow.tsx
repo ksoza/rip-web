@@ -132,7 +132,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
             show,
             genre,
             mediaType,
-            royaltyBps: royalty,
+            royaltyBps,
             creatorAddress: wallet.publicKey,
             userId: user.id,
             creationId: creation.id,
