@@ -2,6 +2,7 @@
 import type { Metadata } from 'next';
 import { Bebas_Neue, Instrument_Sans, DM_Mono, UnifrakturMaguntia } from 'next/font/google';
 import { SolanaWalletProvider } from '@/lib/solana/wallet-provider';
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 const bebas = Bebas_Neue({
@@ -72,6 +73,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SolanaWalletProvider>
           {children}
         </SolanaWalletProvider>
+        <Analytics />
       </body>
     </html>
   );
