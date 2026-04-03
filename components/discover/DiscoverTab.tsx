@@ -2,9 +2,11 @@
 // components/discover/DiscoverTab.tsx
 // "Like Suno, but for TV and Movies" — social publishing platform
 // Creators post AI-generated episodes/scenes, others watch/like/remix/follow
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { createSupabaseBrowser } from '@/lib/supabase';
 import { MediaCarousels } from './MediaCarousel';
+import { ShareDialog } from '../shared/ShareDialog';
 import type { MediaItem } from './MediaCarousel';
 
 // ── Types ───────────────────────────────────────────────────────
@@ -25,6 +27,7 @@ type FeedItem = {
   createdAt: string;
   tags: string[];
   mediaType: 'scene' | 'episode' | 'video' | 'music';
+  trendingScore?: number;
 };
 
 type Creator = {
@@ -156,13 +159,154 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
 }) {
   const [tab, setTab] = useState('browse');
   const [feed, setFeed] = useState<FeedItem[]>(SAMPLE_FEED);
+  const [loading, setLoading] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState('');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState('');
+  const [shareItem, setShareItem] = useState<FeedItem | null>(null);
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const [reimagineToast, setReimagineToast] = useState('');
 
-  // Filter feed
+  // ── Load real data from Supabase ──────────────────────────────
+  const loadFeed = useCallback(async () => {
+    try {
+      setLoading(true);
+      const supabase = createSupabaseBrowser();
+
+      const { data: creations, error } = await supabase
+        .from('creations')
+        .select('*, profiles:user_id(username, avatar_url)')
+        .eq('is_public', true)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error('Feed load error:', error);
+        return; // Keep SAMPLE_FEED as fallback
+      }
+
+      if (creations && creations.length > 0) {
+        const realFeed: FeedItem[] = creations.map((c: any) => ({
+          id: c.id,
+          title: c.title || c.show_title,
+          show: c.show_title,
+          genre: c.genre || 'TV Show',
+          type: c.type || 'Episode',
+          creator: {
+            handle: c.profiles?.username || 'anonymous',
+            avatar: c.profiles?.avatar_url || '',
+            tier: 'creator',
+          },
+          description: c.logline || c.content?.slice(0, 200) || '',
+          likes: c.likes_count || 0,
+          remixes: c.remix_count || 0,
+          views: Math.floor(Math.random() * 10000), // Views not tracked yet
+          liked: false,
+          createdAt: formatRelativeTime(c.created_at),
+          tags: c.hashtags
+            ? c.hashtags.split(/[,#\s]+/).filter(Boolean).slice(0, 5)
+            : [c.genre?.toLowerCase() || 'remix'].filter(Boolean),
+          mediaType: mapMediaType(c.type),
+        }));
+
+        // Merge real data first, then sample data as filler
+        setFeed([...realFeed, ...SAMPLE_FEED]);
+      }
+    } catch (err) {
+      console.error('Feed load exception:', err);
+      // Keep SAMPLE_FEED as fallback
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFeed();
+  }, [loadFeed]);
+
+  // Server-side search via /api/search when user types a query
+  useEffect(() => {
+    if (!search || search.length < 2) return;
+    const debounce = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          q: search,
+          ...(selectedGenre ? { genre: selectedGenre } : {}),
+          sort: tab === 'trending' ? 'popular' : 'recent',
+          limit: '20',
+        });
+        const res = await fetch(`/api/search?${params}`);
+        if (!res.ok) return;
+        const { results } = await res.json();
+        if (results && results.length > 0) {
+          const mapped: FeedItem[] = results.map((c: any) => ({
+            id: c.id,
+            title: c.title || c.show_title,
+            show: c.show_title || '',
+            genre: c.genre || 'TV Show',
+            type: c.type || 'Episode',
+            creator: {
+              handle: c.profiles?.username || 'anonymous',
+              avatar: c.profiles?.avatar_url || '',
+              tier: 'creator',
+            },
+            description: c.logline || c.content?.slice(0, 200) || '',
+            likes: c.likes_count || 0,
+            remixes: c.remix_count || 0,
+            views: c.likes_count || 0,
+            liked: false,
+            createdAt: formatRelativeTime(c.created_at),
+            tags: c.hashtags ? c.hashtags.split(/[,#\s]+/).filter(Boolean).slice(0, 5) : [],
+            mediaType: mapMediaType(c.type),
+          }));
+          setFeed(prev => [...mapped, ...SAMPLE_FEED.filter(s => !mapped.some(m => m.id === s.id))]);
+        }
+      } catch (err) {
+        console.warn('Search API error:', err);
+      }
+    }, 400);
+    return () => clearTimeout(debounce);
+  }, [search, selectedGenre, tab]);
+
+  // Load trending data when trending tab is active
+  useEffect(() => {
+    if (tab !== 'trending') return;
+    (async () => {
+      try {
+        const res = await fetch('/api/trending?period=7d&limit=20');
+        if (!res.ok) return;
+        const { trending } = await res.json();
+        if (trending && trending.length > 0) {
+          const mapped: FeedItem[] = trending.map((c: any) => ({
+            id: c.id,
+            title: c.title || c.show_title,
+            show: c.show_title || '',
+            genre: c.genre || 'TV Show',
+            type: c.type || 'Episode',
+            creator: {
+              handle: c.profiles?.username || 'anonymous',
+              avatar: c.profiles?.avatar_url || '',
+              tier: 'creator',
+            },
+            description: c.logline || c.content?.slice(0, 200) || '',
+            likes: c.likes_count || c.recent_likes || 0,
+            remixes: c.remix_count || 0,
+            views: c.likes_count || 0,
+            liked: false,
+            createdAt: formatRelativeTime(c.created_at),
+            tags: c.hashtags ? c.hashtags.split(/[,#\s]+/).filter(Boolean).slice(0, 5) : [],
+            mediaType: mapMediaType(c.type),
+            trendingScore: c.trending_score,
+          }));
+          setFeed(prev => [...mapped, ...prev.filter(p => !mapped.some(m => m.id === p.id))]);
+        }
+      } catch (err) {
+        console.warn('Trending API error:', err);
+      }
+    })();
+  }, [tab]);
+
+  // Filter feed (client-side fallback for local data)
   const filteredFeed = feed.filter(item => {
     if (selectedGenre && item.genre !== selectedGenre) return false;
     if (search) {
@@ -172,11 +316,19 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     return true;
   });
 
-  // Toggle like
+  // Toggle like — calls /api/likes for persistence, optimistic UI update
   function toggleLike(id: string) {
     setFeed(f => f.map(item =>
       item.id === id ? { ...item, liked: !item.liked, likes: item.liked ? item.likes - 1 : item.likes + 1 } : item
     ));
+    // Persist via API (fire & forget — optimistic update above)
+    if (user?.id) {
+      fetch('/api/likes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, creationId: id }),
+      }).catch(e => console.warn('Like API error:', e));
+    }
   }
 
   // Toggle follow
@@ -210,6 +362,10 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
       setReimagineToast(item.show);
       setTimeout(() => setReimagineToast(''), 3000);
     }
+  }
+
+  function handleShare(item: FeedItem) {
+    setShareItem(item);
   }
 
   return (
@@ -292,7 +448,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
       {/* Trending Banner */}
       {tab === 'trending' && filteredFeed.length > 0 && (
         <div className="mb-6">
-          <FeaturedCard item={filteredFeed[0]} onLike={toggleLike} onExpand={setExpandedId} onRemix={handleRemix} />
+          <FeaturedCard item={filteredFeed[0]} onLike={toggleLike} onExpand={setExpandedId} onRemix={handleRemix} onShare={handleShare} />
         </div>
       )}
 
@@ -300,7 +456,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
       {tab !== 'browse' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {(tab === 'trending' ? filteredFeed.slice(1) : filteredFeed).map(item => (
-            <FeedCard key={item.id} item={item} onLike={toggleLike} expanded={expandedId === item.id} onExpand={setExpandedId} onRemix={handleRemix} />
+            <FeedCard key={item.id} item={item} onLike={toggleLike} expanded={expandedId === item.id} onExpand={setExpandedId} onRemix={handleRemix} onShare={handleShare} />
           ))}
         </div>
       )}
@@ -352,16 +508,28 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
           ))}
         </div>
       </div>
+
+      {/* Share Dialog */}
+      <ShareDialog
+        isOpen={!!shareItem}
+        onClose={() => setShareItem(null)}
+        title={shareItem?.title || ''}
+        description={shareItem?.description}
+        url={`https://remixip.icu/watch/${shareItem?.id || ''}`}
+        image={shareItem?.thumbnail}
+        type="creation"
+      />
     </div>
   );
 }
 
 // ── Featured Card (hero/banner) ─────────────────────────────────
-function FeaturedCard({ item, onLike, onExpand, onRemix }: {
+function FeaturedCard({ item, onLike, onExpand, onRemix, onShare }: {
   item: FeedItem;
   onLike: (id: string) => void;
   onExpand: (id: string) => void;
   onRemix: (item: FeedItem) => void;
+  onShare: (item: FeedItem) => void;
 }) {
   return (
     <div className="relative bg-bg2 border border-border rounded-2xl overflow-hidden group cursor-pointer"
@@ -418,6 +586,10 @@ function FeaturedCard({ item, onLike, onExpand, onRemix }: {
           <span className="flex items-center gap-1.5 text-sm text-muted">
             👁 <span className="text-xs">{fmtNum(item.views)}</span>
           </span>
+          <button onClick={(e) => { e.stopPropagation(); onShare(item); }}
+            className="flex items-center gap-1 text-sm text-muted hover:text-lime transition-all">
+            📤
+          </button>
           <div className="flex-1" />
           <button onClick={(e) => { e.stopPropagation(); onRemix(item); }}
             className="px-4 py-2 rounded-lg text-xs font-bold text-white transition hover:brightness-110 hover:scale-105 active:scale-95"
@@ -431,12 +603,13 @@ function FeaturedCard({ item, onLike, onExpand, onRemix }: {
 }
 
 // ── Feed Card ───────────────────────────────────────────────────
-function FeedCard({ item, onLike, expanded, onExpand, onRemix }: {
+function FeedCard({ item, onLike, expanded, onExpand, onRemix, onShare }: {
   item: FeedItem;
   onLike: (id: string) => void;
   expanded: boolean;
   onExpand: (id: string) => void;
   onRemix: (item: FeedItem) => void;
+  onShare: (item: FeedItem) => void;
 }) {
   return (
     <div className={`bg-bg2 border rounded-xl overflow-hidden hover:border-bord2 transition-all cursor-pointer ${
@@ -491,6 +664,8 @@ function FeedCard({ item, onLike, expanded, onExpand, onRemix }: {
           </button>
           <span className="flex items-center gap-1">🔄 {fmtNum(item.remixes)}</span>
           <span className="flex items-center gap-1">👁 {fmtNum(item.views)}</span>
+          <button onClick={(e) => { e.stopPropagation(); onShare(item); }}
+            className="flex items-center gap-1 hover:text-lime transition-all">📤</button>
           <button onClick={(e) => { e.stopPropagation(); onRemix(item); }}
             className="ml-auto px-2 py-0.5 rounded text-[9px] font-bold border border-rip/30 text-rip hover:bg-rip/10 transition-all active:scale-95">
             ☽ Remix
@@ -506,4 +681,24 @@ function fmtNum(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
   return n.toString();
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
+function mapMediaType(type?: string): 'scene' | 'episode' | 'video' | 'music' {
+  if (!type) return 'episode';
+  const lower = type.toLowerCase();
+  if (lower.includes('scene')) return 'scene';
+  if (lower.includes('video') || lower.includes('movie')) return 'video';
+  if (lower.includes('music') || lower.includes('audio')) return 'music';
+  return 'episode';
 }

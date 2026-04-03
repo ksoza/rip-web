@@ -13,6 +13,27 @@ export type Provider = {
 };
 
 export const AI_PROVIDERS: Provider[] = [
+  // ── NEXOS.AI GATEWAY (200+ models via single key) ──────────────
+  {
+    id: 'nexos',
+    name: 'nexos.ai Gateway',
+    category: 'text',
+    envKey: 'NEXOS_API_KEY',
+    baseUrl: 'https://api.nexos.ai/v1',
+    description: 'AI gateway — 200+ models via single API key. Claude, GPT-4.1, Gemini 3, Grok 4 and more.',
+    models: [
+      'claude-sonnet-4.5',
+      'claude-opus-4.6',
+      'gpt-4.1',
+      'gpt-4.1-mini',
+      'gpt-4.1-nano',
+      'gemini-3-flash',
+      'gemini-3-pro',
+      'grok-4',
+      'grok-4-mini',
+    ],
+  },
+
   // ── TEXT / STORY ────────────────────────────────────────────────
   {
     id: 'anthropic',
@@ -334,6 +355,55 @@ export async function callLuma(prompt: string, options: { aspect_ratio?: string;
   }
 
   return result;
+}
+
+// nexos.ai gateway helper (OpenAI-compatible)
+export async function callNexos(
+  messages: { role: string; content: string }[],
+  model = 'claude-sonnet-4.5',
+  maxTokens = 2048,
+): Promise<string> {
+  const key = process.env.NEXOS_API_KEY;
+  if (!key) throw new Error('NEXOS_API_KEY not configured');
+
+  const baseUrl = process.env.NEXOS_BASE_URL || 'https://api.nexos.ai/v1';
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`nexos.ai API error: ${err}`);
+  }
+
+  const data = await res.json();
+  return data.choices[0]?.message?.content || '';
+}
+
+// ── Provider preference helper ───────────────────────────────────
+// Returns the best available text provider: nexos.ai first, then direct providers
+export function getPreferredTextProvider(): Provider | undefined {
+  const nexos = getProvider('nexos');
+  if (nexos && isProviderConfigured('nexos')) return nexos;
+
+  const anthropic = getProvider('anthropic');
+  if (anthropic && isProviderConfigured('anthropic')) return anthropic;
+
+  const grok = getProvider('grok');
+  if (grok && isProviderConfigured('grok')) return grok;
+
+  return undefined;
+}
+
+// Check if nexos.ai is configured and should be used as the default gateway
+export function shouldUseNexos(): boolean {
+  return isProviderConfigured('nexos');
 }
 
 // Runway ML helper

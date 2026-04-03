@@ -4,8 +4,11 @@
 // Step 1: Details → Step 2: NFT Options → Step 3: Preview & Publish
 import { useState } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { createSupabaseBrowser } from '@/lib/supabase';
 import type { Chain, NFTMediaType } from '@/lib/nft/types';
 import { ROYALTY_PRESETS, CHAIN_CONFIG } from '@/lib/nft/mint';
+import { mintNFT as executeMintNFT } from '@/lib/solana/metaplex-mint';
+import { useWallet } from '@/lib/solana/wallet-provider';
 
 // ── Types ───────────────────────────────────────────────────────
 interface PublishFlowProps {
@@ -33,9 +36,11 @@ const MEDIA_TYPES: { id: NFTMediaType; label: string; icon: string }[] = [
 ];
 
 export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
+  const wallet = useWallet();
   const [step, setStep] = useState<Step>('details');
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
+  const [mintResult, setMintResult] = useState<{ mintAddress?: string; explorerUrl?: string } | null>(null);
 
   // ── Form state ────────────────────────────────────────────
   const [title, setTitle] = useState(initialData?.title || '');
@@ -73,13 +78,86 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
   const canProceedDetails = title.trim() && description.trim() && show.trim() && genre;
   const canPublish = canProceedDetails;
 
-  // ── Publish Handler ───────────────────────────────────────
+  // ── Publish Handler (real Supabase insert) ─────────────────
+  const [publishError, setPublishError] = useState('');
+
   async function handlePublish() {
     setPublishing(true);
-    // Simulate publishing + minting delay
-    await new Promise(r => setTimeout(r, 2500));
-    setPublished(true);
-    setPublishing(false);
+    setPublishError('');
+
+    try {
+      const supabase = createSupabaseBrowser();
+
+      // Build tags string from comma-separated input
+      const tagList = tags
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
+        .map(t => `#${t.replace(/^#/, '')}`)
+        .join(' ');
+
+      // Insert creation into Supabase
+      const { data: creation, error } = await supabase
+        .from('creations')
+        .insert({
+          user_id:    user.id,
+          show_title: show,
+          genre,
+          type:       MEDIA_TYPES.find(mt => mt.id === mediaType)?.label || mediaType,
+          title,
+          logline:    description.slice(0, 200),
+          content:    description,
+          hashtags:   tagList,
+          tools_used: ['RiP Studio'],
+          is_public:  true,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Publish error:', error);
+        setPublishError(error.message || 'Failed to publish');
+        setPublishing(false);
+        return;
+      }
+
+      // If NFT minting is enabled and wallet is connected, mint
+      if (mintNFT && wallet.connected && wallet.publicKey && creation) {
+        try {
+          const result = await executeMintNFT({
+            title,
+            description,
+            image: thumbnail || creation.thumbnail || '',
+            animationUrl: initialData?.mediaUrl,
+            show,
+            genre,
+            mediaType,
+            royaltyBps,
+            creatorAddress: wallet.publicKey,
+            userId: user.id,
+            creationId: creation.id,
+          });
+          if (result.success) {
+            setMintResult({ mintAddress: result.mintAddress, explorerUrl: result.explorerUrl });
+          } else {
+            console.warn('NFT mint warning:', result.error);
+            // Don't fail the whole publish — creation is already saved
+          }
+        } catch (mintErr) {
+          console.warn('NFT mint error (publish succeeded):', mintErr);
+        }
+      }
+
+      // Small delay for UX feel
+      await new Promise(r => setTimeout(r, 400));
+
+      setPublished(true);
+    } catch (err: any) {
+      console.error('Publish exception:', err);
+      setPublishError(err.message || 'Something went wrong');
+    } finally {
+      setPublishing(false);
+    }
   }
 
   // ── Published Success ─────────────────────────────────────
@@ -115,6 +193,18 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                   <span className="text-xs text-muted">Mint Fee</span>
                   <span className="text-xs text-muted2">{chainInfo.mintFee}</span>
                 </div>
+                {mintResult?.mintAddress && (
+                  <div className="flex justify-between">
+                    <span className="text-xs text-muted">Mint Address</span>
+                    <span className="text-xs text-cyan font-mono">{mintResult.mintAddress.slice(0, 12)}...</span>
+                  </div>
+                )}
+                {mintResult?.explorerUrl && (
+                  <div className="mt-2">
+                    <a href={mintResult.explorerUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-cyan hover:underline">View on Explorer ↗</a>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -508,6 +598,17 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                       Connect your {chainInfo.wallet} wallet to sign the mint transaction.
                       You'll need {chainInfo.mintFee} for the transaction fee.
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {publishError && (
+                <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-3 flex items-start gap-2">
+                  <span className="text-red-400 text-sm">⚠️</span>
+                  <div>
+                    <div className="text-xs font-bold text-red-400">Publish Failed</div>
+                    <div className="text-xs text-red-300/80 mt-0.5">{publishError}</div>
                   </div>
                 </div>
               )}

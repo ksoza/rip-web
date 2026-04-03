@@ -1,7 +1,9 @@
 'use client';
 // components/profile/CreatorProfile.tsx
 // Creator profile page with their shows, NFTs, stats, and follow button
-import { useState, useMemo } from 'react';
+// Fetches real data from Supabase, falls back to mock data
+import { useState, useMemo, useEffect } from 'react';
+import { createSupabaseBrowser } from '@/lib/supabase';
 
 // ── Types ───────────────────────────────────────────────────────
 interface Creator {
@@ -88,8 +90,84 @@ const MOCK_CREATIONS: Creation[] = [
 export function CreatorProfile({ creatorId }: { creatorId?: string }) {
   const [tab, setTab] = useState<ProfileTab>('creations');
   const [isFollowing, setIsFollowing] = useState(false);
-  const creator = MOCK_CREATOR;
-  const creations = MOCK_CREATIONS;
+  const [creator, setCreator] = useState<Creator>(MOCK_CREATOR);
+  const [creations, setCreations] = useState<Creation[]>(MOCK_CREATIONS);
+  const [loading, setLoading] = useState(!!creatorId);
+
+  // Fetch real creator data from Supabase
+  useEffect(() => {
+    if (!creatorId) return;
+    (async () => {
+      try {
+        setLoading(true);
+        const supabase = createSupabaseBrowser();
+        
+        // Fetch creator profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', creatorId)
+          .single();
+
+        if (profile) {
+          setCreator({
+            id: profile.id,
+            handle: profile.username || 'anonymous',
+            displayName: profile.display_name || profile.username || 'Creator',
+            avatar: profile.avatar_url || '',
+            banner: '',
+            bio: profile.bio || '',
+            joinedAt: profile.created_at || '',
+            followers: profile.followers_count || 0,
+            following: profile.following_count || 0,
+            totalViews: 0,
+            totalLikes: 0,
+            verified: profile.tier !== 'free',
+            walletAddress: profile.wallet_address,
+            socials: profile.socials || {},
+          });
+        }
+
+        // Fetch creator's public creations
+        const { data: works } = await supabase
+          .from('creations')
+          .select('*')
+          .eq('user_id', creatorId)
+          .eq('is_public', true)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (works && works.length > 0) {
+          const mapped: Creation[] = works.map((c: any) => ({
+            id: c.id,
+            title: c.title || c.show_title || 'Untitled',
+            show: c.show_title || '',
+            thumbnail: c.thumbnail_url || '',
+            views: c.likes_count || 0,
+            likes: c.likes_count || 0,
+            remixes: c.remix_count || 0,
+            genre: c.genre || 'Remix',
+            mediaType: c.type || 'episode',
+            isNFT: !!c.nft_mint_address,
+            nftChain: c.nft_chain,
+            nftPrice: c.nft_price,
+            createdAt: c.created_at,
+          }));
+          setCreations(mapped);
+
+          // Update stats from real data
+          const totalViews = mapped.reduce((sum, c) => sum + c.views, 0);
+          const totalLikes = mapped.reduce((sum, c) => sum + c.likes, 0);
+          setCreator(prev => ({ ...prev, totalViews, totalLikes }));
+        }
+      } catch (err) {
+        console.warn('CreatorProfile load error:', err);
+        // Falls back to mock data
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [creatorId]);
 
   const nfts = useMemo(() => creations.filter(c => c.isNFT), [creations]);
 

@@ -1,13 +1,17 @@
 // app/api/generate/video/route.ts
 // Video generation via Luma Dream Machine, Runway ML, Kling
+// nexos.ai can be used for prompt enhancement before video generation
 import { NextRequest, NextResponse } from 'next/server';
+import { isNexosConfigured, nexosGenerate } from '@/lib/nexos';
+import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, provider = 'luma', imageUrl, duration = 5, aspectRatio = '16:9', userId } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    const { prompt, provider = 'luma', imageUrl, duration = 5, aspectRatio = '16:9' } = await req.json();
 
-    if (!prompt || !userId) {
-      return NextResponse.json({ error: 'Missing prompt or userId' }, { status: 400 });
+    if (!prompt) {
+      return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
     let result: { url: string; id: string; duration: number };
@@ -152,6 +156,16 @@ export async function POST(req: NextRequest) {
       default:
         return NextResponse.json({ error: `Unknown video provider: ${provider}` }, { status: 400 });
     }
+
+    // Log generation
+    await logGeneration({
+      userId,
+      creationType: 'video',
+      model: provider,
+      prompt: prompt.slice(0, 500),
+      result: { url: result.url, id: result.id },
+      success: true,
+    }).catch(() => {});
 
     return NextResponse.json({ type: 'video', provider, ...result, prompt });
 

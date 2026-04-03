@@ -2,15 +2,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createSupabaseAdmin }       from '@/lib/supabase';
+import { isNexosConfigured, nexosChat } from '@/lib/nexos';
+import { logGeneration } from '@/lib/db';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { showTitle, genre, creationType, idea, crossover, userId } = body;
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!showTitle || !idea || !userId) {
+    const body = await req.json();
+    const { showTitle, genre, creationType, idea, crossover } = body;
+
+    if (!showTitle || !idea) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -68,14 +75,28 @@ HASHTAGS: [12-15 hashtags: show-specific, genre, #RemixIP #RiP #FanStudio #FanFi
 
 DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/owners of ${showTitle}.`;
 
-    // ── Call Claude ───────────────────────────────────────────────
-    const message = await anthropic.messages.create({
-      model:      'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages:   [{ role: 'user', content: prompt }],
-    });
+    // ── Call AI (nexos.ai gateway or direct Claude) ─────────────
+    let text: string;
+    const genStart = Date.now();
+    let modelUsed = 'unknown';
 
-    const text = message.content.map(b => b.type === 'text' ? b.text : '').join('\n');
+    if (isNexosConfigured()) {
+      modelUsed = 'nexos/claude-sonnet-4.5';
+      const nexosResponse = await nexosChat(
+        [{ role: 'user', content: prompt }],
+        { model: 'claude-sonnet-4.5', max_tokens: 1024 },
+      );
+      text = nexosResponse.choices[0]?.message?.content || '';
+    } else {
+      modelUsed = 'claude-sonnet-4-20250514';
+      const message = await anthropic.messages.create({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages:   [{ role: 'user', content: prompt }],
+      });
+      text = message.content.map(b => b.type === 'text' ? b.text : '').join('\n');
+    }
+    const genDuration = Date.now() - genStart;
     const g    = (re: RegExp) => text.match(re)?.[1]?.trim() || '';
 
     const result = {
@@ -102,6 +123,17 @@ DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/o
       })
       .select()
       .single();
+
+    // ── Log generation to generations table ───────────────────────
+    await logGeneration({
+      userId,
+      creationType: typeLabel,
+      model: modelUsed,
+      prompt: prompt.slice(0, 500),
+      result: { title: result.title, creationId: creation?.id },
+      durationMs: genDuration,
+      success: true,
+    });
 
     // ── Increment generation counter ──────────────────────────────
     await supabase

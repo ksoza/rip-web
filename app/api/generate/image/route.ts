@@ -1,6 +1,8 @@
 // app/api/generate/image/route.ts
-// Image generation: DALL·E 3, Seedream, Flux via Replicate
+// Image generation: DALL·E 3, Seedream, Flux via Replicate, or nexos.ai gateway
 import { NextRequest, NextResponse } from 'next/server';
+import { isNexosConfigured, nexosImageGenerate } from '@/lib/nexos';
+import { logGeneration } from '@/lib/db';
 
 async function generateWithDalle(prompt: string, options: any = {}) {
   const key = process.env.OPENAI_API_KEY;
@@ -57,10 +59,11 @@ async function generateWithReplicate(model: string, prompt: string, options: any
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, provider, style, size, characterRef, userId, options } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    const { prompt, provider, style, size, characterRef, options } = await req.json();
 
-    if (!prompt || !userId) {
-      return NextResponse.json({ error: 'Missing prompt or userId' }, { status: 400 });
+    if (!prompt) {
+      return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
     // Build enhanced prompt for character consistency
@@ -70,25 +73,49 @@ export async function POST(req: NextRequest) {
     }
 
     let result;
-    switch (provider || 'dalle') {
-      case 'dalle':
-        result = await generateWithDalle(enhancedPrompt, { size, style, ...options });
-        break;
-      case 'seedream':
-        result = await generateWithReplicate('bytedance/seedream-3', enhancedPrompt, {
-          aspect_ratio: size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1',
-          ...options,
-        });
-        break;
-      case 'flux':
-        result = await generateWithReplicate('black-forest-labs/flux-1.1-pro', enhancedPrompt, {
-          aspect_ratio: size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1',
-          ...options,
-        });
-        break;
-      default:
-        return NextResponse.json({ error: `Unknown provider: ${provider}` }, { status: 400 });
+    const selectedProvider = provider || 'dalle';
+
+    // Route through nexos.ai if configured and provider supports it (DALL·E compatible)
+    if (selectedProvider === 'dalle' && isNexosConfigured()) {
+      result = await nexosImageGenerate(enhancedPrompt, { size, quality: options?.quality });
+    } else {
+      switch (selectedProvider) {
+        case 'dalle':
+          result = await generateWithDalle(enhancedPrompt, { size, style, ...options });
+          break;
+        case 'seedream':
+          result = await generateWithReplicate('bytedance/seedream-3', enhancedPrompt, {
+            aspect_ratio: size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1',
+            ...options,
+          });
+          break;
+        case 'flux':
+          result = await generateWithReplicate('black-forest-labs/flux-1.1-pro', enhancedPrompt, {
+            aspect_ratio: size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1',
+            ...options,
+          });
+          break;
+        case 'nexos':
+          // Explicitly using nexos.ai for image gen
+          if (!isNexosConfigured()) {
+            return NextResponse.json({ error: 'NEXOS_API_KEY not configured' }, { status: 503 });
+          }
+          result = await nexosImageGenerate(enhancedPrompt, { size, quality: options?.quality });
+          break;
+        default:
+          return NextResponse.json({ error: `Unknown provider: ${selectedProvider}` }, { status: 400 });
+      }
     }
+
+    // Log generation
+    await logGeneration({
+      userId,
+      creationType: 'image',
+      model: selectedProvider,
+      prompt: enhancedPrompt.slice(0, 500),
+      result: { url: result.url },
+      success: true,
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

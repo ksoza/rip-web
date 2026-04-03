@@ -1,8 +1,10 @@
 'use client';
 // components/discover/MediaCarousel.tsx
 // Horizontal carousel of TV shows and movies for creators to select and reimagine
+// Now with REAL poster images from TMDB (The Movie Database) API
 // Massive library + Create Your Own IP + Mashup builder
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { TMDB_ID_MAP } from '@/lib/tmdb';
 
 // ── Types ───────────────────────────────────────────────────────
 export type MediaItem = {
@@ -194,6 +196,15 @@ function Carousel({ title, subtitle, items, onSelect, genreFilters }: {
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [activeGenre, setActiveGenre]       = useState('All');
   const [search, setSearch]                 = useState('');
+  const [posterUrls, setPosterUrls]         = useState<Record<string, string | null>>({});
+
+  // Fetch TMDB poster images on mount (server-side proxy keeps API key secure)
+  useEffect(() => {
+    fetch('/api/tmdb?action=posters')
+      .then(res => res.ok ? res.json() : {})
+      .then(data => setPosterUrls(data))
+      .catch(() => {}); // Graceful fallback — emojis work fine without TMDB
+  }, []);
 
   // Filter items
   const filteredItems = items.filter(item => {
@@ -279,7 +290,7 @@ function Carousel({ title, subtitle, items, onSelect, genreFilters }: {
         )}
 
         {filteredItems.map(item => (
-          <MediaCard key={item.id} item={item} onSelect={onSelect} />
+          <MediaCard key={item.id} item={item} onSelect={onSelect} posterUrl={posterUrls[item.id]} />
         ))}
 
         {filteredItems.length === 0 && (
@@ -292,25 +303,48 @@ function Carousel({ title, subtitle, items, onSelect, genreFilters }: {
   );
 }
 
-// ── Media Card ──────────────────────────────────────────────────
-function MediaCard({ item, onSelect }: { item: MediaItem; onSelect: (item: MediaItem) => void }) {
+// ── Media Card (with real TMDB poster images) ──────────────────
+function MediaCard({ item, onSelect, posterUrl }: { item: MediaItem; onSelect: (item: MediaItem) => void; posterUrl?: string | null }) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  const hasPoster = posterUrl && !imgError;
+
   return (
     <button onClick={() => onSelect(item)}
       className="snap-start shrink-0 w-[160px] sm:w-[180px] group relative rounded-xl overflow-hidden border border-border hover:border-rip transition-all hover:scale-[1.03] active:scale-[0.98]">
-      {/* Poster */}
+      {/* Poster — real TMDB image with gradient+emoji fallback */}
       <div className="aspect-[2/3] relative" style={{ background: item.gradient }}>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-5xl group-hover:scale-125 transition-transform duration-300">{item.emoji}</span>
-        </div>
+        {hasPoster && (
+          <img
+            src={posterUrl}
+            alt={item.title}
+            loading="lazy"
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setImgError(true)}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+          />
+        )}
+        {/* Emoji fallback (visible while image loads or if no poster) */}
+        {(!hasPoster || !imgLoaded) && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-5xl group-hover:scale-125 transition-transform duration-300">{item.emoji}</span>
+          </div>
+        )}
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-3">
           <span className="text-white font-display text-sm tracking-wide">☽ Reimagine</span>
           <p className="text-[9px] text-white/70 text-center leading-tight">{item.description}</p>
         </div>
-        {/* Badge */}
+        {/* Year badge */}
         <div className="absolute top-2 left-2">
           <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-black/50 backdrop-blur text-white/80">{item.year}</span>
         </div>
+        {/* Rating badge (TMDB) */}
+        {hasPoster && (
+          <div className="absolute top-2 right-2">
+            <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-rip/70 backdrop-blur text-white">⭐ TMDB</span>
+          </div>
+        )}
       </div>
       {/* Info */}
       <div className="bg-bg2 p-2.5">

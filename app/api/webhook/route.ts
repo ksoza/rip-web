@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe                        from 'stripe';
 import { recordRevenue, grantSubscription } from '@/lib/revenue';
 import { createSupabaseAdmin }       from '@/lib/supabase';
+import { logTransaction } from '@/lib/db';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-06-20',
@@ -50,6 +51,15 @@ export async function POST(req: NextRequest) {
           paymentMethod:    'card',
           grossAmount:      grossUsd,
           stripePaymentId:  session.payment_intent as string,
+        });
+
+        // Log to transactions table
+        await logTransaction({
+          userId,
+          type: 'subscription',
+          amountUsd: grossUsd,
+          stripePaymentId: session.payment_intent as string,
+          metadata: { plan, subId, event: 'checkout.session.completed' },
         });
 
         // Handle first 10K wallet airdrop eligibility
@@ -113,6 +123,15 @@ export async function POST(req: NextRequest) {
         await recordRevenue({
           userId, plan, paymentMethod: 'card', grossAmount: gross,
           stripePaymentId: invoice.payment_intent as string,
+        });
+
+        // Log renewal transaction
+        await logTransaction({
+          userId,
+          type: 'subscription',
+          amountUsd: gross,
+          stripePaymentId: invoice.payment_intent as string,
+          metadata: { plan, event: 'invoice.payment_succeeded', reason: invoice.billing_reason },
         });
 
         // Extend subscription period

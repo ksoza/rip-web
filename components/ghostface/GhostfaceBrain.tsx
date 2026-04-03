@@ -238,7 +238,7 @@ export function GhostfaceBrain() {
     }
   };
 
-  // ── Oracle Chat ─────────────────────────────────────
+  // ── Oracle Chat (AGI Mode) ──────────────────────────
   const sendChat = async (input?: string) => {
     const msg = input || chatInput;
     if (!msg.trim()) return;
@@ -252,12 +252,46 @@ export function GhostfaceBrain() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...chatMessages, newMsg].filter(m => m.role !== 'system').slice(-10),
+          message: msg,
+          mode: 'agi',
+          history: [...chatMessages, newMsg].filter(m => m.role !== 'system').slice(-10),
+          memory: {
+            operator: memory.name,
+            stack: memory.stack,
+            frameworks: memory.frameworks,
+            apis: memory.apis,
+            projects: memory.projects,
+            notes: memory.notes,
+          },
+          repo: loadedRepo ? {
+            full_name: loadedRepo.repo.full_name,
+            description: loadedRepo.repo.description,
+            language: loadedRepo.repo.language,
+          } : undefined,
           context: loadedRepo ? `Repo: ${loadedRepo.repo.full_name}, Languages: ${Object.keys(loadedRepo.languages).join(', ')}` : undefined,
         }),
       });
       const data = await resp.json();
-      setChatMessages(prev => [...prev, { role: 'assistant', content: data.content || 'No response' }]);
+      const toolBadge = data.toolsUsed?.length
+        ? `\n\n_🔧 Tools: ${data.toolsUsed.join(', ')}_`
+        : '';
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: (data.response || data.content || 'No response') + toolBadge,
+      }]);
+      // Update memory if the agent learned something
+      if (data.memory) {
+        setMemory(prev => {
+          const updated = { ...prev };
+          if (data.memory.operator) updated.name = data.memory.operator;
+          if (data.memory.stack?.length) updated.stack = data.memory.stack;
+          if (data.memory.frameworks?.length) updated.frameworks = data.memory.frameworks;
+          if (data.memory.apis?.length) updated.apis = data.memory.apis;
+          if (data.memory.notes?.length) updated.notes = data.memory.notes;
+          saveMemory(updated);
+          return updated;
+        });
+      }
     } catch {
       setChatMessages(prev => [...prev, { role: 'assistant', content: '⚠ Chat failed — check API configuration' }]);
     } finally {
@@ -279,14 +313,21 @@ export function GhostfaceBrain() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [
-            { role: 'system', content: `You are GhOSTface Brain — a universal code connector. The user describes what they want to build, and you find the right APIs, libraries, and code to make it work. Return ACTUAL working code, not pseudocode. Use the user's project context if provided. Memory: ${JSON.stringify(memory)}` },
-            { role: 'user', content: `${msg}${brainContext ? `\n\nMy project context:\n${brainContext}` : ''}` },
-          ],
+          message: `${msg}${brainContext ? `\n\nMy project context:\n${brainContext}` : ''}`,
+          mode: 'agi',
+          history: chatMessages.filter(m => m.role !== 'system').slice(-10),
+          memory: {
+            operator: memory.name,
+            stack: memory.stack,
+            frameworks: memory.frameworks,
+            apis: memory.apis,
+            projects: memory.projects,
+          },
         }),
       });
       const data = await resp.json();
-      setChatMessages(prev => [...prev, { role: 'assistant', content: data.content || 'No response' }]);
+      const toolBadge = data.toolsUsed?.length ? `\n\n_🔧 Tools: ${data.toolsUsed.join(', ')}_` : '';
+      setChatMessages(prev => [...prev, { role: 'assistant', content: (data.response || data.content || 'No response') + toolBadge }]);
     } catch {
       setChatMessages(prev => [...prev, { role: 'assistant', content: '⚠ Brain query failed — check API configuration' }]);
     } finally {

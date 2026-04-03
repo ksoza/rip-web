@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
 import { Bebas_Neue, Instrument_Sans, DM_Mono, UnifrakturMaguntia } from 'next/font/google';
+import { SolanaWalletProvider } from '@/lib/solana/wallet-provider';
 import './globals.css';
 
 const bebas = Bebas_Neue({
@@ -68,7 +69,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body className="bg-bg text-white font-body antialiased" suppressHydrationWarning>
-        {children}
+        <SolanaWalletProvider>
+          {children}
+        </SolanaWalletProvider>
       </body>
     </html>
   );

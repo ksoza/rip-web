@@ -184,7 +184,7 @@ export function AppShell({ user }: { user: User | null }) {
       case 'ghostface':
         return <GhostfaceBrain />;
       case 'wallet':
-        return user ? <WalletTab /> : null;
+        return user ? <WalletTab user={user} /> : null;
       case 'settings':
         return user ? <SettingsTab user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} /> : null;
       default:
