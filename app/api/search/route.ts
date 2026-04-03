@@ -5,23 +5,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase';
 
+// Sanitize search input — escape special PostgREST/SQL characters
+function sanitizeSearch(input: string): string {
+  return input
+    .replace(/[%_\\]/g, '\\$&') // escape LIKE wildcards
+    .replace(/[\x00-\x1F\x7F]/g, '') // strip control chars
+    .trim()
+    .slice(0, 200); // limit query length
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const q = searchParams.get('q') || '';
-    const genre = searchParams.get('genre') || '';
-    const show = searchParams.get('show') || '';
+    const rawQ = searchParams.get('q') || '';
+    const rawGenre = searchParams.get('genre') || '';
+    const rawShow = searchParams.get('show') || '';
     const sort = searchParams.get('sort') || 'recent'; // recent | popular | liked
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '20') || 20), 50);
     const offset = (page - 1) * limit;
+
+    const q = sanitizeSearch(rawQ);
+    const genre = sanitizeSearch(rawGenre);
+    const show = sanitizeSearch(rawShow);
 
     const supabase = createSupabaseAdmin();
 
     // Build query
     let query = supabase
       .from('creations')
-      .select('*, profiles!creations_user_id_fkey(username, display_name, avatar_url)', { count: 'exact' })
+      .select('*, profiles!creations_user_id_fkey(username, avatar_url)', { count: 'exact' })
       .eq('is_public', true);
 
     // Text search — search across title, content, show_title, hashtags
@@ -38,10 +51,10 @@ export async function GET(req: NextRequest) {
     // Sorting
     switch (sort) {
       case 'popular':
-        query = query.order('view_count', { ascending: false, nullsFirst: false });
+        query = query.order('likes_count', { ascending: false, nullsFirst: false });
         break;
       case 'liked':
-        query = query.order('like_count', { ascending: false, nullsFirst: false });
+        query = query.order('likes_count', { ascending: false, nullsFirst: false });
         break;
       case 'recent':
       default:
@@ -65,6 +78,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('Search error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Search failed' },
+      { status: 500 },
+    );
   }
 }
