@@ -5,14 +5,12 @@ import { createStakingPosition, getUserStakingPositions, unstakePosition } from 
 import { logTransaction } from '@/lib/db';
 import { PLAN_CONFIG } from '@/lib/revenue';
 
-// GET /api/staking?userId=...
+// GET /api/staking — get authenticated user's staking positions
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-
+    const userId = req.headers.get('x-user-id')!;
     if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const positions = await getUserStakingPositions(userId);
@@ -35,10 +33,15 @@ export async function GET(req: NextRequest) {
 // POST /api/staking — create a staking position
 export async function POST(req: NextRequest) {
   try {
-    const { userId, amountSol, lockDays, tier } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!userId || !amountSol || !lockDays) {
-      return NextResponse.json({ error: 'userId, amountSol, and lockDays required' }, { status: 400 });
+    const { amountSol, lockDays, tier } = await req.json();
+
+    if (!amountSol || !lockDays) {
+      return NextResponse.json({ error: 'amountSol and lockDays required' }, { status: 400 });
     }
 
     // Determine APY based on tier or default
@@ -75,10 +78,15 @@ export async function POST(req: NextRequest) {
 // DELETE /api/staking — unstake a position
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId, positionId } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!userId || !positionId) {
-      return NextResponse.json({ error: 'userId and positionId required' }, { status: 400 });
+    const { positionId } = await req.json();
+
+    if (!positionId) {
+      return NextResponse.json({ error: 'positionId required' }, { status: 400 });
     }
 
     const success = await unstakePosition(positionId, userId);

@@ -3,16 +3,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserTransactions } from '@/lib/db';
 
-// GET /api/transactions?userId=...&limit=50
+// GET /api/transactions — get authenticated user's transaction history
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-    const limit = parseInt(searchParams.get('limit') || '50');
-
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
     if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
 
     const transactions = await getUserTransactions(userId, limit);
     return NextResponse.json({ transactions });

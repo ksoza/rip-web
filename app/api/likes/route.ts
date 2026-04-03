@@ -6,9 +6,15 @@ import { toggleLike, isLiked, getLikeCount, getUserLikedCreations } from '@/lib/
 // POST /api/likes — toggle like
 export async function POST(req: NextRequest) {
   try {
-    const { userId, creationId } = await req.json();
-    if (!userId || !creationId) {
-      return NextResponse.json({ error: 'userId and creationId required' }, { status: 400 });
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { creationId } = await req.json();
+    if (!creationId) {
+      return NextResponse.json({ error: 'creationId required' }, { status: 400 });
     }
     const result = await toggleLike(userId, creationId);
     return NextResponse.json(result);
@@ -18,18 +24,19 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET /api/likes?userId=...&creationId=...  — check like status + count
-// GET /api/likes?userId=...&creationIds=a,b,c — batch check
+// GET /api/likes?creationId=...  — check like status + count
+// GET /api/likes?creationIds=a,b,c — batch check
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
+    // Use verified user from middleware for personalized like status
+    const userId = req.headers.get('x-user-id')!;
     const creationId = searchParams.get('creationId');
     const creationIds = searchParams.get('creationIds');
 
     // Batch check for multiple creations
     if (userId && creationIds) {
-      const ids = creationIds.split(',').filter(Boolean);
+      const ids = creationIds.split(',').filter(Boolean).slice(0, 100);
       const likedSet = await getUserLikedCreations(userId, ids);
       const result: Record<string, boolean> = {};
       ids.forEach(id => { result[id] = likedSet.has(id); });

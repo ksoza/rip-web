@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const creationId = searchParams.get('creationId');
     const parentId = searchParams.get('parentId');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
 
     if (parentId) {
       const replies = await getReplies(parentId);
@@ -31,10 +31,16 @@ export async function GET(req: NextRequest) {
 // POST /api/comments — create a comment
 export async function POST(req: NextRequest) {
   try {
-    const { userId, creationId, content, parentId } = await req.json();
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!userId || !creationId || !content?.trim()) {
-      return NextResponse.json({ error: 'userId, creationId, and content required' }, { status: 400 });
+    const { creationId, content, parentId } = await req.json();
+
+    if (!creationId || !content?.trim()) {
+      return NextResponse.json({ error: 'creationId and content required' }, { status: 400 });
     }
 
     if (content.length > 2000) {
@@ -58,10 +64,16 @@ export async function POST(req: NextRequest) {
 // DELETE /api/comments — remove own comment
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId, commentId } = await req.json();
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!userId || !commentId) {
-      return NextResponse.json({ error: 'userId and commentId required' }, { status: 400 });
+    const { commentId } = await req.json();
+
+    if (!commentId) {
+      return NextResponse.json({ error: 'commentId required' }, { status: 400 });
     }
 
     const success = await deleteComment(commentId, userId);

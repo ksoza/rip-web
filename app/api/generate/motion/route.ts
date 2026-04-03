@@ -5,10 +5,11 @@ import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, poseImageUrl, characterRef, userId, options } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    const { prompt, poseImageUrl, characterRef, options } = await req.json();
 
-    if (!prompt || !userId) {
-      return NextResponse.json({ error: 'Missing prompt or userId' }, { status: 400 });
+    if (!prompt) {
+      return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
     const token = process.env.REPLICATE_API_TOKEN;

@@ -4,14 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { recordNFTMint, getUserNFTs, listNFTForSale } from '@/lib/db';
 import { logTransaction } from '@/lib/db';
 
-// GET /api/nfts?userId=...
+// GET /api/nfts — get authenticated user's NFTs
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
     if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const nfts = await getUserNFTs(userId);
@@ -25,11 +24,13 @@ export async function GET(req: NextRequest) {
 // POST /api/nfts — record a new mint (called after client-side wallet signing)
 export async function POST(req: NextRequest) {
   try {
-    const { userId, creationId, mintAddress, metadataUri, maxEditions, royaltyBps, solanaTxSig } = await req.json();
-
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
     if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { creationId, mintAddress, metadataUri, maxEditions, royaltyBps, solanaTxSig } = await req.json();
 
     const nft = await recordNFTMint({
       creationId,
@@ -60,10 +61,16 @@ export async function POST(req: NextRequest) {
 // PATCH /api/nfts — list or delist an NFT for sale
 export async function PATCH(req: NextRequest) {
   try {
-    const { userId, nftId, action, priceSol } = await req.json();
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!userId || !nftId || !action) {
-      return NextResponse.json({ error: 'userId, nftId, and action required' }, { status: 400 });
+    const { nftId, action, priceSol } = await req.json();
+
+    if (!nftId || !action) {
+      return NextResponse.json({ error: 'nftId and action required' }, { status: 400 });
     }
 
     if (action === 'list') {

@@ -9,10 +9,15 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { showTitle, genre, creationType, idea, crossover, userId } = body;
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!showTitle || !idea || !userId) {
+    const body = await req.json();
+    const { showTitle, genre, creationType, idea, crossover } = body;
+
+    if (!showTitle || !idea) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 

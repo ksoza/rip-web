@@ -22,7 +22,13 @@ function getAppUrl(): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { plan, userId, referralCode } = await req.json();
+    // Use verified user from middleware (x-user-id header)
+    const userId = req.headers.get('x-user-id')!;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { plan, referralCode } = await req.json();
 
     if (!plan || !PRICE_IDS[plan]) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });

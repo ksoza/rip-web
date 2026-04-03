@@ -7,10 +7,11 @@ import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, prompt, provider = 'elevenlabs', voiceId, model, duration = 10, userId } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    const { text, prompt, provider = 'elevenlabs', voiceId, model, duration = 10 } = await req.json();
 
-    if ((!text && !prompt) || !userId) {
-      return NextResponse.json({ error: 'Missing text/prompt or userId' }, { status: 400 });
+    if ((!text && !prompt)) {
+      return NextResponse.json({ error: 'Missing text/prompt' }, { status: 400 });
     }
 
     switch (provider) {
