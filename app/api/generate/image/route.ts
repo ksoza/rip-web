@@ -59,10 +59,11 @@ async function generateWithReplicate(model: string, prompt: string, options: any
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, provider, style, size, characterRef, userId, options } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    const { prompt, provider, style, size, characterRef, options } = await req.json();
 
-    if (!prompt || !userId) {
-      return NextResponse.json({ error: 'Missing prompt or userId' }, { status: 400 });
+    if (!prompt) {
+      return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
     // Build enhanced prompt for character consistency

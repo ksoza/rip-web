@@ -41,19 +41,20 @@ function isPublicRoute(pathname: string): boolean {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const res = NextResponse.next();
 
-  // ── Rate limiting headers for public endpoints ─────────────────
-  if (pathname.startsWith('/api/')) {
-    res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
-    res.headers.set('Cache-Control', 'no-store');
+  // ── Only process API routes ────────────────────────────────────
+  if (!pathname.startsWith('/api/')) {
+    return NextResponse.next();
   }
 
   // ── Skip auth for public routes ────────────────────────────────
   if (isPublicRoute(pathname)) {
-    // Add light cache for trending/search
+    const res = NextResponse.next();
+    res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
     if (pathname === '/api/trending') {
       res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    } else {
+      res.headers.set('Cache-Control', 'no-store');
     }
     return res;
   }
@@ -69,11 +70,11 @@ export async function middleware(req: NextRequest) {
             get(name: string) {
               return req.cookies.get(name)?.value;
             },
-            set(name: string, value: string, options: CookieOptions) {
-              res.cookies.set({ name, value, ...options });
+            set(_name: string, _value: string, _options: CookieOptions) {
+              // no-op in middleware
             },
-            remove(name: string, options: CookieOptions) {
-              res.cookies.set({ name, value: '', ...options });
+            remove(_name: string, _options: CookieOptions) {
+              // no-op in middleware
             },
           },
         },
@@ -88,8 +89,15 @@ export async function middleware(req: NextRequest) {
         );
       }
 
-      // Attach user ID as header so API routes can read it without re-fetching
-      res.headers.set('x-user-id', user.id);
+      // Pass verified user ID to downstream API routes via request headers.
+      // Routes read req.headers.get('x-user-id') instead of trusting body.
+      const requestHeaders = new Headers(req.headers);
+      requestHeaders.set('x-user-id', user.id);
+      requestHeaders.set('x-user-email', user.email || '');
+
+      return NextResponse.next({
+        request: { headers: requestHeaders },
+      });
     } catch {
       return NextResponse.json(
         { error: 'Authentication failed' },
@@ -98,6 +106,10 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  // ── Default: pass through ──────────────────────────────────────
+  const res = NextResponse.next();
+  res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
+  res.headers.set('Cache-Control', 'no-store');
   return res;
 }
 

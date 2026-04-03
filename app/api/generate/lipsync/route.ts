@@ -5,10 +5,11 @@ import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { faceUrl, audioUrl, provider = 'wav2lip', userId } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    const { faceUrl, audioUrl, provider = 'wav2lip' } = await req.json();
 
-    if (!faceUrl || !audioUrl || !userId) {
-      return NextResponse.json({ error: 'Missing faceUrl, audioUrl, or userId' }, { status: 400 });
+    if (!faceUrl || !audioUrl) {
+      return NextResponse.json({ error: 'Missing faceUrl, audioUrl,' }, { status: 400 });
     }
 
     const token = process.env.REPLICATE_API_TOKEN;

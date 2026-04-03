@@ -5,10 +5,11 @@ import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { sourceUrl, targetUrl, userId } = await req.json();
+    const userId = req.headers.get('x-user-id')!;
+    const { sourceUrl, targetUrl } = await req.json();
 
-    if (!sourceUrl || !targetUrl || !userId) {
-      return NextResponse.json({ error: 'Missing sourceUrl, targetUrl, or userId' }, { status: 400 });
+    if (!sourceUrl || !targetUrl) {
+      return NextResponse.json({ error: 'Missing sourceUrl, targetUrl,' }, { status: 400 });
     }
 
     const token = process.env.REPLICATE_API_TOKEN;

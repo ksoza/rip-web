@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
 
     // Action: split — split a revenue event into all buckets
     if (action === 'split') {
-      const { totalUsd, sourceType, sourceId, userId } = body;
+      const userId = req.headers.get('x-user-id')!;
+        const { totalUsd, sourceType, sourceId } = body;
       if (!totalUsd || totalUsd <= 0) {
         return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
       }

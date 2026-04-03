@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
 
     // Action: verify — check if an NFT was successfully minted on-chain
     if (action === 'verify') {
-      const { txHash, chain: mintChain, userId, creationId, mintAddress, metadataUri } = body;
+      const userId = req.headers.get('x-user-id')!;
+      const { txHash, chain: mintChain, creationId, mintAddress, metadataUri } = body;
       if (!txHash) {
         return NextResponse.json({ error: 'Missing txHash' }, { status: 400 });
       }
