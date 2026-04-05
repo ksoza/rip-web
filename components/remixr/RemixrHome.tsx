@@ -1,9 +1,9 @@
 'use client';
 // components/remixr/RemixrHome.tsx
 // ReMixr homepage — 3 carousels: TV Shows, Movies, Community Content
+// Uses static TMDB poster paths (no API key required)
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { createSupabaseBrowser } from '@/lib/supabase';
 import type { MediaItem } from '@/components/create/CreationWizard';
 
 // ── Types ───────────────────────────────────────────────────────
@@ -29,25 +29,96 @@ interface Props {
 // ── Carousel data ───────────────────────────────────────────────
 import { TV_SHOWS, MOVIES } from '@/components/discover/MediaCarousel';
 
-// ── Poster cache context ────────────────────────────────────────
-// Fetch all posters in one bulk call, then pass the map down
-function usePosterMap() {
-  const [posterMap, setPosterMap] = useState<Record<string, string | null>>({});
-  const [loading, setLoading] = useState(true);
+// ── Static TMDB poster paths (scraped from TMDB, no API key needed) ──
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
+const POSTER_PATHS: Record<string, string> = {
+  // TV Shows: Drama / Crime
+  'breaking-bad': '/ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg',
+  'game-of-thrones': '/1XS1oqL89opfnbLl8WnZY1O1uJx.jpg',
+  'the-sopranos': '/rTc7ZXdroqjkKivFPvCPX0Ru7uw.jpg',
+  'the-wire': '/4lbclFySvugI51fwsyxBTOm4DqK.jpg',
+  'peaky-blinders': '/vUUqzWa2LnHIVqkaKVlVGkVcZIW.jpg',
+  'better-call-saul': '/zjg4jpK1Wp2kiRvtt5ND0kznako.jpg',
+  'ozark': '/pCGyPVrI9Fzw6rE1Pvi4BIXF6ET.jpg',
+  'succession': '/z0XiwdrCQ9yVIr4O0pxzaAYRxdW.jpg',
+  // TV Shows: Sci-Fi / Fantasy / Horror
+  'stranger-things': '/uOOtwVbSr4QDjAGIifLDwpb2Pdl.jpg',
+  'the-last-of-us': '/dmo6TYuuJgaYinXBPjrgG9mB5od.jpg',
+  'the-mandalorian': '/sWgBv7LV2PRoQgkxwlibdGXKz1S.jpg',
+  'wednesday': '/36xXlhEpQqVVPuiZhfoQuaY4OlA.jpg',
+  'the-walking-dead': '/s3OIDrCErUjthsnPPreY7XktQXB.jpg',
+  'black-mirror': '/seN6rRfN0I6n8iDXjlSMk1QjNcq.jpg',
+  'westworld': '/8MfgyFHf7XEboZJPZXCIDqqiz6e.jpg',
+  'the-witcher': '/AoGsDM02UVt0npBA8OvpDcZbaMi.jpg',
+  'house-of-dragon': '/7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg',
+  // TV Shows: Comedy
+  'the-office': '/7DJKHzAi83BmQrWLrYYOqcoKfhR.jpg',
+  'friends': '/2koX1xLkpTQM4IZebYvKysFW1Nh.jpg',
+  'seinfeld': '/aCw8ONfyz3AhngVQa1E2Ss4KSUQ.jpg',
+  'its-always-sunny': '/o0tMMK33JqmtpcWw0H41cEr9xQB.jpg',
+  'malcolm-middle': '/uftxEWbn3OSykTy4DX4BrdVeiuv.jpg',
+  'arrested-dev': '/p4r4RD7RsNcJVoz0H6z3dBoTBtW.jpg',
+  'the-simpsons': '/uWpG7GqfKGQqX4YMAo3nv5OrglV.jpg',
+  'south-park': '/1CGwZCFX2qerXaXQJJUB3qUvxq7.jpg',
+  'rick-and-morty': '/WGRQ8FpjkDTzivQJ43t94bOuY0.jpg',
+  'family-guy': '/3PFsEuAiyLkWsP4GG6dIV37Q6gu.jpg',
+  'archer': '/vhnrkTGYPqcB63ALcSJm0WoaKHT.jpg',
+  'bobs-burgers': '/iIHsQe3Qjs3NH62HdamyQEPeqTR.jpg',
+  'parks-and-rec': '/5IOj62y2Eb2ngyYmEn1IJ7bFhzH.jpg',
+  'american-dad': '/eb9sH2am9IUSQ8GhXTNAVoujk8W.jpg',
+  // TV Shows: Anime
+  'naruto': '/Asv6ornwVeMxKUdA5ySLMrgENwy.jpg',
+  'one-piece': '/uiIB9ctqZFbfRXXimtpmZb5dusi.jpg',
+  'attack-on-titan': '/hTP1DtLGFamjfu8WqjnuQdP1n4i.jpg',
+  'demon-slayer': '/xUfRZu2mi8jH6SzQEJGP6tjBuYj.jpg',
+  'death-note': '/tCZFfYTIwrR7n94J6G14Y4hAFU6.jpg',
+  'dragon-ball-z': '/yfyToia25GnvjY7FPAGaCm3lKRc.jpg',
+  'my-hero-academia': '/phuYuzqWW9ru8EA3HVjE9W2Rr3M.jpg',
+  'fullmetal-alchemist': '/5ZFUEOULaVml7pQuXxhpR2SmVUw.jpg',
+  'jujutsu-kaisen': '/fHpKWq9ayzSk8nSwqRuaAUemRKh.jpg',
+  'cowboy-bebop-anime': '/xDiXDfZwC6XYC6fxHI1jl3A3Ill.jpg',
+  // Movies: Superhero
+  'the-dark-knight': '/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
+  'avengers-endgame': '/ulzhLuWrPK07P1YkdWQLZnQh1JL.jpg',
+  'spider-verse': '/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg',
+  'black-panther': '/uxzzxijgPIY7slzFvMotPv8wjKA.jpg',
+  'logan': '/fnbjcRDYn6YviCcePDnGdyAkYsB.jpg',
+  'john-wick': '/wXqWR7dHncNRbxoEGybEy7QTe9h.jpg',
+  // Movies: Sci-Fi / Mind-Bending
+  'inception': '/xlaY2zyzMfkhk0HSC5VUwzoZPU1.jpg',
+  'the-matrix': '/aOIuZAjPaRIE6CMzbazvcHuHXDc.jpg',
+  'interstellar': '/yQvGrMoipbRoddT0ZR8tPoR7NfX.jpg',
+  'blade-runner-2049': '/gajva2L0rPYkEWjzgFlBXCAVBE5.jpg',
+  'dune-2021': '/gDzOcq0pfeCeqMBwKIJlSmQpjkZ.jpg',
+  // Movies: Classic
+  'pulp-fiction': '/vQWk5YBFWF4bZaofAbv0tShwBvQ.jpg',
+  'the-godfather': '/3bhkrj58Vtu7enYsRolD1fZdja1.jpg',
+  'fight-club': '/jSziioSwPVrOy9Yow3XhWIBDjq1.jpg',
+  'goodfellas': '/9OkCLM73MIU2CrKZbqiT8Ln1wY2.jpg',
+  'the-shawshank': '/9cqNxx0GxF0bflZmeSMuL5tnGzr.jpg',
+  'forrest-gump': '/saHP97rTPS5eLmrLQEcANmKrsFl.jpg',
+  'jurassic-park': '/maFjKnJ62hDQ9E66dKqDZgbUy0H.jpg',
+  'star-wars-4': '/6FfCtAuVAW8XJjZ7eWeLibRLWTw.jpg',
+  'back-to-future': '/vN5B5WgYscRGcQpVhHl6p9DDTP0.jpg',
+  'the-lion-king': '/sKCr78MXSLixwmZ8DyJLrpMsd15.jpg',
+  'titanic': '/9xjZS2rlVxm8SFx8kPC3aIGCOYQ.jpg',
+  'gladiator': '/ty8TGRuvJLPUmAR1H1nRIsgwvim.jpg',
+  'django-unchained': '/7oWY8VDWW7thTzWh3OKYRkWUlD5.jpg',
+  'mad-max-fury': '/hA2ple9q4qnwxp3hKVNhroipsir.jpg',
+  // Movies: Modern
+  'everything-everywhere': '/u68AjlvlutfEIcpmbYpKcdi09ut.jpg',
+  'oppenheimer': '/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg',
+  // Movies: Anime
+  'spirited-away': '/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg',
+  'your-name': '/q719jXXEzOoYaps6babgKnONONX.jpg',
+  'akira': '/neZ0ykEsPqxamsX6o5QNUFILQrz.jpg',
+  // Movies: Horror
+  'get-out': '/mE24wUCfjK8AoBBjaMjho7Rczr7.jpg',
+};
 
-  useEffect(() => {
-    fetch('/api/tmdb?action=posters')
-      .then(r => r.json())
-      .then(data => {
-        if (data && typeof data === 'object' && !data.error) {
-          setPosterMap(data);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  return { posterMap, loading };
+function getPosterUrl(id: string): string | null {
+  const path = POSTER_PATHS[id];
+  return path ? `${TMDB_IMAGE_BASE}${path}` : null;
 }
 
 // ── Horizontal Carousel Component ───────────────────────────────
@@ -138,13 +209,12 @@ function Carousel({
 // ── Media Card (TV Show / Movie) with TMDB poster ───────────────
 function MediaCard({
   item,
-  posterUrl,
   onClick,
 }: {
   item: MediaItem;
-  posterUrl: string | null;
   onClick: () => void;
 }) {
+  const posterUrl = getPosterUrl(item.id);
   const [loaded, setLoaded] = useState(false);
 
   return (
@@ -167,6 +237,10 @@ function MediaCard({
               alt={item.title}
               className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setLoaded(true)}
+              onError={(e) => {
+                // Fallback to gradient on image load error
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
             />
           </>
         ) : (
@@ -266,7 +340,6 @@ const SAMPLE_COMMUNITY: CommunityItem[] = [
 // ── Main Component ──────────────────────────────────────────────
 export function RemixrHome({ user, onSelectMedia, onViewContent }: Props) {
   const [communityFeed] = useState<CommunityItem[]>(SAMPLE_COMMUNITY);
-  const { posterMap } = usePosterMap();
 
   return (
     <div className="space-y-2">
@@ -291,7 +364,6 @@ export function RemixrHome({ user, onSelectMedia, onViewContent }: Props) {
           <MediaCard
             key={show.id}
             item={show}
-            posterUrl={posterMap[show.id] || null}
             onClick={() => onSelectMedia(show)}
           />
         ))}
@@ -308,7 +380,6 @@ export function RemixrHome({ user, onSelectMedia, onViewContent }: Props) {
           <MediaCard
             key={movie.id}
             item={movie}
-            posterUrl={posterMap[movie.id] || null}
             onClick={() => onSelectMedia(movie)}
           />
         ))}
