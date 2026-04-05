@@ -90,7 +90,9 @@ export function HamburgerNav({ currentPage, onNavigate, user, profile, onSignIn 
       )}
 
       {/* Slide-out Menu */}
-      <div className={`fixed top-0 left-0 z-[58] h-full w-72 bg-bg2/98 backdrop-blur-xl border-r border-border transform transition-transform duration-300 ease-out ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className={`fixed top-0 left-0 z-[58] h-full w-72 border-r border-border transform transition-transform duration-300 ease-out ${open ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ background: '#0a0a0d', backdropFilter: 'blur(20px)' }}
+      >
         <div className="flex flex-col h-full">
 
           {/* Logo area */}
@@ -102,22 +104,22 @@ export function HamburgerNav({ currentPage, onNavigate, user, profile, onSignIn 
               <span className="text-white/90">ix</span>
               <span className="text-purple">r</span>
             </div>
-            <p className="text-[10px] text-muted/60 mt-1 tracking-wider uppercase">AI Fan Studio</p>
+            <p className="text-[10px] text-white/30 mt-1 tracking-wider uppercase">AI Fan Studio</p>
           </div>
 
           {/* Nav Items */}
           <nav className="flex-1 overflow-y-auto py-3 px-3">
-            {PAGES.map((page) => {
-              const isActive = currentPage === page.id;
-              const isLocked = page.requiresAuth && !user;
+            {PAGES.map((navPage) => {
+              const isActive = currentPage === navPage.id;
+              const isLocked = navPage.requiresAuth && !user;
 
               return (
                 <button
-                  key={page.id}
-                  onClick={() => handleNav(page.id)}
+                  key={navPage.id}
+                  onClick={() => handleNav(navPage.id)}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl mb-1 text-left transition-all group ${
                     isActive
-                      ? 'bg-white/8'
+                      ? 'bg-white/10'
                       : 'hover:bg-white/5'
                   }`}
                 >
@@ -126,28 +128,28 @@ export function HamburgerNav({ currentPage, onNavigate, user, profile, onSignIn 
                       isActive ? 'shadow-lg' : ''
                     }`}
                     style={{
-                      background: isActive ? page.color + '20' : 'transparent',
-                      border: isActive ? `1px solid ${page.color}40` : '1px solid transparent',
+                      background: isActive ? navPage.color + '20' : 'rgba(255,255,255,0.05)',
+                      border: isActive ? `1px solid ${navPage.color}40` : '1px solid rgba(255,255,255,0.06)',
                     }}
                   >
-                    {page.icon}
+                    {navPage.icon}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span
-                        className={`text-sm font-bold ${isActive ? '' : 'text-muted group-hover:text-white'}`}
-                        style={isActive ? { color: page.color } : {}}
+                        className={`text-sm font-bold ${isActive ? '' : 'text-white/70 group-hover:text-white'}`}
+                        style={isActive ? { color: navPage.color } : {}}
                       >
-                        {page.label}
+                        {navPage.label}
                       </span>
                       {isLocked && (
-                        <span className="text-[10px] text-muted/50">🔒</span>
+                        <span className="text-[10px] text-white/30">🔒</span>
                       )}
                     </div>
-                    <p className="text-[10px] text-muted/50 truncate">{page.description}</p>
+                    <p className="text-[10px] text-white/30 truncate">{navPage.description}</p>
                   </div>
                   {isActive && (
-                    <div className="w-1 h-6 rounded-full" style={{ background: page.color }} />
+                    <div className="w-1 h-6 rounded-full" style={{ background: navPage.color }} />
                   )}
                 </button>
               );
