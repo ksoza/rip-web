@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Build fal.ai input based on the model
-    const input: Record<string, unknown> = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const input: Record<string, any> = {
       prompt: `${prompt}, cinematic motion, smooth animation, professional quality`,
     };
 
