@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
         input.num_images = 1;
 
-        const result = await falGenerate(falModel.id, input);
+        const result = await falGenerate(falModel.id, input as Parameters<typeof falGenerate>[1]);
 
         if (result.images?.[0]?.url) {
           const imageUrl = result.images[0].url;
