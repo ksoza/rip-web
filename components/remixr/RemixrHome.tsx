@@ -163,44 +163,54 @@ function Carousel({
   return (
     <section className="mb-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 px-1">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
-            style={{ background: color + '20', border: `1px solid ${color}30` }}
-          >
-            {icon}
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white">{title}</h2>
-            <p className="text-xs text-muted/60">{subtitle}</p>
-          </div>
+      <div className="flex items-center gap-3 mb-4 px-1">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+          style={{ background: color + '20', border: `1px solid ${color}30` }}
+        >
+          {icon}
         </div>
-        <div className="flex gap-1.5">
-          <button
-            onClick={() => scroll('left')}
-            disabled={!canScrollLeft}
-            className="w-8 h-8 rounded-lg border border-border flex items-center justify-center text-muted hover:text-white hover:border-white/20 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
-          >
-            ←
-          </button>
-          <button
-            onClick={() => scroll('right')}
-            disabled={!canScrollRight}
-            className="w-8 h-8 rounded-lg border border-border flex items-center justify-center text-muted hover:text-white hover:border-white/20 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
-          >
-            →
-          </button>
+        <div>
+          <h2 className="text-lg font-bold text-white">{title}</h2>
+          <p className="text-xs text-white/30">{subtitle}</p>
         </div>
       </div>
 
-      {/* Scrollable row */}
-      <div
-        ref={scrollRef}
-        className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {children}
+      {/* Scrollable row with Netflix-style arrows */}
+      <div className="relative group/carousel">
+        {/* Left arrow — centered vertically on left edge */}
+        {canScrollLeft && (
+          <button
+            onClick={() => scroll('left')}
+            className="absolute left-0 top-0 bottom-8 z-10 w-10 sm:w-12 flex items-center justify-center bg-gradient-to-r from-black/80 via-black/50 to-transparent opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-200 cursor-pointer"
+            aria-label="Scroll left"
+          >
+            <svg className="w-7 h-7 text-white drop-shadow-lg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
+
+        {/* Right arrow — centered vertically on right edge */}
+        {canScrollRight && (
+          <button
+            onClick={() => scroll('right')}
+            className="absolute right-0 top-0 bottom-8 z-10 w-10 sm:w-12 flex items-center justify-center bg-gradient-to-l from-black/80 via-black/50 to-transparent opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-200 cursor-pointer"
+            aria-label="Scroll right"
+          >
+            <svg className="w-7 h-7 text-white drop-shadow-lg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+
+        <div
+          ref={scrollRef}
+          className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory px-1"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {children}
+        </div>
       </div>
     </section>
   );
