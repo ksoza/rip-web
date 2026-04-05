@@ -1,12 +1,14 @@
 'use client';
 // components/discover/DiscoverTab.tsx
 // "Like Suno, but for TV and Movies" — social publishing platform
-// Creators post AI-generated episodes/scenes, others watch/like/remix/follow
+// V2: Now with RxTV and RxMovies branded feeds
 import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 import { MediaCarousels } from './MediaCarousel';
 import { ShareDialog } from '../shared/ShareDialog';
+import { RxTVFeed } from './RxTVFeed';
+import { RxMoviesFeed } from './RxMoviesFeed';
 import type { MediaItem } from './MediaCarousel';
 
 // ── Types ───────────────────────────────────────────────────────
@@ -142,8 +144,11 @@ const MEDIA_ICONS: Record<string, string> = {
   music: '🎵',
 };
 
+// V2: Updated tabs with RxTV and RxMovies
 const TABS = [
-  { id: 'browse',    label: '🎬 Browse IPs' },
+  { id: 'rxtv',      label: '📺 RxTV' },
+  { id: 'rxmovies',  label: '🎬 RxMovies' },
+  { id: 'browse',    label: '🌐 Browse IPs' },
   { id: 'trending',  label: '🔥 Trending' },
   { id: 'latest',    label: '✨ Latest' },
   { id: 'following', label: '👥 Following' },
@@ -157,7 +162,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
   onNavigateToStudio?: (showName: string, category: string) => void;
   onReimagine?: (item: MediaItem) => void;
 }) {
-  const [tab, setTab] = useState('browse');
+  const [tab, setTab] = useState('rxtv');
   const [feed, setFeed] = useState<FeedItem[]>(SAMPLE_FEED);
   const [loading, setLoading] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState('');
@@ -182,7 +187,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
 
       if (error) {
         console.error('Feed load error:', error);
-        return; // Keep SAMPLE_FEED as fallback
+        return;
       }
 
       if (creations && creations.length > 0) {
@@ -200,7 +205,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
           description: c.logline || c.content?.slice(0, 200) || '',
           likes: c.likes_count || 0,
           remixes: c.remix_count || 0,
-          views: Math.floor(Math.random() * 10000), // Views not tracked yet
+          views: Math.floor(Math.random() * 10000),
           liked: false,
           createdAt: formatRelativeTime(c.created_at),
           tags: c.hashtags
@@ -209,12 +214,10 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
           mediaType: mapMediaType(c.type),
         }));
 
-        // Merge real data first, then sample data as filler
         setFeed([...realFeed, ...SAMPLE_FEED]);
       }
     } catch (err) {
       console.error('Feed load exception:', err);
-      // Keep SAMPLE_FEED as fallback
     } finally {
       setLoading(false);
     }
@@ -316,12 +319,11 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     return true;
   });
 
-  // Toggle like — calls /api/likes for persistence, optimistic UI update
+  // Toggle like
   function toggleLike(id: string) {
     setFeed(f => f.map(item =>
       item.id === id ? { ...item, liked: !item.liked, likes: item.liked ? item.likes - 1 : item.likes + 1 } : item
     ));
-    // Persist via API (fire & forget — optimistic update above)
     if (user?.id) {
       fetch('/api/likes', {
         method: 'POST',
@@ -331,7 +333,6 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     }
   }
 
-  // Toggle follow
   function toggleFollow(handle: string) {
     setFollowing(prev => {
       const next = new Set(prev);
@@ -341,10 +342,8 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     });
   }
 
-  // Handle media selection from carousel → opens Creation Wizard
   function handleSelectMedia(item: MediaItem) {
     if (onReimagine) {
-      // Full wizard flow: carousel → character → prompt → storyboard → result
       onReimagine(item as any);
     } else if (onNavigateToStudio) {
       onNavigateToStudio(item.title, item.category);
@@ -354,7 +353,6 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
     }
   }
 
-  // Handle remix from feed
   function handleRemix(item: FeedItem) {
     if (onNavigateToStudio) {
       onNavigateToStudio(item.show, item.genre);
@@ -389,21 +387,23 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
         <p className="text-muted text-sm mt-1">Browse IPs, watch community creations, and start reimagining</p>
       </div>
 
-      {/* Search */}
-      <div className="mb-5">
-        <div className="relative">
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search shows, movies, creators, tags..."
-            className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 pl-10 text-white text-sm outline-none focus:border-bord2 placeholder:text-muted2" />
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted">🔍</span>
-          {search && (
-            <button onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white text-sm transition-colors">
-              ✕
-            </button>
-          )}
+      {/* Search — shown for all tabs except RxTV/RxMovies (they have their own filters) */}
+      {!['rxtv', 'rxmovies'].includes(tab) && (
+        <div className="mb-5">
+          <div className="relative">
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search shows, movies, creators, tags..."
+              className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 pl-10 text-white text-sm outline-none focus:border-bord2 placeholder:text-muted2" />
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted">🔍</span>
+            {search && (
+              <button onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white text-sm transition-colors">
+                ✕
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 mb-5 overflow-x-auto pb-2">
@@ -411,13 +411,25 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
               tab === t.id
-                ? 'bg-cyan/10 border-2 border-cyan text-cyan'
+                ? t.id === 'rxtv' ? 'bg-cyan/10 border-2 border-cyan text-cyan'
+                : t.id === 'rxmovies' ? 'bg-rip/10 border-2 border-rip text-rip'
+                : 'bg-cyan/10 border-2 border-cyan text-cyan'
                 : 'bg-bg2 border border-border text-muted hover:text-white hover:border-bord2'
             }`}>
             {t.label}
           </button>
         ))}
       </div>
+
+      {/* ── RxTV Feed ──────────────────────────────────────────── */}
+      {tab === 'rxtv' && (
+        <RxTVFeed user={user} onNavigateToStudio={onNavigateToStudio} />
+      )}
+
+      {/* ── RxMovies Feed ──────────────────────────────────────── */}
+      {tab === 'rxmovies' && (
+        <RxMoviesFeed user={user} onNavigateToStudio={onNavigateToStudio} />
+      )}
 
       {/* ── Browse IPs Tab: TV Show & Movie Carousels ──────────── */}
       {tab === 'browse' && (
@@ -452,8 +464,8 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
         </div>
       )}
 
-      {/* Feed Grid — show for all tabs except 'browse' */}
-      {tab !== 'browse' && (
+      {/* Feed Grid — show for community tabs (not RxTV/RxMovies/browse) */}
+      {!['rxtv', 'rxmovies', 'browse'].includes(tab) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {(tab === 'trending' ? filteredFeed.slice(1) : filteredFeed).map(item => (
             <FeedCard key={item.id} item={item} onLike={toggleLike} expanded={expandedId === item.id} onExpand={setExpandedId} onRemix={handleRemix} onShare={handleShare} />
@@ -462,7 +474,7 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
       )}
 
       {/* Empty State */}
-      {tab !== 'browse' && filteredFeed.length === 0 && (
+      {!['rxtv', 'rxmovies', 'browse'].includes(tab) && filteredFeed.length === 0 && (
         <div className="text-center py-20">
           <div className="text-6xl mb-4">🎬</div>
           <h3 className="font-display text-2xl text-white mb-2">Nothing yet!</h3>
@@ -475,39 +487,41 @@ export function DiscoverTab({ user, profile, onNavigateToStudio, onReimagine }: 
         </div>
       )}
 
-      {/* Creator Spotlight */}
-      <div className="mt-8">
-        <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">🌟 Top Creators</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { handle: 'heisenberg_fan', tier: 'creator', works: 42, followers: 2800 },
-            { handle: 'anime_remixer', tier: 'studio', works: 156, followers: 15000 },
-            { handle: 'cat_news_network', tier: 'starter', works: 23, followers: 89000 },
-            { handle: 'upside_down', tier: 'creator', works: 67, followers: 4200 },
-          ].map(c => (
-            <div key={c.handle} className="bg-bg2 border border-border rounded-xl p-4 text-center hover:border-bord2 transition-all cursor-pointer">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-rip to-cyan mx-auto mb-2 flex items-center justify-center text-lg font-display text-white">
-                {c.handle[0].toUpperCase()}
+      {/* Creator Spotlight — only on community tabs */}
+      {!['rxtv', 'rxmovies', 'browse'].includes(tab) && (
+        <div className="mt-8">
+          <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">🌟 Top Creators</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { handle: 'heisenberg_fan', tier: 'creator', works: 42, followers: 2800 },
+              { handle: 'anime_remixer', tier: 'studio', works: 156, followers: 15000 },
+              { handle: 'cat_news_network', tier: 'starter', works: 23, followers: 89000 },
+              { handle: 'upside_down', tier: 'creator', works: 67, followers: 4200 },
+            ].map(c => (
+              <div key={c.handle} className="bg-bg2 border border-border rounded-xl p-4 text-center hover:border-bord2 transition-all cursor-pointer">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-rip to-cyan mx-auto mb-2 flex items-center justify-center text-lg font-display text-white">
+                  {c.handle[0].toUpperCase()}
+                </div>
+                <div className="text-xs font-bold text-white">@{c.handle}</div>
+                <div className="text-[9px] text-muted uppercase mt-0.5">{c.tier}</div>
+                <div className="flex justify-center gap-3 mt-2 text-[9px] text-muted2">
+                  <span>{fmtNum(c.followers)} followers</span>
+                  <span>{c.works} works</span>
+                </div>
+                <button
+                  onClick={() => toggleFollow(c.handle)}
+                  className={`mt-2 px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${
+                    following.has(c.handle)
+                      ? 'border-lime text-lime bg-lime/10'
+                      : 'border-rip text-rip hover:bg-rip/10'
+                  }`}>
+                  {following.has(c.handle) ? '✓ Following' : 'Follow'}
+                </button>
               </div>
-              <div className="text-xs font-bold text-white">@{c.handle}</div>
-              <div className="text-[9px] text-muted uppercase mt-0.5">{c.tier}</div>
-              <div className="flex justify-center gap-3 mt-2 text-[9px] text-muted2">
-                <span>{fmtNum(c.followers)} followers</span>
-                <span>{c.works} works</span>
-              </div>
-              <button
-                onClick={() => toggleFollow(c.handle)}
-                className={`mt-2 px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${
-                  following.has(c.handle)
-                    ? 'border-lime text-lime bg-lime/10'
-                    : 'border-rip text-rip hover:bg-rip/10'
-                }`}>
-                {following.has(c.handle) ? '✓ Following' : 'Follow'}
-              </button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Share Dialog */}
       <ShareDialog
@@ -534,7 +548,6 @@ function FeaturedCard({ item, onLike, onExpand, onRemix, onShare }: {
   return (
     <div className="relative bg-bg2 border border-border rounded-2xl overflow-hidden group cursor-pointer"
       onClick={() => onExpand(item.id)}>
-      {/* Hero background */}
       <div className="h-48 sm:h-64 relative">
         {item.thumbnail ? (
           <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
