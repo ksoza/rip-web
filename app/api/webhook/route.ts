@@ -1,7 +1,8 @@
 // app/api/webhook/route.ts
+// Stripe webhook — flat pricing model (no credits)
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe                        from 'stripe';
-import { recordRevenue, grantSubscription } from '@/lib/revenue';
+import { recordRevenue, getTierFromPriceId } from '@/lib/revenue';
 import { createSupabaseAdmin }       from '@/lib/supabase';
 import { logTransaction } from '@/lib/db';
 
@@ -33,16 +34,25 @@ export async function POST(req: NextRequest) {
         const sub      = await stripe.subscriptions.retrieve(subId);
         const meta     = sub.metadata;
         const userId   = meta.user_id;
-        const plan     = meta.plan as 'starter' | 'creator' | 'studio';
+        const priceId  = sub.items.data[0]?.price?.id || '';
+        const plan     = meta.plan || getTierFromPriceId(priceId);
         const grossUsd = (session.amount_total || 0) / 100;
 
-        // Grant subscription access
-        await grantSubscription({
-          userId,
+        // Grant subscription — update user tier + create subscription record
+        await supabase.from('profiles').update({
+          tier: plan,
+          generations_used: 0,
+          generations_limit: -1,  // unlimited for paid tiers
+        }).eq('id', userId);
+
+        await supabase.from('subscriptions').upsert({
+          user_id: userId,
           plan,
-          stripeSubId: subId,
-          periodEnd:   new Date(sub.current_period_end * 1000),
-        });
+          stripe_sub_id: subId,
+          stripe_price_id: priceId,
+          status: 'active',
+          current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+        }, { onConflict: 'user_id' });
 
         // Route revenue (13% → founder wallet, 50% → launch fund, etc.)
         await recordRevenue({
@@ -69,14 +79,16 @@ export async function POST(req: NextRequest) {
           .eq('status', 'active');
 
         if ((count || 0) <= 10000) {
-          const ripAmount = { starter: 500, creator: 3000, studio: 7500 }[plan];
-          await supabase.from('rip_airdrops').insert({
-            user_id:    userId,
-            plan,
-            rip_amount: ripAmount,
-            apy:        { starter: 420, creator: 690, studio: 1000 }[plan],
-            status:     'pending',
-          });
+          const ripAmount = { starter: 500, creator: 3000, studio: 7500 }[plan as 'starter' | 'creator' | 'studio'];
+          if (ripAmount) {
+            await supabase.from('rip_airdrops').insert({
+              user_id:    userId,
+              plan,
+              rip_amount: ripAmount,
+              apy:        { starter: 420, creator: 690, studio: 1000 }[plan as 'starter' | 'creator' | 'studio'],
+              status:     'pending',
+            });
+          }
         }
 
         // Handle referral
@@ -109,14 +121,9 @@ export async function POST(req: NextRequest) {
         const plan    = meta.plan;
         const gross   = (invoice.amount_paid || 0) / 100;
 
-        // Reset generation counter — Starter is weekly, others monthly
-        const planGens = { starter: 30, creator: 150, studio: 999999999 };
-        const isStarterWeekly = plan === 'starter';
-        // For starter — reset every invoice (weekly)
-        // For others — reset every invoice (monthly)
+        // Reset daily generation counter (free tier tracking)
         await supabase.from('profiles').update({
           generations_used: 0,
-          generations_limit: planGens[plan as keyof typeof planGens] || 3,
         }).eq('id', userId);
 
         // Route revenue again
@@ -147,9 +154,10 @@ export async function POST(req: NextRequest) {
         const sub    = event.data.object as Stripe.Subscription;
         const userId = sub.metadata.user_id;
 
+        // Downgrade to free tier
         await supabase.from('profiles').update({
           tier:              'free',
-          generations_limit: 3,
+          generations_limit: 10,  // free tier daily limit
         }).eq('id', userId);
 
         await supabase.from('subscriptions').update({
@@ -176,5 +184,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-
-
