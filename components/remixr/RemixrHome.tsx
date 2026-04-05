@@ -4,7 +4,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
-import { TMDB_ID_MAP, tmdbImage } from '@/lib/tmdb';
 import type { MediaItem } from '@/components/create/CreationWizard';
 
 // ── Types ───────────────────────────────────────────────────────
@@ -27,8 +26,29 @@ interface Props {
   onViewContent: (item: CommunityItem) => void;
 }
 
-// ── Carousel data (same as existing but organized) ──────────────
+// ── Carousel data ───────────────────────────────────────────────
 import { TV_SHOWS, MOVIES } from '@/components/discover/MediaCarousel';
+
+// ── Poster cache context ────────────────────────────────────────
+// Fetch all posters in one bulk call, then pass the map down
+function usePosterMap() {
+  const [posterMap, setPosterMap] = useState<Record<string, string | null>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/tmdb?action=posters')
+      .then(r => r.json())
+      .then(data => {
+        if (data && typeof data === 'object' && !data.error) {
+          setPosterMap(data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { posterMap, loading };
+}
 
 // ── Horizontal Carousel Component ───────────────────────────────
 function Carousel({
@@ -118,28 +138,14 @@ function Carousel({
 // ── Media Card (TV Show / Movie) with TMDB poster ───────────────
 function MediaCard({
   item,
+  posterUrl,
   onClick,
 }: {
   item: MediaItem;
+  posterUrl: string | null;
   onClick: () => void;
 }) {
-  const tmdbId = TMDB_ID_MAP[item.id];
-  const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if (!tmdbId) return;
-    // Use TMDB poster via the API route
-    const type = item.category === 'TV Show' ? 'tv' : 'movie';
-    fetch(`/api/tmdb?action=details&type=${type}&id=${tmdbId}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.poster_path) {
-          setPosterUrl(tmdbImage.poster(data.poster_path, 'w342'));
-        }
-      })
-      .catch(() => {});
-  }, [tmdbId, item.category]);
 
   return (
     <button
@@ -259,14 +265,8 @@ const SAMPLE_COMMUNITY: CommunityItem[] = [
 
 // ── Main Component ──────────────────────────────────────────────
 export function RemixrHome({ user, onSelectMedia, onViewContent }: Props) {
-  const [communityFeed, setCommunityFeed] = useState<CommunityItem[]>(SAMPLE_COMMUNITY);
-
-  // TODO: Load real community content from Supabase
-  // useEffect(() => {
-  //   const supabase = createSupabaseBrowser();
-  //   supabase.from('creations').select('*').order('created_at', { ascending: false }).limit(20)
-  //     .then(({ data }) => { if (data?.length) setCommunityFeed(data); });
-  // }, []);
+  const [communityFeed] = useState<CommunityItem[]>(SAMPLE_COMMUNITY);
+  const { posterMap } = usePosterMap();
 
   return (
     <div className="space-y-2">
@@ -291,6 +291,7 @@ export function RemixrHome({ user, onSelectMedia, onViewContent }: Props) {
           <MediaCard
             key={show.id}
             item={show}
+            posterUrl={posterMap[show.id] || null}
             onClick={() => onSelectMedia(show)}
           />
         ))}
@@ -307,6 +308,7 @@ export function RemixrHome({ user, onSelectMedia, onViewContent }: Props) {
           <MediaCard
             key={movie.id}
             item={movie}
+            posterUrl={posterMap[movie.id] || null}
             onClick={() => onSelectMedia(movie)}
           />
         ))}
