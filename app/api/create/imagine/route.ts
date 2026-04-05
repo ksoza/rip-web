@@ -1,18 +1,10 @@
 // app/api/create/imagine/route.ts
-// Scene image generation via HuggingFace Inference API
-// Supports aspect ratio, negative prompts, multiple models
+// Scene image generation — fal.ai as primary, HuggingFace as fallback
+// Supports multiple models, aspect ratios, negative prompts
 import { NextRequest, NextResponse } from 'next/server';
+import { falGenerate, FAL_IMAGE_MODELS } from '@/lib/fal';
 
 export const maxDuration = 60;
-
-// Available models on HuggingFace
-const MODELS: Record<string, string> = {
-  'flux-schnell':  'black-forest-labs/FLUX.1-schnell',
-  'flux-dev':      'black-forest-labs/FLUX.1-dev',
-  'sdxl':          'stabilityai/stable-diffusion-xl-base-1.0',
-  'sd-3':          'stabilityai/stable-diffusion-3-medium-diffusers',
-  'playground':    'playgroundai/playground-v2.5-1024px-aesthetic',
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,35 +21,81 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'HUGGINGFACE_API_KEY not configured' }, { status: 500 });
+    const enhancedPrompt = `${prompt}, high detail, professional quality, 4k`;
+
+    // ── Try fal.ai first (primary) ───────────────────────────────
+    const falModel = FAL_IMAGE_MODELS[model];
+
+    if (falModel && process.env.FAL_KEY) {
+      try {
+        const input: Record<string, unknown> = {
+          prompt: enhancedPrompt,
+        };
+
+        // Set image size based on width/height
+        if (width && height) {
+          input.image_size = { width: Math.min(width, 1536), height: Math.min(height, 1536) };
+        }
+
+        if (negative_prompt) {
+          input.negative_prompt = negative_prompt;
+        }
+
+        input.num_images = 1;
+
+        const result = await falGenerate(falModel.id, input);
+
+        if (result.images?.[0]?.url) {
+          const imageUrl = result.images[0].url;
+
+          // Fetch the image and convert to base64 for client display
+          const imgRes = await fetch(imageUrl);
+          if (imgRes.ok) {
+            const buffer = await imgRes.arrayBuffer();
+            const contentType = imgRes.headers.get('content-type') || 'image/png';
+            const base64 = Buffer.from(buffer).toString('base64');
+
+            return NextResponse.json({
+              image: `data:${contentType};base64,${base64}`,
+              imageUrl, // Also return the URL for video gen
+              sceneId,
+              model: falModel.id,
+              provider: 'fal.ai',
+            });
+          }
+        }
+      } catch (falErr: any) {
+        console.warn(`fal.ai generation failed for ${model}, falling back:`, falErr.message);
+        // Fall through to HuggingFace
+      }
     }
 
-    const modelId = MODELS[model] || MODELS['flux-schnell'];
+    // ── Fallback: HuggingFace ────────────────────────────────────
+    const HF_MODELS: Record<string, string> = {
+      'flux-schnell':  'black-forest-labs/FLUX.1-schnell',
+      'flux-dev':      'black-forest-labs/FLUX.1-dev',
+      'sdxl':          'stabilityai/stable-diffusion-xl-base-1.0',
+    };
 
-    // The prompt already includes style from the client side
-    const enhancedPrompt = `${prompt}, high detail, professional quality, 4k`;
+    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'No image generation API available (FAL_KEY and HUGGINGFACE_API_KEY both missing)' }, { status: 500 });
+    }
+
+    const modelId = HF_MODELS[model] || HF_MODELS['flux-schnell'];
 
     const body: Record<string, unknown> = {
       inputs: enhancedPrompt,
     };
 
-    // Add parameters (negative prompt, dimensions)
     const params: Record<string, unknown> = {};
-    if (negative_prompt) {
-      params.negative_prompt = negative_prompt;
-    }
-    // Only some models support width/height
+    if (negative_prompt) params.negative_prompt = negative_prompt;
     if (width && height && !model.startsWith('flux')) {
       params.width = Math.min(width, 1024);
       params.height = Math.min(height, 1024);
     }
-    if (Object.keys(params).length > 0) {
-      body.parameters = params;
-    }
+    if (Object.keys(params).length > 0) body.parameters = params;
 
-    // Call HuggingFace Inference API
     const res = await fetch(`https://api-inference.huggingface.co/models/${modelId}`, {
       method: 'POST',
       headers: {
@@ -67,7 +105,6 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
 
-    // Handle model loading (503)
     if (res.status === 503) {
       const errData = await res.json().catch(() => ({}));
       return NextResponse.json({
@@ -95,10 +132,10 @@ export async function POST(req: NextRequest) {
         image: `data:${contentType};base64,${base64}`,
         sceneId,
         model: modelId,
+        provider: 'huggingface',
       });
     }
 
-    // Some models return JSON with image data
     const textResult = await res.text();
     try {
       const jsonResult = JSON.parse(textResult);
@@ -107,6 +144,7 @@ export async function POST(req: NextRequest) {
           image: jsonResult[0].generated_image || jsonResult[0].blob,
           sceneId,
           model: modelId,
+          provider: 'huggingface',
         });
       }
     } catch {

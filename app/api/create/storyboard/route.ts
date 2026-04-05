@@ -1,5 +1,6 @@
 // app/api/create/storyboard/route.ts
 // AI-powered storyboard generation using Anthropic Claude SDK
+// Phase 2: Now accepts script context for better visual breakdowns
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
       mediaTitle, character, prompt, tone, format,
       crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
       artStyle, artStylePrompt,
+      scriptScenes, // NEW: script context from Phase 2
     } = await req.json();
 
     if (!prompt || !character) {
@@ -26,11 +28,10 @@ export async function POST(req: NextRequest) {
     // Build the duration guide based on format
     const durationGuide: Record<string, string> = {
       short:    '60 seconds total (5 scenes, ~12s each)',
+      scene:    '3 minutes total (4-5 scenes)',
       episode:  '10 minutes total (5-7 scenes, 1-2 min each)',
-      feature:  '30 minutes total (7-10 scenes, 3-5 min each)',
-      clip:     '30 seconds total (3-4 scenes, ~8s each)',
+      music_vid: '4 minutes total (5-6 scenes)',
       trailer:  '90 seconds total (5-6 scenes, ~15s each)',
-      series:   '20 minutes total (8-10 scenes, 2-3 min each)',
     };
 
     const qaContext = qaAnswers?.length
@@ -39,11 +40,18 @@ export async function POST(req: NextRequest) {
         ).join('\n')
       : '';
 
-    const systemPrompt = `You are an elite storyboard writer for fan-made TV/film remixes. You create vivid, cinematic scene breakdowns that can guide AI image and video generation.
+    // Build script context if available
+    const scriptContext = scriptScenes?.length
+      ? `\n\nAPPROVED SCRIPT (use these scenes as your basis):\n${scriptScenes.map((s: any) =>
+          `Scene ${s.sceneNum}: ${s.heading}\nAction: ${s.action}\nDialogue: ${s.dialogue?.map((d: any) => `${d.character}: "${d.line}"`).join(', ') || 'none'}\nMood: ${s.mood}\nCamera: ${s.cameraNote}`
+        ).join('\n\n')}`
+      : '';
+
+    const systemPrompt = `You are an elite storyboard artist for fan-made TV/film remixes. You create vivid, cinematic visual breakdowns optimized for AI image generation.
 
 Always respond with valid JSON only — no markdown, no code fences, no explanation.`;
 
-    const userPrompt = `Create a detailed storyboard for this fan-made creation:
+    const userPrompt = `Create a detailed visual storyboard for this fan-made creation:
 
 IP / Show: ${mediaTitle}
 Character: ${character.name} (${character.role || 'main character'})
@@ -55,29 +63,35 @@ ${isCustomIP ? `Custom IP Description: ${customIPDesc}` : ''}
 ${isMashup ? `Mashup Mode: Combining multiple IPs` : ''}
 
 ${qaContext ? `Additional context from Q&A:\n${qaContext}` : ''}
+${scriptContext}
 
 Generate a storyboard as a JSON object. Each scene needs:
 - sceneNum (number)
 - description (2-3 sentences describing what happens)
 - duration (time range like "0:00-0:12")
-- visual (detailed visual description for AI image generation — describe camera angle, lighting, colors, composition, character poses/expressions)
+- visual (DETAILED visual description for AI image generation — this is the MOST IMPORTANT field)
 - emoji (single relevant emoji)
 
 The visual field is CRITICAL — it will be fed directly to an image generation AI.
 ${artStyle ? `MANDATORY ART STYLE for all scenes: ${artStyle}. Include "${artStylePrompt || artStyle}" styling in every visual description.` : ''}
-Be specific about:
-- Art style (use the ${artStyle || 'cinematic'} style consistently across ALL scenes)
-- Camera angle (wide shot, close-up, bird's eye, etc.)
-- Lighting (dramatic shadows, golden hour, neon glow, etc.)
-- Character appearance and expression
-- Setting details
+
+For each visual, be extremely specific about:
+- Art style (use the ${artStyle || 'cinematic'} style consistently)
+- Camera angle (wide shot, close-up, bird's eye, Dutch angle, etc.)
+- Lighting (dramatic shadows, golden hour, neon glow, silhouette, etc.)
+- Character appearance, pose, expression, and clothing
+- Setting details (textures, weather, time of day, objects)
+- Color palette and mood
+- Composition (foreground/background elements, depth)
+
+${scriptScenes?.length ? 'Create ONE storyboard panel per script scene. Match the script closely.' : ''}
 
 Respond with ONLY valid JSON: { "scenes": [...], "title": "..." }`;
 
-    // Call Claude using the SDK (same pattern as generate/route.ts)
+    // Call Claude
     const message = await anthropic.messages.create({
       model:      'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+      max_tokens: 3000,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     });
@@ -91,7 +105,6 @@ Respond with ONLY valid JSON: { "scenes": [...], "title": "..." }`;
     try {
       storyboard = JSON.parse(textContent);
     } catch {
-      // Try to extract JSON from response
       const jsonMatch = textContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         storyboard = JSON.parse(jsonMatch[0]);
