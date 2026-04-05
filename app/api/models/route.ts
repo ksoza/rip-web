@@ -1,5 +1,5 @@
 // app/api/models/route.ts
-// List available AI models and their credit costs
+// List available AI models by user tier
 import { NextRequest, NextResponse } from 'next/server';
 import { getAvailableModels, FAL_IMAGE_MODELS, FAL_VIDEO_MODELS } from '@/lib/fal';
 import { createSupabaseAdmin } from '@/lib/supabase';
@@ -23,7 +23,6 @@ export async function GET(req: NextRequest) {
       key: Object.keys(FAL_IMAGE_MODELS).find(k => FAL_IMAGE_MODELS[k].id === m.id) || m.id,
       name: m.name,
       type: m.type,
-      credits: m.creditCost,
       description: m.description,
       tier: m.tier,
       tags: m.tags,
@@ -33,27 +32,22 @@ export async function GET(req: NextRequest) {
       key: Object.keys(FAL_VIDEO_MODELS).find(k => FAL_VIDEO_MODELS[k].id === m.id) || m.id,
       name: m.name,
       type: m.type,
-      credits: m.creditCost,
       description: m.description,
       tier: m.tier,
       tags: m.tags,
     }));
 
-    // Also include legacy models
-    const legacyModels = [
-      { key: 'dalle', name: 'DALL·E 3', type: 'image', credits: 3, description: 'OpenAI image generation', tier: 'starter', tags: ['legacy', 'openai'] },
-      { key: 'luma', name: 'Luma Dream Machine', type: 'video', credits: 15, description: 'Luma video generation', tier: 'creator', tags: ['legacy'] },
-      { key: 'runway', name: 'Runway Gen-3', type: 'video', credits: 20, description: 'Runway ML video', tier: 'studio', tags: ['legacy', 'premium'] },
-    ];
-
     return NextResponse.json({
-      userTier,
+      tier: userTier,
       image: imageModels,
       video: videoModels,
-      legacy: legacyModels,
+      total: imageModels.length + videoModels.length,
     });
-  } catch (err: any) {
-    console.error('Models GET error:', err);
-    return NextResponse.json({ error: 'Failed to list models' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Models listing error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to list models' },
+      { status: 500 },
+    );
   }
 }

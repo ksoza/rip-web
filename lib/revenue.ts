@@ -1,6 +1,6 @@
 // lib/revenue.ts
+// Flat subscription pricing — unlimited generations per tier
 import { createSupabaseAdmin } from './supabase';
-import { grantSubscriptionCredits } from './credits';
 
 export const FOUNDER_WALLET = 'DbnD8vxbNVrG9iL7oi83Zg8RGqxFLATGcW67oq2xD5Nj';
 
@@ -13,11 +13,84 @@ export const SPLIT = {
   reserve:     0.05,
 } as const;
 
-export const PLAN_CONFIG = {
-  starter: { price: 9.99,  credits: 200,  rip: 500,  apy: 420  },
-  creator: { price: 24.99, credits: 600,  rip: 3000, apy: 690  },
-  studio:  { price: 49.99, credits: 1500, rip: 7500, apy: 1000 },
+// ── Stripe Price IDs (LIVE) ─────────────────────────────────────
+export const STRIPE_PRICES = {
+  starter: 'price_1TIlPzDKSKlEg2Cq9w9Y8Jyz',  // $9.99/mo
+  creator: 'price_1TIlQ7DKSKlEg2CqtBSVfZqx',  // $24.99/mo
+  studio:  'price_1TIlQDDKSKlEg2CqNcIHQMS0',   // $49.99/mo
 } as const;
+
+// ── Plan Configuration (flat pricing, unlimited generations) ────
+export const PLAN_CONFIG = {
+  free: {
+    price: 0,
+    label: 'Free',
+    models: 'basic',       // flux-schnell, sdxl only
+    generations: 10,       // 10 free generations per day
+    rip: 0,
+    apy: 0,
+  },
+  starter: {
+    price: 9.99,
+    label: 'Starter',
+    models: 'standard',    // + flux-dev, ideogram, ltx-video, wan
+    generations: -1,       // unlimited (-1)
+    rip: 500,
+    apy: 420,
+    stripePriceId: STRIPE_PRICES.starter,
+  },
+  creator: {
+    price: 24.99,
+    label: 'Creator',
+    models: 'all',         // + recraft, flux-pro, seedream, seedance, kling, hailuo
+    generations: -1,       // unlimited
+    rip: 3000,
+    apy: 690,
+    stripePriceId: STRIPE_PRICES.creator,
+  },
+  studio: {
+    price: 49.99,
+    label: 'Studio',
+    models: 'all+priority', // all models + priority queue + commercial license
+    generations: -1,         // unlimited
+    rip: 7500,
+    apy: 1000,
+    stripePriceId: STRIPE_PRICES.studio,
+    commercial: true,
+  },
+} as const;
+
+export type PlanTier = keyof typeof PLAN_CONFIG;
+
+// ── Tier Access Check ───────────────────────────────────────────
+
+const TIER_ORDER = ['free', 'starter', 'creator', 'studio'] as const;
+
+export function canAccessTier(userTier: string, requiredTier: string): boolean {
+  const userIdx = TIER_ORDER.indexOf(userTier as any);
+  const reqIdx = TIER_ORDER.indexOf(requiredTier as any);
+  return userIdx >= reqIdx;
+}
+
+export function getPlanConfig(tier: string) {
+  return PLAN_CONFIG[tier as PlanTier] || PLAN_CONFIG.free;
+}
+
+export function getStripePriceId(tier: string): string | null {
+  const config = PLAN_CONFIG[tier as PlanTier];
+  return (config && 'stripePriceId' in config) ? config.stripePriceId : null;
+}
+
+export function getTierFromPriceId(priceId: string): PlanTier {
+  for (const [tier, config] of Object.entries(PLAN_CONFIG)) {
+    if ('stripePriceId' in config && config.stripePriceId === priceId) {
+      return tier as PlanTier;
+    }
+  }
+  return 'free';
+}
+
+// ── Revenue Tracking ────────────────────────────────────────────
 
 export function calcSplits(grossUsd: number) {
   return {
@@ -49,61 +122,16 @@ export async function recordRevenue({
     plan,
     payment_method:   paymentMethod,
     gross_amount:     grossAmount,
-    founder_cut:      splits.founder,
-    launch_fund_cut:  splits.launch_fund,
-    ai_costs_cut:     splits.ai_costs,
-    staking_cut:      splits.staking,
-    ops_cut:          splits.operations,
-    reserve_cut:      splits.reserve,
-    tx_hash:          txHash ?? null,
-    stripe_payment_id: stripePaymentId ?? null,
+    founder_amount:   splits.founder,
+    launch_fund:      splits.launch_fund,
+    ai_costs:         splits.ai_costs,
+    staking_pool:     splits.staking,
+    operations:       splits.operations,
+    reserve:          splits.reserve,
+    tx_hash:          txHash       || null,
+    stripe_payment_id: stripePaymentId || null,
   });
 
-  // Queue founder payout (batches weekly → sent as SOL every Monday)
-  await supabase.from('founder_payout_queue').insert({
-    destination_wallet: FOUNDER_WALLET,
-    amount_usd:         splits.founder,
-    chain:              'solana',
-    source_user:        userId,
-    source_plan:        plan,
-    status:             'pending',
-  });
-
-  // Accumulate launch fund
-  await supabase.from('launch_fund_ledger').insert({
-    type:        'deposit',
-    amount_usd:  splits.launch_fund,
-    description: `${plan} subscription — ${paymentMethod}`,
-  });
-
-  return splits;
-}
-
-export async function grantSubscription({
-  userId, plan, stripeSubId, periodEnd,
-}: {
-  userId:      string;
-  plan:        'starter' | 'creator' | 'studio';
-  stripeSubId: string;
-  periodEnd:   Date;
-}) {
-  const supabase = createSupabaseAdmin();
-  const cfg      = PLAN_CONFIG[plan];
-
-  await supabase.from('profiles').update({
-    tier:              plan,
-    generations_limit: 999999999, // Unlimited — now tracked by credits
-    generations_used:  0,
-  }).eq('id', userId);
-
-  await supabase.from('subscriptions').upsert({
-    user_id:            userId,
-    stripe_sub_id:      stripeSubId,
-    plan,
-    status:             'active',
-    current_period_end: periodEnd.toISOString(),
-  }, { onConflict: 'stripe_sub_id' });
-
-  // Grant monthly credits for the subscription
-  await grantSubscriptionCredits(userId, plan);
+  // Update user tier
+  await supabase.from('profiles').update({ tier: plan }).eq('id', userId);
 }

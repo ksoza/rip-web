@@ -9,8 +9,6 @@ export interface FalModel {
   id: string;             // fal.ai model identifier
   name: string;           // Human-readable name
   type: 'image' | 'video';
-  creditCost: number;     // Credits per generation
-  costUsd: number;        // Approximate cost to us per generation
   description: string;
   tier: 'free' | 'starter' | 'creator' | 'studio'; // Minimum tier required
   tags: string[];
@@ -21,8 +19,6 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/flux/schnell',
     name: 'Flux Schnell',
     type: 'image',
-    creditCost: 1,
-    costUsd: 0.003,
     description: 'Fast, budget-friendly image generation',
     tier: 'free',
     tags: ['fast', 'budget'],
@@ -31,8 +27,6 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/fast-sdxl',
     name: 'Stable Diffusion XL',
     type: 'image',
-    creditCost: 1,
-    costUsd: 0.003,
     description: 'Classic SDXL — great for artistic styles',
     tier: 'free',
     tags: ['classic', 'artistic'],
@@ -41,8 +35,6 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/flux/dev',
     name: 'Flux 2 Dev',
     type: 'image',
-    creditCost: 2,
-    costUsd: 0.025,
     description: 'High-quality balanced image generation',
     tier: 'starter',
     tags: ['quality', 'balanced'],
@@ -51,8 +43,6 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/ideogram/v3',
     name: 'Ideogram 3.0',
     type: 'image',
-    creditCost: 2,
-    costUsd: 0.03,
     description: 'Best for images with text rendering',
     tier: 'starter',
     tags: ['text', 'logos'],
@@ -61,8 +51,6 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/recraft-v3',
     name: 'Recraft V3',
     type: 'image',
-    creditCost: 3,
-    costUsd: 0.04,
     description: 'Professional design — logos, icons, illustrations',
     tier: 'creator',
     tags: ['design', 'professional'],
@@ -71,8 +59,6 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/flux-pro/v1.1',
     name: 'Flux 2 Pro',
     type: 'image',
-    creditCost: 3,
-    costUsd: 0.05,
     description: 'Best photorealism and detail',
     tier: 'creator',
     tags: ['photorealism', 'premium'],
@@ -81,8 +67,6 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/seedream-3',
     name: 'Seedream 3.0',
     type: 'image',
-    creditCost: 3,
-    costUsd: 0.04,
     description: 'ByteDance Seedream — stylized imagery',
     tier: 'creator',
     tags: ['stylized', 'bytedance'],
@@ -94,8 +78,6 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/ltx-video/v0.9.1',
     name: 'LTX Video 2.0',
     type: 'video',
-    creditCost: 8,
-    costUsd: 0.20,
     description: 'Fast open-source video — cheapest option',
     tier: 'starter',
     tags: ['fast', 'budget', 'open-source'],
@@ -104,8 +86,6 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/wan/v2.1/1.3b',
     name: 'Wan 2.6',
     type: 'video',
-    creditCost: 10,
-    costUsd: 0.25,
     description: 'Affordable quality video generation',
     tier: 'starter',
     tags: ['balanced', 'affordable'],
@@ -114,8 +94,6 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/seedance/video',
     name: 'Seedance 1.5 Pro',
     type: 'video',
-    creditCost: 10,
-    costUsd: 0.26,
     description: 'ByteDance Seedance — superior motion control',
     tier: 'creator',
     tags: ['motion', 'bytedance', 'popular'],
@@ -124,8 +102,6 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/kling-video/v2/master',
     name: 'Kling 2.6 Pro',
     type: 'video',
-    creditCost: 15,
-    costUsd: 0.35,
     description: 'Professional quality video with great detail',
     tier: 'creator',
     tags: ['professional', 'detail'],
@@ -134,8 +110,6 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/minimax-video/video-01',
     name: 'Hailuo 2.3',
     type: 'video',
-    creditCost: 15,
-    costUsd: 0.49,
     description: 'Minimax video — realistic motion',
     tier: 'creator',
     tags: ['realistic', 'motion'],
@@ -144,8 +118,6 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/veo3',
     name: 'Veo 3.1',
     type: 'video',
-    creditCost: 40,
-    costUsd: 1.00,
     description: 'Google Veo — best audio-video sync',
     tier: 'studio',
     tags: ['premium', 'audio', 'google'],
@@ -274,7 +246,10 @@ export function getAvailableModels(
   return Object.values(FAL_MODELS)
     .filter(m => (!type || m.type === type))
     .filter(m => tierOrder.indexOf(m.tier) <= userTierIdx)
-    .sort((a, b) => a.creditCost - b.creditCost);
+    .sort((a, b) => {
+      const tierDiff = tierOrder.indexOf(a.tier) - tierOrder.indexOf(b.tier);
+      return tierDiff !== 0 ? tierDiff : a.name.localeCompare(b.name);
+    });
 }
 
 export function mapSizeToFal(size?: string): string | { width: number; height: number } {

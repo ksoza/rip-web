@@ -1,15 +1,11 @@
 // app/api/credits/route.ts
-// Credit balance, history, and purchase endpoints
+// Subscription status and available models endpoint
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getCreditBalance,
-  getCreditHistory,
-  grantDailyCredits,
-  CREDIT_CONFIG,
-} from '@/lib/credits';
-import { FAL_IMAGE_MODELS, FAL_VIDEO_MODELS } from '@/lib/fal';
+import { getSubscriptionStatus } from '@/lib/credits';
+import { getAvailableModels } from '@/lib/fal';
+import { PLAN_CONFIG } from '@/lib/revenue';
 
-// GET /api/credits — Get balance, daily bonus, and pricing info
+// GET /api/credits — Get subscription status and available models
 export async function GET(req: NextRequest) {
   try {
     const userId = req.headers.get('x-user-id')!;
@@ -17,43 +13,41 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Grant daily credits if eligible
-    const daily = await grantDailyCredits(userId);
-    const balance = await getCreditBalance(userId);
-    const history = await getCreditHistory(userId, 20);
+    const subscription = await getSubscriptionStatus(userId);
 
-    // Build model pricing for the client
-    const imageModels = Object.entries(FAL_IMAGE_MODELS).map(([key, m]) => ({
-      key,
+    // Build model list for the client
+    const imageModels = getAvailableModels('image', subscription.tier).map(m => ({
+      key: m.id,
       name: m.name,
-      credits: m.creditCost,
       tier: m.tier,
       description: m.description,
       tags: m.tags,
     }));
 
-    const videoModels = Object.entries(FAL_VIDEO_MODELS).map(([key, m]) => ({
-      key,
+    const videoModels = getAvailableModels('video', subscription.tier).map(m => ({
+      key: m.id,
       name: m.name,
-      credits: m.creditCost,
       tier: m.tier,
       description: m.description,
       tags: m.tags,
     }));
 
     return NextResponse.json({
-      balance,
-      dailyBonus: {
-        granted: daily.granted,
-        amount: daily.amount,
-        dailyLimit: CREDIT_CONFIG.dailyFreeCredits,
-      },
-      packs: CREDIT_CONFIG.packs,
+      subscription,
       models: { image: imageModels, video: videoModels },
-      history: history.slice(0, 10),
+      plans: Object.entries(PLAN_CONFIG).map(([key, config]) => ({
+        tier: key,
+        label: config.label,
+        price: config.price,
+        models: config.models,
+        unlimited: config.generations === -1,
+      })),
     });
-  } catch (err: any) {
-    console.error('Credits GET error:', err);
-    return NextResponse.json({ error: 'Failed to get credits' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Subscription status error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to get subscription status' },
+      { status: 500 },
+    );
   }
 }
