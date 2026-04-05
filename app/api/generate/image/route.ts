@@ -1,10 +1,11 @@
 // app/api/generate/image/route.ts
 // Image generation — fal.ai (primary), with DALL·E & nexos.ai fallback
-// Supports: Flux 2 Pro/Dev/Schnell, SDXL, Recraft, Ideogram, Seedream + legacy DALL·E
+// Flat pricing: check tier access, no credit deduction
 import { NextRequest, NextResponse } from 'next/server';
 import { isNexosConfigured, nexosImageGenerate } from '@/lib/nexos';
 import { falGenerate, FAL_IMAGE_MODELS, mapSizeToFal, getModelByKey } from '@/lib/fal';
-import { deductCredits, getCreditBalance, grantDailyCredits } from '@/lib/credits';
+import { checkGenerationAccess, recordGeneration } from '@/lib/credits';
+import { canAccessTier } from '@/lib/revenue';
 import { logGeneration } from '@/lib/db';
 
 // Legacy DALL·E for backward compatibility (direct OpenAI)
@@ -42,8 +43,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
-    // Grant daily free credits if eligible
-    await grantDailyCredits(userId).catch(() => {});
+    // Check generation access (tier-based, unlimited for paid)
+    const access = await checkGenerationAccess(userId);
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: access.error || 'Generation limit reached. Upgrade for unlimited access.' },
+        { status: 402 },
+      );
+    }
 
     // Build enhanced prompt for character consistency
     let enhancedPrompt = prompt;
@@ -52,23 +59,16 @@ export async function POST(req: NextRequest) {
     }
 
     let result: { url: string; revised_prompt?: string };
-    let creditCost = 0;
     let usedProvider = provider || modelKey || 'flux-schnell';
 
     // ── fal.ai models (new, primary) ────────────────────────────
     const falModel = FAL_IMAGE_MODELS[modelKey || ''] || FAL_IMAGE_MODELS[provider || ''];
     if (falModel) {
-      creditCost = falModel.creditCost;
-
-      // Check credits
-      const { success, error } = await deductCredits(
-        userId, creditCost, 'image_generation',
-        { model: falModel.id, prompt: enhancedPrompt.slice(0, 200) },
-      );
-      if (!success) {
+      // Check tier access for this model
+      if (falModel.tier && !canAccessTier(access.tier, falModel.tier)) {
         return NextResponse.json(
-          { error: error || 'Insufficient credits', creditsNeeded: creditCost },
-          { status: 402 },
+          { error: `${falModel.tier} tier required for this model. Upgrade your plan.` },
+          { status: 403 },
         );
       }
 
@@ -87,21 +87,7 @@ export async function POST(req: NextRequest) {
 
     // ── Legacy providers (backward compatibility) ───────────────
     } else {
-      // Legacy: flat 3 credits for non-fal models
-      creditCost = 3;
-
       const selectedProvider = provider || 'dalle';
-
-      const { success, error } = await deductCredits(
-        userId, creditCost, 'image_generation',
-        { model: selectedProvider, prompt: enhancedPrompt.slice(0, 200) },
-      );
-      if (!success) {
-        return NextResponse.json(
-          { error: error || 'Insufficient credits', creditsNeeded: creditCost },
-          { status: 402 },
-        );
-      }
 
       switch (selectedProvider) {
         case 'dalle':
@@ -124,6 +110,9 @@ export async function POST(req: NextRequest) {
       usedProvider = selectedProvider;
     }
 
+    // Record generation (for free tier daily counting)
+    await recordGeneration(userId).catch(() => {});
+
     // Log generation
     await logGeneration({
       userId,
@@ -139,7 +128,7 @@ export async function POST(req: NextRequest) {
       url: result.url,
       provider: usedProvider,
       revised_prompt: result.revised_prompt,
-      creditsUsed: creditCost,
+      tier: access.tier,
     });
   } catch (err: any) {
     console.error('Image generation error:', err);
