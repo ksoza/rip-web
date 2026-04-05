@@ -1,5 +1,5 @@
 // lib/store.ts
-// Zustand store for Creative Studio state — V2
+// Zustand store for Creative Studio state — V2 + Phase 3A
 import { create } from 'zustand';
 
 // ── Utilities ───────────────────────────────────────────────────
@@ -64,8 +64,8 @@ export interface TimelineTrack {
   locked: boolean;
 }
 
-// ── Studio Mode ─────────────────────────────────────────────────
-export type StudioMode = 'script' | 'character' | 'scene' | 'video' | 'audio' | 'timeline';
+// ── Studio Mode — Phase 3A: added lipsync, compose, controller ─
+export type StudioMode = 'script' | 'character' | 'scene' | 'video' | 'audio' | 'lipsync' | 'compose' | 'controller' | 'timeline';
 
 // ── Main App Tab ────────────────────────────────────────────────
 export type AppTab = 'studio' | 'discover' | 'wallet' | 'settings';
