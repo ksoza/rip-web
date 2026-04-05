@@ -6,6 +6,9 @@ import type { User } from '@supabase/supabase-js';
 import { useStudioStore, genId } from '@/lib/store';
 import type { StudioMode, Asset } from '@/lib/store';
 import { TimelineEditor } from './TimelineEditor';
+import { LipSyncPanel } from './LipSyncPanel';
+import { CharacterController } from './CharacterController';
+import { SceneComposer } from './SceneComposer';
 
 // ── Mode Definitions ────────────────────────────────────────────
 const MODES: { id: StudioMode; icon: string; label: string; desc: string; color: string }[] = [
@@ -13,7 +16,10 @@ const MODES: { id: StudioMode; icon: string; label: string; desc: string; color:
   { id: 'character', icon: '🎨', label: 'Character', desc: 'Design characters',     color: '#ff2d78' },
   { id: 'scene',     icon: '🖼️', label: 'Scene',     desc: 'Generate images',       color: '#a855f7' },
   { id: 'video',     icon: '🎬', label: 'Video',     desc: 'AI video clips',        color: '#ffcc00' },
-  { id: 'audio',     icon: '🔊', label: 'Audio',     desc: 'Voice, music & SFX',    color: '#8aff00' },
+  { id: 'audio',      icon: '🔊', label: 'Audio',      desc: 'Voice, music & SFX',    color: '#8aff00' },
+  { id: 'lipsync',   icon: '👄', label: 'Lip Sync',  desc: 'Sync audio to face',    color: '#ff69b4' },
+  { id: 'controller', icon: '🎮', label: 'Controller', desc: 'Poses & expressions',  color: '#ff8c00' },
+  { id: 'compose',   icon: '🎨', label: 'Compose',   desc: 'Layer scene editor',    color: '#00ffa3' },
   { id: 'timeline',  icon: '🎞️', label: 'Timeline',  desc: 'Edit & arrange',        color: '#ff6b35' },
 ];
 
@@ -113,17 +119,20 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
       {/* Mode Content */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* Main Panel (3 cols) */}
-        <div className={mode === 'timeline' ? 'lg:col-span-4' : 'lg:col-span-3'}>
+        <div className={['timeline', 'compose'].includes(mode) ? 'lg:col-span-4' : 'lg:col-span-3'}>
           {mode === 'script'    && <ScriptPanel user={user} profile={profile} onProfileUpdate={onProfileUpdate} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} genLeft={genLeft} preselectedShow={preselectedShow} preselectedCategory={preselectedCategory} />}
           {mode === 'character' && <CharacterPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} characters={characters} addCharacter={addCharacter} />}
           {mode === 'scene'     && <ScenePanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} characters={characters} />}
           {mode === 'video'     && <VideoPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
-          {mode === 'audio'     && <AudioPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
+          {mode === 'audio'      && <AudioPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
+          {mode === 'lipsync'   && <LipSyncPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
+          {mode === 'controller' && <CharacterController user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} characters={characters} addCharacter={addCharacter} />}
+          {mode === 'compose'   && <SceneComposer user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
           {mode === 'timeline'  && <TimelineEditor assets={assets} />}
         </div>
 
         {/* Right Sidebar (1 col) — hidden in timeline mode */}
-        {mode !== 'timeline' && (
+        {!['timeline', 'compose'].includes(mode) && (
           <div className="space-y-4">
             {/* Generations Counter */}
             <div className="bg-bg2 border border-border rounded-xl p-4">
