@@ -1,6 +1,7 @@
 'use client';
 // components/AppShell.tsx
 // Main app shell — hamburger navigation, 6 pages, legal agreement gate
+// Updated: wired ReferralBanner, RxTVFeed, RxMoviesFeed, DiscoverTab
 import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
@@ -15,6 +16,13 @@ import { StudioTab }    from './studio/StudioTab';
 import { WalletTab }    from './wallet/WalletTab';
 import { SettingsTab }  from './AllTabs';
 import { RipLogo }      from './RipLogo';
+
+// Discover feeds (Phase 3B)
+import { RxTVFeed }     from './discover/RxTVFeed';
+import { RxMoviesFeed } from './discover/RxMoviesFeed';
+
+// Referral (Phase 6)
+import { ReferralBanner } from './referral/ReferralBanner';
 
 // Creation
 import { CreationWizard } from './create/CreationWizard';
@@ -63,33 +71,6 @@ function SignInPrompt({ pageName, onSignIn }: { pageName: string; onSignIn: () =
   );
 }
 
-// ── Placeholder pages for RxTV and RxMovies ─────────────────────
-function RxTVPage() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <span className="text-6xl mb-4">📺</span>
-      <h2 className="text-2xl font-bold text-white mb-2">RxTV</h2>
-      <p className="text-muted text-sm max-w-md">
-        Remixed TV content from the community. Coming soon — start creating on the ReMixr page
-        and your published TV remixes will appear here!
-      </p>
-    </div>
-  );
-}
-
-function RxMoviesPage() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <span className="text-6xl mb-4">🎥</span>
-      <h2 className="text-2xl font-bold text-white mb-2">RxMovies</h2>
-      <p className="text-muted text-sm max-w-md">
-        Remixed movie content from the community. Coming soon — start creating on the ReMixr page
-        and your published movie remixes will appear here!
-      </p>
-    </div>
-  );
-}
-
 // ═══════════════════════════════════════════════════════════════
 //  MAIN APP SHELL
 // ═══════════════════════════════════════════════════════════════
@@ -114,6 +95,13 @@ export function AppShell({ user }: { user: User | null }) {
       provider: 'google',
       options: { redirectTo: window.location.origin },
     });
+  }
+
+  // ── Navigate to Studio from feeds ───────────────────────────
+  function handleNavigateToStudio(showName: string, category: string) {
+    setStudioShowName(showName);
+    setStudioCategory(category);
+    setPage('studio');
   }
 
   // ── Load profile ────────────────────────────────────────────
@@ -262,9 +250,19 @@ export function AppShell({ user }: { user: User | null }) {
           />
         ) : null;
       case 'rxtv':
-        return <RxTVPage />;
+        return (
+          <RxTVFeed
+            user={user}
+            onNavigateToStudio={handleNavigateToStudio}
+          />
+        );
       case 'rxmovies':
-        return <RxMoviesPage />;
+        return (
+          <RxMoviesFeed
+            user={user}
+            onNavigateToStudio={handleNavigateToStudio}
+          />
+        );
       case 'wallet':
         return user ? <WalletTab user={user} /> : null;
       case 'settings':
@@ -356,6 +354,13 @@ export function AppShell({ user }: { user: User | null }) {
           )}
         </div>
       </header>
+
+      {/* ── Referral Banner (top middle, between header & content) */}
+      <ReferralBanner
+        user={user}
+        onSignIn={handleSignIn}
+        compact={page !== 'remixr'}
+      />
 
       {/* ── Content ──────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
