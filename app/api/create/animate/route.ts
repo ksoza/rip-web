@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate video via fal.ai queue
-    const result = await falGenerate(videoModel.id, input);
+    const result = await falGenerate(videoModel.id, input as Parameters<typeof falGenerate>[1]);
 
     if (result.video?.url) {
       return NextResponse.json({
