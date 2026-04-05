@@ -7,6 +7,9 @@ import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useWallet } from '@/lib/solana/wallet-provider';
 
+// ── $RiP Token ──────────────────────────────────────────────────
+const RIP_TOKEN_MINT = 'CUvzcPdNoBHww1keQW4Vd21P5ZXJ5enZL7ULphS2pump';
+
 // ── Types ───────────────────────────────────────────────────────
 interface StakingProps {
   user: User;
@@ -24,6 +27,7 @@ interface Pool {
   lockDays: number[];
   platform: 'raydium' | 'internal';
   poolAddress?: string;
+  tokenMint?: string;
 }
 
 interface StakePosition {
@@ -51,6 +55,7 @@ const POOLS: Pool[] = [
     lockDays: [7, 30, 90, 180],
     platform: 'raydium',
     poolAddress: process.env.NEXT_PUBLIC_RAYDIUM_RIP_POOL || '',
+    tokenMint: RIP_TOKEN_MINT,
   },
   {
     id: 'rip-usdc', name: '$RiP / USDC', pair: 'RiP-USDC', icon: '☽💲',
@@ -58,6 +63,7 @@ const POOLS: Pool[] = [
     lockDays: [7, 30, 90],
     platform: 'raydium',
     poolAddress: process.env.NEXT_PUBLIC_RAYDIUM_USDC_POOL || '',
+    tokenMint: RIP_TOKEN_MINT,
   },
   {
     id: 'nft-staking', name: 'NFT Staking', pair: 'RiP-NFT', icon: '💎🔒',
@@ -144,7 +150,7 @@ export function RaydiumStaking({ user }: StakingProps) {
 
           // Staking vault address (would be Raydium pool in production)
           const stakingVault = new PublicKey(
-            process.env.NEXT_PUBLIC_STAKING_VAULT || '11111111111111111111111111111111'
+            process.env.NEXT_PUBLIC_STAKING_VAULT || RIP_TOKEN_MINT
           );
 
           const transaction = new Transaction().add(
@@ -291,6 +297,22 @@ export function RaydiumStaking({ user }: StakingProps) {
           </button>
         ))}
       </div>
+
+      {/* ── TOKEN INFO BAR ─────────────────────────────────── */}
+      {tab === 'pools' && (
+        <div className="flex flex-wrap items-center gap-3 mb-4 p-3 rounded-xl bg-bg2 border border-border text-xs">
+          <span className="text-white font-bold">$RiP Token</span>
+          <code className="text-muted font-mono text-[10px] bg-bg3 px-2 py-1 rounded select-all">
+            {RIP_TOKEN_MINT}
+          </code>
+          <a href={`https://pump.fun/coin/${RIP_TOKEN_MINT}`} target="_blank" rel="noopener"
+            className="text-rip hover:underline">pump.fun ↗</a>
+          <a href={`https://solscan.io/token/${RIP_TOKEN_MINT}`} target="_blank" rel="noopener"
+            className="text-lime hover:underline">Solscan ↗</a>
+          <a href={`https://dexscreener.com/solana/${RIP_TOKEN_MINT}`} target="_blank" rel="noopener"
+            className="text-purple hover:underline">DexScreener ↗</a>
+        </div>
+      )}
 
       {/* ── POOLS ──────────────────────────────────────────── */}
       {tab === 'pools' && (
