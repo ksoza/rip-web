@@ -1,5 +1,6 @@
 // lib/revenue.ts
 import { createSupabaseAdmin } from './supabase';
+import { grantSubscriptionCredits } from './credits';
 
 export const FOUNDER_WALLET = 'DbnD8vxbNVrG9iL7oi83Zg8RGqxFLATGcW67oq2xD5Nj';
 
@@ -13,9 +14,9 @@ export const SPLIT = {
 } as const;
 
 export const PLAN_CONFIG = {
-  starter: { price: 1,  gens: 30,       rip: 500,  apy: 420  },
-  creator: { price: 5,  gens: 150,       rip: 3000, apy: 690  },
-  studio:  { price: 10, gens: 999999999, rip: 7500, apy: 1000 },
+  starter: { price: 9.99,  credits: 200,  rip: 500,  apy: 420  },
+  creator: { price: 24.99, credits: 600,  rip: 3000, apy: 690  },
+  studio:  { price: 49.99, credits: 1500, rip: 7500, apy: 1000 },
 } as const;
 
 export function calcSplits(grossUsd: number) {
@@ -91,7 +92,7 @@ export async function grantSubscription({
 
   await supabase.from('profiles').update({
     tier:              plan,
-    generations_limit: cfg.gens,
+    generations_limit: 999999999, // Unlimited — now tracked by credits
     generations_used:  0,
   }).eq('id', userId);
 
@@ -102,4 +103,7 @@ export async function grantSubscription({
     status:             'active',
     current_period_end: periodEnd.toISOString(),
   }, { onConflict: 'stripe_sub_id' });
+
+  // Grant monthly credits for the subscription
+  await grantSubscriptionCredits(userId, plan);
 }
