@@ -1,10 +1,11 @@
 // app/api/generate/video/route.ts
-// Video generation — fal.ai (primary), with Luma/Runway/Kling legacy fallback
-// Supports: Seedance, Kling, Veo, Wan, LTX, Hailuo + legacy Luma, Runway
+// Video generation — fal.ai (primary), with Luma/Runway legacy fallback
+// Flat pricing: check tier access, no credit deduction
 import { NextRequest, NextResponse } from 'next/server';
 import { isNexosConfigured, nexosGenerate } from '@/lib/nexos';
 import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
-import { deductCredits, grantDailyCredits } from '@/lib/credits';
+import { checkGenerationAccess, recordGeneration } from '@/lib/credits';
+import { canAccessTier } from '@/lib/revenue';
 import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
@@ -27,27 +28,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
-    // Grant daily free credits if eligible
-    await grantDailyCredits(userId).catch(() => {});
+    // Check generation access (tier-based, unlimited for paid)
+    const access = await checkGenerationAccess(userId);
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: access.error || 'Generation limit reached. Upgrade for unlimited access.' },
+        { status: 402 },
+      );
+    }
 
     let result: { url: string; id: string; duration: number };
-    let creditCost = 0;
     let usedProvider = modelKey || provider;
 
     // ── fal.ai models (new, primary) ────────────────────────────
     const falModel = FAL_VIDEO_MODELS[modelKey || ''] || FAL_VIDEO_MODELS[provider || ''];
     if (falModel) {
-      creditCost = falModel.creditCost;
-
-      // Check & deduct credits
-      const { success, error } = await deductCredits(
-        userId, creditCost, 'video_generation',
-        { model: falModel.id, prompt: prompt.slice(0, 200) },
-      );
-      if (!success) {
+      // Check tier access for this model
+      if (falModel.tier && !canAccessTier(access.tier, falModel.tier)) {
         return NextResponse.json(
-          { error: error || 'Insufficient credits', creditsNeeded: creditCost },
-          { status: 402 },
+          { error: `${falModel.tier} tier required for this model. Upgrade your plan.` },
+          { status: 403 },
         );
       }
 
@@ -69,14 +69,18 @@ export async function POST(req: NextRequest) {
 
     // ── Legacy providers (backward compatibility) ───────────────
     } else {
+      // Legacy providers require at least starter tier
+      if (!canAccessTier(access.tier, 'starter')) {
+        return NextResponse.json(
+          { error: 'Starter tier or above required for legacy video providers.' },
+          { status: 403 },
+        );
+      }
+
       switch (provider) {
         case 'luma': {
-          creditCost = 15;
-          const { success, error } = await deductCredits(userId, creditCost, 'video_generation', { model: 'luma' });
-          if (!success) return NextResponse.json({ error: error || 'Insufficient credits', creditsNeeded: creditCost }, { status: 402 });
-
           const key = process.env.LUMA_API_KEY;
-          if (!key) return NextResponse.json({ error: 'LUMA_API_KEY not configured. Add your Luma Dream Machine API key.' }, { status: 500 });
+          if (!key) return NextResponse.json({ error: 'LUMA_API_KEY not configured.' }, { status: 500 });
 
           const body: any = { prompt, aspect_ratio: aspectRatio, loop: false };
           if (imageUrl) body.keyframes = { frame0: { type: 'image', url: imageUrl } };
@@ -108,12 +112,8 @@ export async function POST(req: NextRequest) {
         }
 
         case 'runway': {
-          creditCost = 20;
-          const { success, error } = await deductCredits(userId, creditCost, 'video_generation', { model: 'runway' });
-          if (!success) return NextResponse.json({ error: error || 'Insufficient credits', creditsNeeded: creditCost }, { status: 402 });
-
           const key = process.env.RUNWAY_API_KEY;
-          if (!key) return NextResponse.json({ error: 'RUNWAY_API_KEY not configured. Add your Runway ML API key.' }, { status: 500 });
+          if (!key) return NextResponse.json({ error: 'RUNWAY_API_KEY not configured.' }, { status: 500 });
 
           const body: any = {
             promptText: prompt,
@@ -160,6 +160,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Record generation (for free tier daily counting)
+    await recordGeneration(userId).catch(() => {});
+
     // Log generation
     await logGeneration({
       userId,
@@ -175,7 +178,7 @@ export async function POST(req: NextRequest) {
       provider: usedProvider,
       ...result,
       prompt,
-      creditsUsed: creditCost,
+      tier: access.tier,
     });
 
   } catch (err: any) {
