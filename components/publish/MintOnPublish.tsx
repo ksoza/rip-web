@@ -7,6 +7,9 @@ import { useState, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useWallet } from '@/lib/solana/wallet-provider';
 
+// ── $RiP Token ──────────────────────────────────────────────────
+const RIP_TOKEN_MINT = 'CUvzcPdNoBHww1keQW4Vd21P5ZXJ5enZL7ULphS2pump';
+
 // ── Types ───────────────────────────────────────────────────────
 interface MintOnPublishProps {
   user: User;
@@ -103,6 +106,8 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
             mediaType: creation.videoUrl ? 'video' : 'image',
             royaltyBps,
             creatorAddress: wallet.publicKey,
+            collection: 'ReMiX IP',
+            ripTokenMint: RIP_TOKEN_MINT,
           },
         }),
       });
