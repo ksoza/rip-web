@@ -85,7 +85,7 @@ export async function deductCredits(
     balance_after: newBalance,
     reason,
     metadata: metadata || {},
-  }).catch(() => {}); // Non-critical
+  }); // Non-critical, errors handled by Supabase internally
 
   return { success: true, balance: newBalance };
 }
@@ -123,7 +123,7 @@ export async function addCredits(
     balance_after: newBalance,
     reason,
     metadata: metadata || {},
-  }).catch(() => {});
+  }); // Non-critical
 
   return { success: true, balance: newBalance };
 }
