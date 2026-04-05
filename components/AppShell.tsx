@@ -1,47 +1,49 @@
 'use client';
+// components/AppShell.tsx
+// Main app shell — hamburger navigation, 6 pages, legal agreement gate
 import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
+
+// Navigation
+import { HamburgerNav, PAGES } from './nav/HamburgerNav';
+import type { PageId } from './nav/HamburgerNav';
+
+// Pages
+import { RemixrHome } from './remixr/RemixrHome';
 import { StudioTab }    from './studio/StudioTab';
-import { DiscoverTab }  from './discover/DiscoverTab';
-import { GhostfaceBrain }   from './ghostface/GhostfaceBrain';
 import { WalletTab }    from './wallet/WalletTab';
-import { RipLogo }      from './RipLogo';
 import { SettingsTab }  from './AllTabs';
+import { RipLogo }      from './RipLogo';
+
+// Creation
 import { CreationWizard } from './create/CreationWizard';
-import type { MediaItem } from './create/CreationWizard';
+import type { MediaItem }  from './create/CreationWizard';
 
-// ── Nav Tabs ────────────────────────────────────────────────────
-const NAV = [
-  { id: 'discover', icon: '🌐', label: 'Discover',  color: '#00d4ff' },
-  { id: 'studio',   icon: '🎬', label: 'Studio',   color: '#ff2d78' },
-  { id: 'ghostface',    icon: '🧠', label: 'GhOSTface', color: '#8aff00' },
-  { id: 'wallet',   icon: '💎', label: 'Wallet',    color: '#a855f7' },
-  { id: 'settings', icon: '⚙️', label: 'Settings',  color: '#666' },
-];
+// Legal
+import { UserContentAgreement } from './legal/UserContentAgreement';
 
-// Tabs that require authentication
-const AUTH_REQUIRED_TABS = new Set(['studio', 'wallet', 'settings']);
-
+// ── Types ───────────────────────────────────────────────────────
 type Profile = {
-  username:         string;
-  tier:             string;
-  generations_used: number;
-  generations_limit:number;
+  username:           string;
+  tier:               string;
+  generations_used:   number;
+  generations_limit:  number;
+  content_agreement:  boolean;
 };
 
-// ── Sign-In Prompt (shown for gated tabs when not logged in) ────
-function SignInPrompt({ tabName, onSignIn }: { tabName: string; onSignIn: () => void }) {
+// ── Auth-gated sign-in prompt ───────────────────────────────────
+function SignInPrompt({ pageName, onSignIn }: { pageName: string; onSignIn: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
       <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-rip/20 to-purple/20 border border-rip/30 flex items-center justify-center mb-6">
         <span className="text-4xl">🔐</span>
       </div>
       <h2 className="text-2xl font-bold text-white mb-3">
-        Sign in to access {tabName}
+        Sign in to access {pageName}
       </h2>
       <p className="text-muted text-sm max-w-md mb-8">
-        Create remixes, mint NFTs, manage your wallet, and unlock the full power of ReMixIP.
+        Create remixes, mint NFTs, manage your wallet, and unlock the full power of ReMixr.
         Free to sign up — takes 5 seconds.
       </p>
       <button
@@ -57,22 +59,53 @@ function SignInPrompt({ tabName, onSignIn }: { tabName: string; onSignIn: () => 
         </svg>
         Sign in with Google
       </button>
-      <p className="text-muted/50 text-xs mt-4">
-        Browse shows and explore freely — sign in when you&apos;re ready to create
+    </div>
+  );
+}
+
+// ── Placeholder pages for RxTV and RxMovies ─────────────────────
+function RxTVPage() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <span className="text-6xl mb-4">📺</span>
+      <h2 className="text-2xl font-bold text-white mb-2">RxTV</h2>
+      <p className="text-muted text-sm max-w-md">
+        Remixed TV content from the community. Coming soon — start creating on the ReMixr page
+        and your published TV remixes will appear here!
       </p>
     </div>
   );
 }
 
+function RxMoviesPage() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <span className="text-6xl mb-4">🎥</span>
+      <h2 className="text-2xl font-bold text-white mb-2">RxMovies</h2>
+      <p className="text-muted text-sm max-w-md">
+        Remixed movie content from the community. Coming soon — start creating on the ReMixr page
+        and your published movie remixes will appear here!
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN APP SHELL
+// ═══════════════════════════════════════════════════════════════
 export function AppShell({ user }: { user: User | null }) {
-  const [tab, setTab]                   = useState('discover');
-  const [profile, setProfile]           = useState<Profile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [studioShowName, setStudioShowName] = useState('');
-  const [studioCategory, setStudioCategory] = useState('');
-  // Creation Wizard state
-  const [wizardMedia, setWizardMedia]   = useState<MediaItem | null>(null);
-  const [showWizard, setShowWizard]     = useState(false);
+  const [page, setPage]                       = useState<PageId>('remixr');
+  const [profile, setProfile]                 = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading]   = useState(true);
+  const [showAgreement, setShowAgreement]     = useState(false);
+  const [pendingMedia, setPendingMedia]       = useState<MediaItem | null>(null);
+  // Creation wizard
+  const [wizardMedia, setWizardMedia]         = useState<MediaItem | null>(null);
+  const [showWizard, setShowWizard]           = useState(false);
+  // Studio pre-selection
+  const [studioShowName, setStudioShowName]   = useState('');
+  const [studioCategory, setStudioCategory]   = useState('');
+
   const supabase = createSupabaseBrowser();
 
   // ── Google Sign In ──────────────────────────────────────────
@@ -83,7 +116,7 @@ export function AppShell({ user }: { user: User | null }) {
     });
   }
 
-  // ── Load profile (only when signed in) ──────────────────────
+  // ── Load profile ────────────────────────────────────────────
   useEffect(() => {
     if (!user) {
       setProfileLoading(false);
@@ -96,18 +129,23 @@ export function AppShell({ user }: { user: User | null }) {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('username,tier,generations_used,generations_limit')
+          .select('username,tier,generations_used,generations_limit,content_agreement')
           .eq('id', user!.id)
           .single();
 
         if (data) {
-          setProfile(data);
+          setProfile({
+            ...data,
+            content_agreement: data.content_agreement ?? false,
+          });
         } else if (error?.code === 'PGRST116') {
+          // New user — create profile
           const defaultProfile: Profile = {
             username: user!.user_metadata?.name || user!.user_metadata?.full_name || user!.email?.split('@')[0] || 'user',
             tier: 'free',
             generations_used: 0,
-            generations_limit: 3,
+            generations_limit: 10,
+            content_agreement: false,
           };
           setProfile(defaultProfile);
 
@@ -117,7 +155,8 @@ export function AppShell({ user }: { user: User | null }) {
             avatar_url: user!.user_metadata?.avatar_url || user!.user_metadata?.picture || null,
             tier: 'free',
             generations_used: 0,
-            generations_limit: 3,
+            generations_limit: 10,
+            content_agreement: false,
           }, { onConflict: 'id' });
         }
       } catch (err) {
@@ -126,7 +165,8 @@ export function AppShell({ user }: { user: User | null }) {
           username: user!.email?.split('@')[0] || 'user',
           tier: 'free',
           generations_used: 0,
-          generations_limit: 3,
+          generations_limit: 10,
+          content_agreement: false,
         });
       } finally {
         setProfileLoading(false);
@@ -137,25 +177,49 @@ export function AppShell({ user }: { user: User | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // ── Reimagine: opens the Creation Wizard (or sign-in) ───────
-  function handleReimagine(mediaItem: MediaItem) {
+  // ── Handle media selection (with legal gate) ────────────────
+  function handleSelectMedia(media: MediaItem) {
     if (!user) {
       handleSignIn();
       return;
     }
-    setWizardMedia(mediaItem);
+
+    // Check if user has accepted the content agreement
+    if (!profile?.content_agreement) {
+      setPendingMedia(media);
+      setShowAgreement(true);
+      return;
+    }
+
+    setWizardMedia(media);
     setShowWizard(true);
   }
 
-  // ── Navigate from Discover → Studio (or sign-in) ───────────
-  function handleNavigateToStudio(showName: string, category: string) {
-    if (!user) {
-      handleSignIn();
-      return;
+  // ── Handle agreement acceptance ─────────────────────────────
+  async function handleAcceptAgreement() {
+    if (!user) return;
+
+    // Save to Supabase
+    await supabase.from('profiles').update({
+      content_agreement: true,
+      content_agreement_date: new Date().toISOString(),
+    }).eq('id', user.id);
+
+    // Update local profile
+    setProfile(prev => prev ? { ...prev, content_agreement: true } : prev);
+    setShowAgreement(false);
+
+    // Continue to wizard if there was a pending media selection
+    if (pendingMedia) {
+      setWizardMedia(pendingMedia);
+      setShowWizard(true);
+      setPendingMedia(null);
     }
-    setStudioShowName(showName);
-    setStudioCategory(category);
-    setTab('studio');
+  }
+
+  function handleDeclineAgreement() {
+    setShowAgreement(false);
+    setPendingMedia(null);
   }
 
   // ── Open editor from wizard result ──────────────────────────
@@ -163,39 +227,75 @@ export function AppShell({ user }: { user: User | null }) {
     setShowWizard(false);
     setStudioShowName(resultData.media.title);
     setStudioCategory(resultData.media.category);
-    setTab('studio');
+    setPage('studio');
   }
 
-  const genLeft = profile ? profile.generations_limit - profile.generations_used : 0;
+  // ── Render current page ─────────────────────────────────────
+  function renderPage() {
+    const pageConfig = PAGES.find(p => p.id === page);
 
-  // ── Render current tab content ──────────────────────────────
-  function renderTab() {
-    // Auth-gated tabs show sign-in prompt when not logged in
-    if (!user && AUTH_REQUIRED_TABS.has(tab)) {
-      const tabLabel = NAV.find(n => n.id === tab)?.label || tab;
-      return <SignInPrompt tabName={tabLabel} onSignIn={handleSignIn} />;
+    // Auth-gated pages
+    if (pageConfig?.requiresAuth && !user) {
+      return <SignInPrompt pageName={pageConfig.label} onSignIn={handleSignIn} />;
     }
 
-    switch (tab) {
-      case 'discover':
-        return <DiscoverTab user={user} profile={profile} onNavigateToStudio={handleNavigateToStudio} onReimagine={handleReimagine} />;
+    switch (page) {
+      case 'remixr':
+        return (
+          <RemixrHome
+            user={user}
+            onSelectMedia={handleSelectMedia}
+            onViewContent={(item) => {
+              // TODO: Navigate to content viewer
+              console.log('View content:', item);
+            }}
+          />
+        );
       case 'studio':
-        return user ? <StudioTab user={user} profile={profile} onProfileUpdate={setProfile} preselectedShow={studioShowName} preselectedCategory={studioCategory} /> : null;
-      case 'ghostface':
-        return <GhostfaceBrain />;
+        return user ? (
+          <StudioTab
+            user={user}
+            profile={profile}
+            onProfileUpdate={setProfile as any}
+            preselectedShow={studioShowName}
+            preselectedCategory={studioCategory}
+          />
+        ) : null;
+      case 'rxtv':
+        return <RxTVPage />;
+      case 'rxmovies':
+        return <RxMoviesPage />;
       case 'wallet':
         return user ? <WalletTab user={user} /> : null;
       case 'settings':
-        return user ? <SettingsTab user={user} profile={profile} onSignOut={() => supabase.auth.signOut()} /> : null;
+        return user ? (
+          <SettingsTab
+            user={user}
+            profile={profile}
+            onSignOut={() => supabase.auth.signOut()}
+          />
+        ) : null;
       default:
         return null;
     }
   }
 
+  const genLeft = profile
+    ? (profile.generations_limit === -1 ? '∞' : Math.max(0, profile.generations_limit - profile.generations_used))
+    : 0;
+
   return (
     <div className="min-h-screen bg-bg flex flex-col">
 
-      {/* ── Creation Wizard Overlay ────────────────────────────── */}
+      {/* ── Legal Agreement Modal ────────────────────────────── */}
+      {showAgreement && (
+        <UserContentAgreement
+          onAccept={handleAcceptAgreement}
+          onDecline={handleDeclineAgreement}
+        />
+      )}
+
+      {/* ── Creation Wizard Overlay ──────────────────────────── */}
       {showWizard && wizardMedia && user && (
         <CreationWizard
           user={user}
@@ -205,25 +305,29 @@ export function AppShell({ user }: { user: User | null }) {
         />
       )}
 
-      {/* ── Top Bar ────────────────────────────────────────────── */}
+      {/* ── Top Bar ──────────────────────────────────────────── */}
       <header className="border-b border-border bg-bg/95 backdrop-blur sticky top-0 z-50 px-4 sm:px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <HamburgerNav
+            currentPage={page}
+            onNavigate={setPage}
+            user={user}
+            profile={profile}
+            onSignIn={handleSignIn}
+          />
           <RipLogo size="sm" />
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1 ml-6">
-            {NAV.map(n => (
-              <button key={n.id} onClick={() => setTab(n.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  tab === n.id
-                    ? 'text-white'
-                    : 'text-muted hover:text-white'
-                }`}
-                style={tab === n.id ? { backgroundColor: n.color + '15', color: n.color } : {}}>
-                <span className="text-sm">{n.icon}</span>
-                {n.label}
-              </button>
-            ))}
-          </nav>
+          {/* Current page indicator (desktop) */}
+          <div className="hidden sm:flex items-center gap-2 ml-3 pl-3 border-l border-border">
+            <span className="text-sm">
+              {PAGES.find(p => p.id === page)?.icon}
+            </span>
+            <span
+              className="text-xs font-bold"
+              style={{ color: PAGES.find(p => p.id === page)?.color }}
+            >
+              {PAGES.find(p => p.id === page)?.label}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -232,10 +336,12 @@ export function AppShell({ user }: { user: User | null }) {
               <span className="text-xs text-muted hidden sm:block">
                 {profileLoading ? '...' : profile?.tier === 'free'
                   ? `${genLeft} free gen${genLeft !== 1 ? 's' : ''}`
-                  : `${profile?.tier} plan`}
+                  : `${profile?.tier} · unlimited`}
               </span>
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-rip to-purple flex items-center justify-center text-white text-xs font-bold cursor-pointer"
-                onClick={() => setTab('settings')}>
+              <div
+                className="w-7 h-7 rounded-full bg-gradient-to-br from-rip to-purple flex items-center justify-center text-white text-xs font-bold cursor-pointer"
+                onClick={() => setPage('settings')}
+              >
                 {profile?.username?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
               </div>
             </>
@@ -245,35 +351,18 @@ export function AppShell({ user }: { user: User | null }) {
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold text-white transition-all hover:scale-105 active:scale-95"
               style={{ background: 'linear-gradient(135deg, #ff2d78, #a855f7)' }}
             >
-              <span>🚀</span>
-              Sign In
+              <span>🚀</span> Sign In
             </button>
           )}
         </div>
       </header>
 
-      {/* ── Content ────────────────────────────────────────────── */}
+      {/* ── Content ──────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
-        <div className={`mx-auto py-6 pb-28 ${tab === 'studio' ? 'max-w-6xl px-4 sm:px-6' : 'max-w-5xl px-4 sm:px-6'}`}>
-          {renderTab()}
+        <div className={`mx-auto py-6 pb-8 ${page === 'studio' ? 'max-w-6xl px-4 sm:px-6' : 'max-w-5xl px-4 sm:px-6'}`}>
+          {renderPage()}
         </div>
       </main>
-
-      {/* ── Mobile Bottom Tab Bar ──────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg2/95 backdrop-blur border-t border-border z-50 safe-bottom">
-        <div className="flex">
-          {NAV.map(n => (
-            <button key={n.id} onClick={() => setTab(n.id)}
-              className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${
-                tab === n.id ? '' : 'text-muted'
-              }`}
-              style={tab === n.id ? { color: n.color } : {}}>
-              <span className="text-xl leading-none">{n.icon}</span>
-              <span className="text-[9px] font-bold uppercase tracking-wide">{n.label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
     </div>
   );
 }
