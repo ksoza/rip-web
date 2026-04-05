@@ -1,0 +1,287 @@
+// lib/fal.ts
+// fal.ai — Unified AI media generation gateway (600+ models)
+// Handles image & video generation through a single API
+// Cost: 30-50% cheaper than direct providers
+
+// ── Model Catalog ───────────────────────────────────────────────
+
+export interface FalModel {
+  id: string;             // fal.ai model identifier
+  name: string;           // Human-readable name
+  type: 'image' | 'video';
+  creditCost: number;     // Credits per generation
+  costUsd: number;        // Approximate cost to us per generation
+  description: string;
+  tier: 'free' | 'starter' | 'creator' | 'studio'; // Minimum tier required
+  tags: string[];
+}
+
+export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
+  'flux-schnell': {
+    id: 'fal-ai/flux/schnell',
+    name: 'Flux Schnell',
+    type: 'image',
+    creditCost: 1,
+    costUsd: 0.003,
+    description: 'Fast, budget-friendly image generation',
+    tier: 'free',
+    tags: ['fast', 'budget'],
+  },
+  'sdxl': {
+    id: 'fal-ai/fast-sdxl',
+    name: 'Stable Diffusion XL',
+    type: 'image',
+    creditCost: 1,
+    costUsd: 0.003,
+    description: 'Classic SDXL — great for artistic styles',
+    tier: 'free',
+    tags: ['classic', 'artistic'],
+  },
+  'flux-dev': {
+    id: 'fal-ai/flux/dev',
+    name: 'Flux 2 Dev',
+    type: 'image',
+    creditCost: 2,
+    costUsd: 0.025,
+    description: 'High-quality balanced image generation',
+    tier: 'starter',
+    tags: ['quality', 'balanced'],
+  },
+  'ideogram': {
+    id: 'fal-ai/ideogram/v3',
+    name: 'Ideogram 3.0',
+    type: 'image',
+    creditCost: 2,
+    costUsd: 0.03,
+    description: 'Best for images with text rendering',
+    tier: 'starter',
+    tags: ['text', 'logos'],
+  },
+  'recraft': {
+    id: 'fal-ai/recraft-v3',
+    name: 'Recraft V3',
+    type: 'image',
+    creditCost: 3,
+    costUsd: 0.04,
+    description: 'Professional design — logos, icons, illustrations',
+    tier: 'creator',
+    tags: ['design', 'professional'],
+  },
+  'flux-pro': {
+    id: 'fal-ai/flux-pro/v1.1',
+    name: 'Flux 2 Pro',
+    type: 'image',
+    creditCost: 3,
+    costUsd: 0.05,
+    description: 'Best photorealism and detail',
+    tier: 'creator',
+    tags: ['photorealism', 'premium'],
+  },
+  'seedream': {
+    id: 'fal-ai/seedream-3',
+    name: 'Seedream 3.0',
+    type: 'image',
+    creditCost: 3,
+    costUsd: 0.04,
+    description: 'ByteDance Seedream — stylized imagery',
+    tier: 'creator',
+    tags: ['stylized', 'bytedance'],
+  },
+};
+
+export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
+  'ltx-video': {
+    id: 'fal-ai/ltx-video/v0.9.1',
+    name: 'LTX Video 2.0',
+    type: 'video',
+    creditCost: 8,
+    costUsd: 0.20,
+    description: 'Fast open-source video — cheapest option',
+    tier: 'starter',
+    tags: ['fast', 'budget', 'open-source'],
+  },
+  'wan': {
+    id: 'fal-ai/wan/v2.1/1.3b',
+    name: 'Wan 2.6',
+    type: 'video',
+    creditCost: 10,
+    costUsd: 0.25,
+    description: 'Affordable quality video generation',
+    tier: 'starter',
+    tags: ['balanced', 'affordable'],
+  },
+  'seedance': {
+    id: 'fal-ai/seedance/video',
+    name: 'Seedance 1.5 Pro',
+    type: 'video',
+    creditCost: 10,
+    costUsd: 0.26,
+    description: 'ByteDance Seedance — superior motion control',
+    tier: 'creator',
+    tags: ['motion', 'bytedance', 'popular'],
+  },
+  'kling': {
+    id: 'fal-ai/kling-video/v2/master',
+    name: 'Kling 2.6 Pro',
+    type: 'video',
+    creditCost: 15,
+    costUsd: 0.35,
+    description: 'Professional quality video with great detail',
+    tier: 'creator',
+    tags: ['professional', 'detail'],
+  },
+  'hailuo': {
+    id: 'fal-ai/minimax-video/video-01',
+    name: 'Hailuo 2.3',
+    type: 'video',
+    creditCost: 15,
+    costUsd: 0.49,
+    description: 'Minimax video — realistic motion',
+    tier: 'creator',
+    tags: ['realistic', 'motion'],
+  },
+  'veo': {
+    id: 'fal-ai/veo3',
+    name: 'Veo 3.1',
+    type: 'video',
+    creditCost: 40,
+    costUsd: 1.00,
+    description: 'Google Veo — best audio-video sync',
+    tier: 'studio',
+    tags: ['premium', 'audio', 'google'],
+  },
+};
+
+// All models combined
+export const FAL_MODELS: Record<string, FalModel> = {
+  ...FAL_IMAGE_MODELS,
+  ...FAL_VIDEO_MODELS,
+};
+
+// ── fal.ai API Helpers ──────────────────────────────────────────
+
+const FAL_API_URL = 'https://queue.fal.run';
+
+function getFalKey(): string {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY not configured. Get one at fal.ai/dashboard/keys');
+  return key;
+}
+
+interface FalImageInput {
+  prompt: string;
+  image_size?: string | { width: number; height: number };
+  num_images?: number;
+  seed?: number;
+  style?: string;
+  negative_prompt?: string;
+  [key: string]: any;
+}
+
+interface FalVideoInput {
+  prompt: string;
+  image_url?: string;
+  duration?: number | string;
+  aspect_ratio?: string;
+  seed?: number;
+  [key: string]: any;
+}
+
+interface FalResult {
+  images?: { url: string; content_type?: string }[];
+  video?: { url: string };
+  request_id?: string;
+}
+
+// Server-side direct API call (for API routes)
+export async function falGenerate(
+  modelId: string,
+  input: FalImageInput | FalVideoInput,
+): Promise<FalResult> {
+  const key = getFalKey();
+
+  // Submit to queue
+  const submitRes = await fetch(`${FAL_API_URL}/${modelId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Key ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!submitRes.ok) {
+    const err = await submitRes.text();
+    throw new Error(`fal.ai submit error (${submitRes.status}): ${err}`);
+  }
+
+  const submitData = await submitRes.json();
+
+  // If result is already available (sync response)
+  if (submitData.images || submitData.video) {
+    return submitData;
+  }
+
+  // Poll for result (async/queue response)
+  const requestId = submitData.request_id;
+  if (!requestId) {
+    throw new Error('fal.ai: No request_id in response');
+  }
+
+  const statusUrl = `https://queue.fal.run/${modelId}/requests/${requestId}/status`;
+  const resultUrl = `https://queue.fal.run/${modelId}/requests/${requestId}`;
+
+  const deadline = Date.now() + 300_000; // 5 min timeout
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 3000));
+
+    const statusRes = await fetch(statusUrl, {
+      headers: { 'Authorization': `Key ${key}` },
+    });
+    const status = await statusRes.json();
+
+    if (status.status === 'COMPLETED') {
+      const resultRes = await fetch(resultUrl, {
+        headers: { 'Authorization': `Key ${key}` },
+      });
+      if (!resultRes.ok) {
+        throw new Error(`fal.ai result fetch error: ${await resultRes.text()}`);
+      }
+      return resultRes.json();
+    }
+
+    if (status.status === 'FAILED') {
+      throw new Error(`fal.ai generation failed: ${status.error || 'Unknown error'}`);
+    }
+  }
+
+  throw new Error('fal.ai generation timed out (5 min)');
+}
+
+// ── Helpers ─────────────────────────────────────────────────────
+
+export function getModelByKey(key: string): FalModel | null {
+  return FAL_MODELS[key] || null;
+}
+
+export function getAvailableModels(
+  type?: 'image' | 'video',
+  userTier: string = 'free',
+): FalModel[] {
+  const tierOrder = ['free', 'starter', 'creator', 'studio'];
+  const userTierIdx = tierOrder.indexOf(userTier);
+
+  return Object.values(FAL_MODELS)
+    .filter(m => (!type || m.type === type))
+    .filter(m => tierOrder.indexOf(m.tier) <= userTierIdx)
+    .sort((a, b) => a.creditCost - b.creditCost);
+}
+
+export function mapSizeToFal(size?: string): string | { width: number; height: number } {
+  switch (size) {
+    case '1792x1024': return { width: 1792, height: 1024 };
+    case '1024x1792': return { width: 1024, height: 1792 };
+    case '512x512':   return { width: 512, height: 512 };
+    default:          return { width: 1024, height: 1024 };
+  }
+}
