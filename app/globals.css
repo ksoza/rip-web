@@ -10,25 +10,129 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
 
 body {
   background:  #060608;
   color:       #c8c8d8;
   min-height:  100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar */
+/* ── Scrollbar ─────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #1c1c28; border-radius: 4px; }
 
-/* Input reset */
+/* ── Input reset ───────────────────────────────────────────── */
 input, textarea, button { font-family: inherit; }
 input::placeholder, textarea::placeholder { color: #22222e; }
 
-/* Selection */
+/* ── Selection ─────────────────────────────────────────────── */
 ::selection { background: rgba(255,45,120,.3); color: #fff; }
+
+/* ── Mobile touch targets ──────────────────────────────────── */
+@media (pointer: coarse) {
+  button, a, [role="button"], input[type="submit"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ── Mobile typography ─────────────────────────────────────── */
+@media (max-width: 640px) {
+  html { font-size: 15px; }
+
+  h1, .text-4xl, .text-5xl, .text-6xl {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+}
+
+/* ── Mobile carousel / horizontal scroll ───────────────────── */
+.scroll-snap-x {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-snap-x > * {
+  scroll-snap-align: start;
+}
+
+/* Hide scrollbar on mobile for carousels */
+@media (max-width: 768px) {
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ── Pull-to-refresh prevention ────────────────────────────── */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* ── iOS safe areas ────────────────────────────────────────── */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .safe-left   { padding-left:   env(safe-area-inset-left, 0px); }
+  .safe-right  { padding-right:  env(safe-area-inset-right, 0px); }
+}
+
+/* ── Responsive images ─────────────────────────────────────── */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Focus visible (keyboard nav) ──────────────────────────── */
+:focus-visible {
+  outline: 2px solid #ff2d78;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Loading skeleton animation ────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #0c0c14 25%, #1c1c28 50%, #0c0c14 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* ── Slide-up animation for modals/panels ──────────────────── */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* ── Fade in animation ─────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
 
 @layer utilities {
   .font-display    { font-family: var(--font-bebas); }
@@ -48,4 +152,9 @@ input::placeholder, textarea::placeholder { color: #22222e; }
   .glow-pink  { box-shadow: 0 0 20px rgba(255,45,120,.25); }
   .glow-cyan  { box-shadow: 0 0 20px rgba(0,212,255,.2); }
   .glow-lime  { box-shadow: 0 0 20px rgba(138,255,0,.2); }
+  
+  /* Mobile utility classes */
+  .touch-action-pan-x { touch-action: pan-x; }
+  .touch-action-pan-y { touch-action: pan-y; }
+  .touch-action-none  { touch-action: none; }
 }
