@@ -29,6 +29,9 @@ const PUBLIC_API_ROUTES = [
   '/api/tmdb',
   '/api/referral',
   '/api/webhook', // Stripe webhook uses its own signature verification
+  '/api/email',   // Email subscribe — public for pre-auth capture
+  '/api/feed',    // Feed content — public for discovery
+  '/api/models',  // Model list — public for UI
 ];
 
 function isProtectedRoute(pathname: string): boolean {
@@ -51,7 +54,7 @@ export async function middleware(req: NextRequest) {
   if (isPublicRoute(pathname)) {
     const res = NextResponse.next();
     res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
-    if (pathname === '/api/trending') {
+    if (pathname === '/api/trending' || pathname === '/api/feed') {
       res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
     } else {
       res.headers.set('Cache-Control', 'no-store');
@@ -62,9 +65,20 @@ export async function middleware(req: NextRequest) {
   // ── Auth check for protected API routes ────────────────────────
   if (isProtectedRoute(pathname)) {
     try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseKey) {
+        console.error('[middleware] Missing SUPABASE env vars');
+        return NextResponse.json(
+          { error: 'Server configuration error' },
+          { status: 500 },
+        );
+      }
+
       const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        supabaseUrl,
+        supabaseKey,
         {
           cookies: {
             get(name: string) {
@@ -80,11 +94,19 @@ export async function middleware(req: NextRequest) {
         },
       );
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError) {
+        console.error('[middleware] Auth error:', authError.message);
+        return NextResponse.json(
+          { error: 'Authentication failed — please sign in again', code: 'SESSION_EXPIRED' },
+          { status: 401 },
+        );
+      }
 
       if (!user) {
         return NextResponse.json(
-          { error: 'Unauthorized — please sign in' },
+          { error: 'Please sign in to continue', code: 'NOT_AUTHENTICATED' },
           { status: 401 },
         );
       }
@@ -98,9 +120,10 @@ export async function middleware(req: NextRequest) {
       return NextResponse.next({
         request: { headers: requestHeaders },
       });
-    } catch {
+    } catch (err) {
+      console.error('[middleware] Unexpected auth error:', err);
       return NextResponse.json(
-        { error: 'Authentication failed' },
+        { error: 'Authentication failed — please sign in again', code: 'AUTH_ERROR' },
         { status: 401 },
       );
     }
