@@ -1,7 +1,19 @@
 // app/api/email/subscribe/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
+
+function getSupabase() {
+  const rawUrl = process.env.SUPABASE_URL || '';
+  const rawPublicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+
+  let url = rawUrl.trim();
+  if (!url.startsWith('http')) url = rawPublicUrl.trim();
+  if (!url.startsWith('http')) url = 'https://jtoyvnhjwdogpjntcbgq.supabase.co';
+
+  if (!key) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(url, key);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,10 +28,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = getSupabase();
     const cleanEmail = email.toLowerCase().trim();
 
-    // Check if already subscribed
     const { data: existing, error: selErr } = await supabase
       .from('email_subscribers')
       .select('id')
@@ -37,7 +48,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "You're already on the list! 🎉" });
     }
 
-    // Insert new subscriber
     const { error: insErr } = await supabase
       .from('email_subscribers')
       .insert({ email: cleanEmail });
