@@ -1,10 +1,19 @@
 // app/api/email/subscribe/route.ts
-// Force Edge Runtime — Node.js runtime has DNS issues with Supabase
-export const runtime = 'edge';
-
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://jtoyvnhjwdogpjntcbgq.supabase.co';
+// Same URL cleaning as app/auth/callback/route.ts
+function getSupabaseUrl(): string {
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  return rawUrl.replace(/^URL:\s*/i, '').trim();
+}
+
+function getSupabase() {
+  const url = getSupabaseUrl();
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!url || !key) throw new Error('Missing Supabase config');
+  return createClient(url, key);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,62 +28,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
+    const supabase = getSupabase();
     const cleanEmail = email.toLowerCase().trim();
-    const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
-    const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-    const apiKey = serviceKey || anonKey;
 
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
-    }
+    const { data: existing, error: selErr } = await supabase
+      .from('email_subscribers')
+      .select('id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'apikey': apiKey,
-      'Authorization': `Bearer ${apiKey}`,
-      'Prefer': 'return=minimal',
-    };
-
-    // Check if already subscribed
-    const selectRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/email_subscribers?email=eq.${encodeURIComponent(cleanEmail)}&select=id&limit=1`,
-      { method: 'GET', headers }
-    );
-
-    if (!selectRes.ok) {
-      const body = await selectRes.text();
+    if (selErr) {
       return NextResponse.json(
-        { error: 'Database read error', status: selectRes.status, detail: body },
+        { error: 'Database error', detail: selErr.message },
         { status: 500 }
       );
     }
 
-    const existing = await selectRes.json();
-    if (existing && existing.length > 0) {
+    if (existing) {
       return NextResponse.json({ message: "You're already on the list! 🎉" });
     }
 
-    // Insert
-    const insertRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/email_subscribers`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ email: cleanEmail }),
-      }
-    );
+    const { error: insErr } = await supabase
+      .from('email_subscribers')
+      .insert({ email: cleanEmail });
 
-    if (!insertRes.ok) {
-      const body = await insertRes.text();
+    if (insErr) {
       return NextResponse.json(
-        { error: 'Insert failed', status: insertRes.status, detail: body },
+        { error: 'Insert failed', detail: insErr.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ message: "You're on the list! 🎉" });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: 'Server error', detail }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Server error', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 }
