@@ -1,6 +1,6 @@
 // middleware.ts
-// Next.js middleware — auth gate + rate limiting headers
-// Runs on every matched route BEFORE the handler.
+// Next.js middleware — session refresh + auth gate
+// Runs on EVERY matched route to keep Supabase auth cookies fresh.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
@@ -34,10 +34,10 @@ const PUBLIC_API_ROUTES = [
   '/api/trending',
   '/api/tmdb',
   '/api/referral',
-  '/api/webhook', // Stripe webhook uses its own signature verification
-  '/api/email',   // Email subscribe — public for pre-auth capture
-  '/api/feed',    // Feed content — public for discovery
-  '/api/models',  // Model list — public for UI
+  '/api/webhook',
+  '/api/email',
+  '/api/feed',
+  '/api/models',
 ];
 
 function isProtectedRoute(pathname: string): boolean {
@@ -48,60 +48,75 @@ function isPublicRoute(pathname: string): boolean {
   return PUBLIC_API_ROUTES.some(route => pathname.startsWith(route));
 }
 
+/**
+ * Create a Supabase server client that can read AND write cookies
+ * on the NextResponse. This is critical for session refresh.
+ */
+function createSupabaseMiddlewareClient(req: NextRequest, res: NextResponse) {
+  const supabaseUrl = getSupabaseUrl();
+  const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+
+  return createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      get(name: string) {
+        return req.cookies.get(name)?.value;
+      },
+      set(name: string, value: string, options: CookieOptions) {
+        // Set on the request so downstream code sees fresh values
+        req.cookies.set({ name, value });
+        // Set on the response so the browser gets the updated cookie
+        res.cookies.set({ name, value, ...options });
+      },
+      remove(name: string, options: CookieOptions) {
+        req.cookies.set({ name, value: '' });
+        res.cookies.set({ name, value: '', ...options });
+      },
+    },
+  });
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ── Only process API routes ────────────────────────────────────
-  if (!pathname.startsWith('/api/')) {
-    return NextResponse.next();
-  }
+  // ── For ALL routes: refresh session cookies ────────────────────
+  // This is REQUIRED by Supabase SSR — without it, auth cookies
+  // expire and getSession() returns null on page loads.
+  const res = NextResponse.next({
+    request: { headers: new Headers(req.headers) },
+  });
 
-  // ── Skip auth for public routes ────────────────────────────────
-  if (isPublicRoute(pathname)) {
-    const res = NextResponse.next();
-    res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
-    if (pathname === '/api/trending' || pathname === '/api/feed') {
-      res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
-    } else {
-      res.headers.set('Cache-Control', 'no-store');
+  try {
+    const supabaseUrl = getSupabaseUrl();
+    const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+
+    if (!supabaseUrl || !supabaseKey) {
+      // Can't do auth without config — pass through
+      return res;
     }
-    return res;
-  }
 
-  // ── Auth check for protected API routes ────────────────────────
-  if (isProtectedRoute(pathname)) {
-    try {
-      const supabaseUrl = getSupabaseUrl();
-      const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+    const supabase = createSupabaseMiddlewareClient(req, res);
 
-      if (!supabaseUrl || !supabaseKey) {
-        console.error('[middleware] Missing SUPABASE env vars');
-        return NextResponse.json(
-          { error: 'Server configuration error' },
-          { status: 500 },
-        );
+    // getUser() refreshes the session if needed and updates cookies
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    // ── Non-API routes: just refresh cookies, no blocking ────────
+    if (!pathname.startsWith('/api/')) {
+      return res;
+    }
+
+    // ── Public API routes: pass through ──────────────────────────
+    if (isPublicRoute(pathname)) {
+      res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
+      if (pathname === '/api/trending' || pathname === '/api/feed') {
+        res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+      } else {
+        res.headers.set('Cache-Control', 'no-store');
       }
+      return res;
+    }
 
-      const supabase = createServerClient(
-        supabaseUrl,
-        supabaseKey,
-        {
-          cookies: {
-            get(name: string) {
-              return req.cookies.get(name)?.value;
-            },
-            set(_name: string, _value: string, _options: CookieOptions) {
-              // no-op in middleware
-            },
-            remove(_name: string, _options: CookieOptions) {
-              // no-op in middleware
-            },
-          },
-        },
-      );
-
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-
+    // ── Protected API routes: require authentication ─────────────
+    if (isProtectedRoute(pathname)) {
       if (authError) {
         console.error('[middleware] Auth error:', authError.message);
         return NextResponse.json(
@@ -117,32 +132,27 @@ export async function middleware(req: NextRequest) {
         );
       }
 
-      // Pass verified user ID to downstream API routes via request headers.
-      // Routes read req.headers.get('x-user-id') instead of trusting body.
-      const requestHeaders = new Headers(req.headers);
-      requestHeaders.set('x-user-id', user.id);
-      requestHeaders.set('x-user-email', user.email || '');
-
-      return NextResponse.next({
-        request: { headers: requestHeaders },
-      });
-    } catch (err) {
-      console.error('[middleware] Unexpected auth error:', err);
-      return NextResponse.json(
-        { error: 'Authentication failed — please sign in again', code: 'AUTH_ERROR' },
-        { status: 401 },
-      );
+      // Pass verified user ID to downstream API routes
+      res.headers.set('x-user-id', user.id);
+      res.headers.set('x-user-email', user.email || '');
+      return res;
     }
-  }
 
-  // ── Default: pass through ──────────────────────────────────────
-  const res = NextResponse.next();
-  res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
-  res.headers.set('Cache-Control', 'no-store');
-  return res;
+    // ── Default API route: pass through ──────────────────────────
+    res.headers.set('X-RateLimit-Policy', 'rip-api-v1');
+    res.headers.set('Cache-Control', 'no-store');
+    return res;
+  } catch (err) {
+    console.error('[middleware] Unexpected error:', err);
+    // Non-fatal — pass through rather than block
+    return res;
+  }
 }
 
-// Only run middleware on API routes (not static assets, _next, etc.)
+// Run on ALL routes (pages + API) so session cookies stay fresh
 export const config = {
-  matcher: ['/api/:path*'],
+  matcher: [
+    // Match all routes EXCEPT static files and Next.js internals
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+  ],
 };
