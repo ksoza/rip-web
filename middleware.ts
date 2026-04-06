@@ -5,6 +5,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
+// ── Sanitize URL (env var may have "URL:" prefix) ──────────────────
+function getSupabaseUrl(): string {
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  return rawUrl.replace(/^URL:\s*/i, '').trim();
+}
+
 // ── Routes that require authentication ─────────────────────────────
 const PROTECTED_API_ROUTES = [
   '/api/comments',
@@ -65,8 +71,8 @@ export async function middleware(req: NextRequest) {
   // ── Auth check for protected API routes ────────────────────────
   if (isProtectedRoute(pathname)) {
     try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const supabaseUrl = getSupabaseUrl();
+      const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 
       if (!supabaseUrl || !supabaseKey) {
         console.error('[middleware] Missing SUPABASE env vars');
