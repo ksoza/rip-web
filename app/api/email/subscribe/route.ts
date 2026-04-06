@@ -5,9 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 function getSupabase() {
   const url = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
   const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!url || !key) {
-    throw new Error('Missing Supabase env vars');
-  }
+  if (!url || !key) throw new Error('Missing Supabase env vars');
   return createClient(url, key);
 }
 
@@ -27,32 +25,35 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabase();
     const cleanEmail = email.toLowerCase().trim();
 
-    const { data: existing } = await supabase
+    // Check if already subscribed
+    const { data: existing, error: selErr } = await supabase
       .from('email_subscribers')
       .select('id')
       .eq('email', cleanEmail)
       .maybeSingle();
 
+    if (selErr) {
+      return NextResponse.json({ error: 'Database read error', detail: selErr.message }, { status: 500 });
+    }
+
     if (existing) {
       return NextResponse.json({ message: "You're already on the list! 🎉" });
     }
 
-    const { error } = await supabase
+    // Insert — only email field; let DB defaults handle the rest
+    const { error: insErr } = await supabase
       .from('email_subscribers')
-      .insert({
-        email: cleanEmail,
-        source: 'website',
-        subscribed_at: new Date().toISOString(),
-      });
+      .insert({ email: cleanEmail });
 
-    if (error) {
-      console.error('Email insert error:', error);
-      return NextResponse.json({ error: 'Failed to subscribe' }, { status: 500 });
+    if (insErr) {
+      return NextResponse.json({ error: 'Insert failed', detail: insErr.message, code: insErr.code }, { status: 500 });
     }
 
     return NextResponse.json({ message: "You're on the list! 🎉" });
   } catch (err) {
-    console.error('Email subscribe error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Server error', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 }
