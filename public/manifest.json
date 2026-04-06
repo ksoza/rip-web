@@ -1,0 +1,21 @@
+{
+  "name": "ReMiX IP — AI Fan Studio",
+  "short_name": "ReMiX IP",
+  "description": "The world's first AI fan studio. Create remixes of any TV show, movie, or anime.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060608",
+  "theme_color": "#060608",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
