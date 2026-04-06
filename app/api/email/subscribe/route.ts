@@ -5,15 +5,18 @@ import { createClient } from '@supabase/supabase-js';
 
 // Lazy-init: don't create the client at module scope (env vars are empty at build time)
 function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error('Missing Supabase env vars');
+  }
+  return createClient(url, key);
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { email } = await req.json();
+    const body = await req.json();
+    const { email } = body;
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
@@ -26,35 +29,50 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabase();
+    const cleanEmail = email.toLowerCase().trim();
 
     // Check if already subscribed
-    const { data: existing } = await supabase
+    const { data: existing, error: selectError } = await supabase
       .from('email_subscribers')
       .select('id')
-      .eq('email', email.toLowerCase().trim())
-      .single();
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (selectError) {
+      console.error('Email select error:', selectError);
+      return NextResponse.json(
+        { error: 'Database error', detail: selectError.message },
+        { status: 500 }
+      );
+    }
 
     if (existing) {
-      return NextResponse.json({ message: 'You\'re already on the list! 🎉' });
+      return NextResponse.json({ message: "You're already on the list! 🎉" });
     }
 
     // Insert new subscriber
-    const { error } = await supabase
+    const { error: insertError } = await supabase
       .from('email_subscribers')
       .insert({
-        email: email.toLowerCase().trim(),
+        email: cleanEmail,
         source: 'website',
         subscribed_at: new Date().toISOString(),
       });
 
-    if (error) {
-      console.error('Email subscribe error:', error);
-      return NextResponse.json({ error: 'Failed to subscribe' }, { status: 500 });
+    if (insertError) {
+      console.error('Email insert error:', insertError);
+      return NextResponse.json(
+        { error: 'Failed to subscribe', detail: insertError.message },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ message: 'You\'re on the list! 🎉' });
+    return NextResponse.json({ message: "You're on the list! 🎉" });
   } catch (err) {
-    console.error('Email subscribe error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    console.error('Email subscribe catch:', err);
+    return NextResponse.json(
+      { error: 'Server error', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 }
