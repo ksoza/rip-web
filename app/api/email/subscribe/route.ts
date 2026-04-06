@@ -5,10 +5,10 @@ import { createClient } from '@supabase/supabase-js';
 
 // Lazy-init: don't create the client at module scope (env vars are empty at build time)
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   if (!url || !key) {
-    throw new Error('Missing Supabase env vars');
+    throw new Error(`Missing Supabase env vars: url=${!!url}, key=${!!key}`);
   }
   return createClient(url, key);
 }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (existing) {
-      return NextResponse.json({ message: "You're already on the list! 🎉" });
+      return NextResponse.json({ message: "You're already on the list! \ud83c\udf89" });
     }
 
     // Insert new subscriber
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ message: "You're on the list! 🎉" });
+    return NextResponse.json({ message: "You're on the list! \ud83c\udf89" });
   } catch (err) {
     console.error('Email subscribe catch:', err);
     return NextResponse.json(
