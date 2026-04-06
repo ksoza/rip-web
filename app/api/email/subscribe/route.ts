@@ -1,13 +1,7 @@
 // app/api/email/subscribe/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-function getSupabase() {
-  const url = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
-  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!url || !key) throw new Error('Missing Supabase env vars');
-  return createClient(url, key);
-}
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
-    const supabase = getSupabase();
+    const supabase = createRouteHandlerClient({ cookies });
     const cleanEmail = email.toLowerCase().trim();
 
     // Check if already subscribed
@@ -33,20 +27,26 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (selErr) {
-      return NextResponse.json({ error: 'Database read error', detail: selErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Database error', detail: selErr.message, code: selErr.code },
+        { status: 500 }
+      );
     }
 
     if (existing) {
       return NextResponse.json({ message: "You're already on the list! 🎉" });
     }
 
-    // Insert — only email field; let DB defaults handle the rest
+    // Insert new subscriber
     const { error: insErr } = await supabase
       .from('email_subscribers')
       .insert({ email: cleanEmail });
 
     if (insErr) {
-      return NextResponse.json({ error: 'Insert failed', detail: insErr.message, code: insErr.code }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Insert failed', detail: insErr.message, code: insErr.code },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ message: "You're on the list! 🎉" });
