@@ -557,8 +557,7 @@ export async function POST(request: NextRequest) {
         error: result.error,
         caption,
         hashtags,
-      })
-      .catch(() => {}); // Non-critical
+      }); // Non-critical — Supabase returns { error } rather than throwing
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 });
