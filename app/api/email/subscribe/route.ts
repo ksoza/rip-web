@@ -1,4 +1,7 @@
 // app/api/email/subscribe/route.ts
+// Force Edge Runtime — Node.js runtime has DNS issues with Supabase
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 const SUPABASE_URL = 'https://jtoyvnhjwdogpjntcbgq.supabase.co';
@@ -25,7 +28,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
     }
 
-    // Use raw fetch instead of Supabase client for maximum control
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'apikey': apiKey,
@@ -73,10 +75,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "You're on the list! 🎉" });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    const cause = err instanceof Error && err.cause ? String(err.cause) : undefined;
-    return NextResponse.json(
-      { error: 'Server error', detail, cause },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Server error', detail }, { status: 500 });
   }
 }
