@@ -34,9 +34,8 @@ async function ensureProfile(userId: string, userMeta: Record<string, any>, emai
       .eq('id', userId)
       .single();
 
-    if (existing) return; // Profile already exists
+    if (existing) return;
 
-    // Create profile from user metadata
     const username = userMeta?.name
       || userMeta?.full_name
       || email?.split('@')[0]
@@ -53,14 +52,12 @@ async function ensureProfile(userId: string, userMeta: Record<string, any>, emai
       });
 
     if (error) {
-      // ON CONFLICT DO NOTHING equivalent — ignore duplicate key errors
       if (error.code === '23505') return;
       console.error('Failed to create profile:', error);
     } else {
       console.log('Auto-created profile for user:', userId);
     }
   } catch (err) {
-    // Non-fatal — app handles missing profiles gracefully
     console.error('ensureProfile error:', err);
   }
 }
@@ -80,43 +77,48 @@ export async function GET(request: Request) {
 
   if (code) {
     const cookieStore = cookies();
+
+    // Build a Supabase server client that writes cookies onto
+    // the REDIRECT response (not just the cookie store).
+    // This ensures the browser receives the session cookies.
+    const redirectUrl = `${origin}${next}`;
+    const response = NextResponse.redirect(redirectUrl);
+
     const supabase = createServerClient(
       getSupabaseUrl(),
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim(),
       {
         cookies: {
           get(name: string) {
             return cookieStore.get(name)?.value;
           },
           set(name: string, value: string, options: CookieOptions) {
+            // Write to BOTH the cookie store and the redirect response
             cookieStore.set({ name, value, ...options });
+            response.cookies.set({ name, value, ...options });
           },
           remove(name: string, options: CookieOptions) {
             cookieStore.set({ name, value: '', ...options });
+            response.cookies.set({ name, value: '', ...options });
           },
         },
       }
     );
 
     const { error: authError } = await supabase.auth.exchangeCodeForSession(code);
+
     if (!authError) {
-      // Get the user and auto-create profile if needed
+      // Get user and auto-create profile if needed
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await ensureProfile(
-          user.id,
-          user.user_metadata || {},
-          user.email
-        );
+        await ensureProfile(user.id, user.user_metadata || {}, user.email);
       }
-
-      return NextResponse.redirect(`${origin}${next}`);
+      return response;
     }
 
     console.error('Auth callback error:', authError);
     return NextResponse.redirect(`${origin}/?error=${encodeURIComponent(authError.message)}`);
   }
 
-  // No code provided — redirect to home
   return NextResponse.redirect(`${origin}/`);
 }
