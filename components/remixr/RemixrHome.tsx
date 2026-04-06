@@ -28,6 +28,8 @@ interface Props {
 
 // ── Carousel data ───────────────────────────────────────────────
 import { TV_SHOWS, MOVIES } from '@/components/discover/MediaCarousel';
+import { EmailCapture } from '@/components/shared/EmailCapture';
+import { SEED_REMIXES } from '@/lib/seed-content';
 
 // ── Static TMDB poster paths (scraped from TMDB, no API key needed) ──
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
@@ -361,6 +363,11 @@ export function RemixrHome({ user, onSelectMedia, onViewContent }: Props) {
         <p className="text-sm text-muted/70 max-w-lg mx-auto">
           Pick a show or movie below, add your creative spin, and let AI bring your remix to life
         </p>
+      </div>
+
+      {/* Email Capture Banner */}
+      <div className="px-4 mb-6">
+        <EmailCapture variant="banner" />
       </div>
 
       {/* Carousel 1: TV Shows */}
