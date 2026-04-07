@@ -5,8 +5,6 @@ import { createSupabaseAdmin }       from '@/lib/supabase';
 import { isNexosConfigured, nexosChat } from '@/lib/nexos';
 import { logGeneration } from '@/lib/db';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 export async function POST(req: NextRequest) {
   try {
     const userId = req.headers.get('x-user-id')!;
@@ -88,13 +86,18 @@ DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/o
       );
       text = nexosResponse.choices[0]?.message?.content || '';
     } else {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
+      }
+      // Lazy init — avoids module-scope crash when env var is missing
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       modelUsed = 'claude-sonnet-4-20250514';
       const message = await anthropic.messages.create({
         model:      'claude-sonnet-4-20250514',
         max_tokens: 1024,
         messages:   [{ role: 'user', content: prompt }],
       });
-      text = message.content.map(b => b.type === 'text' ? b.text : '').join('\n');
+      text = message.content.map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '').join('\n');
     }
     const genDuration = Date.now() - genStart;
     const g    = (re: RegExp) => text.match(re)?.[1]?.trim() || '';
