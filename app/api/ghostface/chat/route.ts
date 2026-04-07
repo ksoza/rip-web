@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Simple Mode — Direct API call, no tools ───────────────
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
     if (!apiKey) {
       return NextResponse.json(
         { response: '⚠️ ANTHROPIC_API_KEY not configured. Set it in Vercel environment variables.' },

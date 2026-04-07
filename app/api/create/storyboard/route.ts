@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Lazy init — avoids module-scope crash when env var is missing
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY?.trim() });
 
     // Build the duration guide based on format
     const durationGuide: Record<string, string> = {
