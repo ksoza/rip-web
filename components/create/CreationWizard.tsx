@@ -378,50 +378,78 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   //  AI GENERATION FUNCTIONS
   // ═══════════════════════════════════════════════════════════════
 
-  // ── Generate Script (NEW: Phase 2) ────────────────────────────
+  // ── Generate Script (Phase 2 — with retry + timeout) ──────────
   async function generateScript() {
     setScriptLoading(true);
     setScriptError('');
 
-    try {
-      const res = await fetch('/api/create/script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mediaTitle: displayTitle,
-          character: selectedCharacter,
-          prompt,
-          tone: TONES.find(t => t.id === tone)?.label || 'Dramatic',
-          format,
-          crossover: crossover || (isMashup ? mashupShows.filter(Boolean).join(' + ') : ''),
-          qaAnswers: aiQuestions.filter(q => q.a),
-          isCustomIP,
-          isMashup,
-          customIPDesc,
-        }),
-      });
+    const MAX_RETRIES = 2;
+    const TIMEOUT_MS = 55000; // 55s — under the 60s server limit
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: 'Script generation failed' }));
-        throw new Error(errData.error || `Generation failed (${res.status})`);
+    const payload = JSON.stringify({
+      mediaTitle: displayTitle,
+      character: selectedCharacter,
+      prompt,
+      tone: TONES.find(t => t.id === tone)?.label || 'Dramatic',
+      format,
+      crossover: crossover || (isMashup ? mashupShows.filter(Boolean).join(' + ') : ''),
+      qaAnswers: aiQuestions.filter(q => q.a),
+      isCustomIP,
+      isMashup,
+      customIPDesc,
+    });
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+      try {
+        const res = await fetch('/api/create/script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({ error: 'Script generation failed' }));
+          throw new Error(errData.error || `Generation failed (${res.status})`);
+        }
+
+        const data = await res.json();
+        setScriptTitle(data.title || '');
+        setScriptLogline(data.logline || '');
+        setScriptScenes(data.scenes || []);
+        setStep('script');
+        return; // success — exit the retry loop
+      } catch (err: any) {
+        clearTimeout(timer);
+        const isNetworkError = err.name === 'AbortError' || err.name === 'TypeError' || !err.message || err.message.includes('onnect');
+
+        if (isNetworkError && attempt < MAX_RETRIES) {
+          // Retry after a short delay
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+          continue;
+        }
+
+        console.error('Script error:', err);
+        if (err.name === 'AbortError') {
+          setScriptError('Request timed out — please try again or pick a shorter format.');
+        } else if (err.name === 'TypeError' || err.message?.includes('onnect')) {
+          setScriptError('Network error — check your connection and try again.');
+        } else {
+          setScriptError(err.message || 'Failed to generate script');
+        }
       }
-
-      const data = await res.json();
-      setScriptTitle(data.title || '');
-      setScriptLogline(data.logline || '');
-      setScriptScenes(data.scenes || []);
-      setStep('script');
-    } catch (err: any) {
-      console.error('Script error:', err);
-      setScriptError(err.message || 'Failed to generate script');
-    } finally {
-      setScriptLoading(false);
     }
+    setScriptLoading(false);
   }
 
   // ── Generate Storyboard (from script) ─────────────────────────
   async function generateStoryboard() {
     setStoryboardLoading(true);
+
     setStoryboardError('');
 
     try {
