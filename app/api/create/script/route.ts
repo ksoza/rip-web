@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -93,12 +93,32 @@ Requirements:
 
 Respond with ONLY the JSON object.`;
 
-    const message = await anthropic.messages.create({
-      model:      'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    });
+    // Timeout guard: abort the Anthropic call before Vercel kills the function
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 50000); // 50s safety net
+
+    let message;
+    try {
+      message = await anthropic.messages.create(
+        {
+          model:      'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system:     systemPrompt,
+          messages:   [{ role: 'user', content: userPrompt }],
+        },
+        { signal: controller.signal },
+      );
+    } catch (abortErr: any) {
+      clearTimeout(timeout);
+      if (abortErr.name === 'AbortError' || controller.signal.aborted) {
+        return NextResponse.json(
+          { error: 'Script generation timed out — please try a shorter format or try again.' },
+          { status: 504 },
+        );
+      }
+      throw abortErr; // re-throw non-timeout errors
+    }
+    clearTimeout(timeout);
 
     const textContent = message.content
       .map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '')

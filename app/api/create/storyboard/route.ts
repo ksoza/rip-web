@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // ── Showrunner-enhanced system prompt ────────────────────────────
 // Adapted from scrollmark/showrunner ai-video planner with RemixIP
@@ -119,13 +119,32 @@ ${scriptScenes?.length ? 'Create ONE storyboard panel per script scene. Match th
 
 Respond with ONLY valid JSON: { "title": "...", "scenes": [...] }`;
 
-    // Call Claude
-    const message = await anthropic.messages.create({
-      model:      'claude-sonnet-4-20250514',
-      max_tokens: 3000,
-      system:     STORYBOARD_SYSTEM_PROMPT,
-      messages:   [{ role: 'user', content: userPrompt }],
-    });
+    // Timeout guard: abort before Vercel kills the function
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 50000);
+
+    let message;
+    try {
+      message = await anthropic.messages.create(
+        {
+          model:      'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system:     STORYBOARD_SYSTEM_PROMPT,
+          messages:   [{ role: 'user', content: userPrompt }],
+        },
+        { signal: controller.signal },
+      );
+    } catch (abortErr: any) {
+      clearTimeout(timeout);
+      if (abortErr.name === 'AbortError' || controller.signal.aborted) {
+        return NextResponse.json(
+          { error: 'Storyboard generation timed out — please try again.' },
+          { status: 504 },
+        );
+      }
+      throw abortErr;
+    }
+    clearTimeout(timeout);
 
     const textContent = message.content
       .map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '')
