@@ -1,1 +1,136 @@
-Ly8gYXBwL2FwaS9jcmVhdGUvYW5pbWF0ZS9yb3V0ZS50cwovLyBWaWRlbyBnZW5lcmF0aW9uIGZyb20gc3Rvcnlib2FyZCBpbWFnZXMgdXNpbmcgZmFsLmFpCi8vIFN1cHBvcnRzIG11bHRpcGxlIHZpZGVvIG1vZGVsczogV2FuLCBMVFgsIFNlZWRhbmNlLCBLbGluZywgSGFpbHVvLCBWZW8KaW1wb3J0IHsgTmV4dFJlcXVlc3QsIE5leHRSZXNwb25zZSB9IGZyb20gJ25leHQvc2VydmVyJzsKaW1wb3J0IHsgZmFsR2VuZXJhdGUsIEZBTF9WSURFT19NT0RFTFMgfSBmcm9tICdAL2xpYi9mYWwnOwoKZXhwb3J0IGNvbnN0IG1heER1cmF0aW9uID0gMTIwOwoKLy8g4pSA4pSAIEV4dHJhY3QgdmlkZW8gVVJMIGZyb20gdmFyeWluZyBmYWwuYWkgcmVzcG9uc2Ugc2hhcGVzIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAovLyBEaWZmZXJlbnQgbW9kZWxzIHJldHVybiByZXN1bHRzIGluIGRpZmZlcmVudCBKU09OIHN0cnVjdHVyZXMuCi8vIFRoaXMgaGVscGVyIHdhbGtzIGNvbW1vbiBwYXR0ZXJucyB0byBmaW5kIHRoZSB2aWRlbyBVUkwuCmZ1bmN0aW9uIGV4dHJhY3RWaWRlb1VybChyZXN1bHQ6IGFueSk6IHN0cmluZyB8IG51bGwgewogIC8vIFBhdHRlcm4gMTogcmVzdWx0LnZpZGVvLnVybCAobW9zdCBjb21tb24pCiAgaWYgKHJlc3VsdD8udmlkZW8/LnVybCkgcmV0dXJuIHJlc3VsdC52aWRlby51cmw7CgogIC8vIFBhdHRlcm4gMjogcmVzdWx0Lm91dHB1dC52aWRlby51cmwKICBpZiAocmVzdWx0Py5vdXRwdXQ/LnZpZGVvPy51cmwpIHJldHVybiByZXN1bHQub3V0cHV0LnZpZGVvLnVybDsKCiAgLy8gUGF0dGVybiAzOiByZXN1bHQuZGF0YS52aWRlby51cmwKICBpZiAocmVzdWx0Py5kYXRhPy52aWRlbz8udXJsKSByZXR1cm4gcmVzdWx0LmRhdGEudmlkZW8udXJsOwoKICAvLyBQYXR0ZXJuIDQ6IHJlc3VsdC52aWRlbyAoZGlyZWN0IHN0cmluZyBVUkwpCiAgaWYgKHR5cGVvZiByZXN1bHQ/LnZpZGVvID09PSAnc3RyaW5nJykgcmV0dXJuIHJlc3VsdC52aWRlbzsKCiAgLy8gUGF0dGVybiA1OiByZXN1bHQub3V0cHV0IChkaXJlY3Qgc3RyaW5nIFVSTCkKICBpZiAodHlwZW9mIHJlc3VsdD8ub3V0cHV0ID09PSAnc3RyaW5nJyAmJiByZXN1bHQub3V0cHV0LnN0YXJ0c1dpdGgoJ2h0dHAnKSkgcmV0dXJuIHJlc3VsdC5vdXRwdXQ7CgogIC8vIFBhdHRlcm4gNjogcmVzdWx0LnZpZGVvc1swXS51cmwgKGFycmF5IGZvcm1hdCkKICBpZiAocmVzdWx0Py52aWRlb3M/LlswXT8udXJsKSByZXR1cm4gcmVzdWx0LnZpZGVvc1swXS51cmw7CgogIC8vIFBhdHRlcm4gNzogcmVzdWx0LnVybCAodG9wLWxldmVsKQogIGlmICh0eXBlb2YgcmVzdWx0Py51cmwgPT09ICdzdHJpbmcnICYmIHJlc3VsdC51cmwuaW5jbHVkZXMoJy5tcDQnKSkgcmV0dXJuIHJlc3VsdC51cmw7CgogIHJldHVybiBudWxsOwp9CgpleHBvcnQgYXN5bmMgZnVuY3Rpb24gUE9TVChyZXE6IE5leHRSZXF1ZXN0KSB7CiAgdHJ5IHsKICAgIGNvbnN0IHsKICAgICAgaW1hZ2VVcmwsICAgICAgLy8gVVJMIG9mIHRoZSBzY2VuZSBpbWFnZSAocHJlZmVycmVkKQogICAgICBpbWFnZUJhc2U2NCwgICAvLyBCYXNlNjQgZmFsbGJhY2sgaWYgbm8gVVJMCiAgICAgIHByb21wdCwgICAgICAgIC8vIFNjZW5lIHZpc3VhbCBkZXNjcmlwdGlvbgogICAgICBtb2RlbCA9ICd3YW4nLCAvLyBWaWRlbyBtb2RlbCBrZXkKICAgICAgc2NlbmVJZCwKICAgICAgZHVyYXRpb24gPSAnNScsCiAgICAgIGFzcGVjdFJhdGlvID0gJzE2OjknLAogICAgfSA9IGF3YWl0IHJlcS5qc29uKCk7CgogICAgaWYgKCFwcm9tcHQpIHsKICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsgZXJyb3I6ICdNaXNzaW5nIHByb21wdCcgfSwgeyBzdGF0dXM6IDQwMCB9KTsKICAgIH0KCiAgICBpZiAoIXByb2Nlc3MuZW52LkZBTF9LRVkpIHsKICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsgZXJyb3I6ICdGQUxfS0VZIG5vdCBjb25maWd1cmVkIOKAlCB2aWRlbyBnZW5lcmF0aW9uIHJlcXVpcmVzIGZhbC5haScgfSwgeyBzdGF0dXM6IDUwMCB9KTsKICAgIH0KCiAgICBjb25zdCB2aWRlb01vZGVsID0gRkFMX1ZJREVPX01PREVMU1ttb2RlbF07CiAgICBpZiAoIXZpZGVvTW9kZWwpIHsKICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsgZXJyb3I6IGBVbmtub3duIHZpZGVvIG1vZGVsOiAke21vZGVsfWAgfSwgeyBzdGF0dXM6IDQwMCB9KTsKICAgIH0KCiAgICAvLyBCdWlsZCBmYWwuYWkgaW5wdXQgYmFzZWQgb24gdGhlIG1vZGVsCiAgICAvLyBlc2xpbnQtZGlzYWJsZS1uZXh0LWxpbmUgQHR5cGVzY3JpcHQtZXNsaW50L25vLWV4cGxpY2l0LWFueQogICAgY29uc3QgaW5wdXQ6IFJlY29yZDxzdHJpbmcsIGFueT4gPSB7CiAgICAgIHByb21wdDogYCR7cHJvbXB0fSwgY2luZW1hdGljIG1vdGlvbiwgc21vb3RoIGFuaW1hdGlvbiwgcHJvZmVzc2lvbmFsIHF1YWxpdHlgLAogICAgfTsKCiAgICAvLyBJbWFnZS10by12aWRlbzogcHJvdmlkZSB0aGUgc2NlbmUgaW1hZ2UgYXMgcmVmZXJlbmNlCiAgICBpZiAoaW1hZ2VVcmwpIHsKICAgICAgaW5wdXQuaW1hZ2VfdXJsID0gaW1hZ2VVcmw7CiAgICB9IGVsc2UgaWYgKGltYWdlQmFzZTY0KSB7CiAgICAgIC8vIFN0cmlwIGRhdGEgVVJMIHByZWZpeCBpZiBwcmVzZW50CiAgICAgIGNvbnN0IGJhc2U2NERhdGEgPSBpbWFnZUJhc2U2NC5yZXBsYWNlKC9eZGF0YTppbWFnZVwvW2Etel0rO2Jhc2U2NCwvLCAnJyk7CiAgICAgIGlucHV0LmltYWdlX3VybCA9IGBkYXRhOmltYWdlL3BuZztiYXNlNjQsJHtiYXNlNjREYXRhfWA7CiAgICB9CgogICAgLy8gRHVyYXRpb24gaGFuZGxpbmcg4oCUIHZhcmllcyBieSBtb2RlbAogICAgY29uc3QgZHVyYXRpb25OdW0gPSBwYXJzZUludChkdXJhdGlvbiwgMTApIHx8IDU7CiAgICBpbnB1dC5kdXJhdGlvbiA9IGR1cmF0aW9uTnVtOwoKICAgIC8vIEFzcGVjdCByYXRpbwogICAgaWYgKGFzcGVjdFJhdGlvKSB7CiAgICAgIGlucHV0LmFzcGVjdF9yYXRpbyA9IGFzcGVjdFJhdGlvOwogICAgfQoKICAgIC8vIE1vZGVsLXNwZWNpZmljIGNvbmZpZwogICAgc3dpdGNoIChtb2RlbCkgewogICAgICBjYXNlICdsdHgtdmlkZW8nOgogICAgICAgIGlucHV0Lm51bV9mcmFtZXMgPSBkdXJhdGlvbk51bSAqIDI0OyAvLyAyNGZwcwogICAgICAgIGJyZWFrOwogICAgICBjYXNlICd3YW4nOgogICAgICAgIC8vIFdhbiB1c2VzIGR1cmF0aW9uIGluIHNlY29uZHMgZGlyZWN0bHkKICAgICAgICBicmVhazsKICAgICAgY2FzZSAnc2VlZGFuY2UnOgogICAgICAgIGlucHV0Lm1vdGlvbl9tb2RlID0gJ25vcm1hbCc7CiAgICAgICAgYnJlYWs7CiAgICAgIGNhc2UgJ2tsaW5nJzoKICAgICAgICBpbnB1dC5tb2RlID0gJ3Bybyc7CiAgICAgICAgYnJlYWs7CiAgICAgIGNhc2UgJ2hhaWx1byc6CiAgICAgICAgLy8gTWluaW1heC9IYWlsdW8gdXNlcyBwcm9tcHQgZW5oYW5jZW1lbnQgYnkgZGVmYXVsdAogICAgICAgIGlucHV0LnByb21wdF9lbmhhbmNlciA9IHRydWU7CiAgICAgICAgYnJlYWs7CiAgICB9CgogICAgLy8gR2VuZXJhdGUgdmlkZW8gdmlhIGZhbC5haSBxdWV1ZQogICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgZmFsR2VuZXJhdGUodmlkZW9Nb2RlbC5pZCwgaW5wdXQgYXMgUGFyYW1ldGVyczx0eXBlb2YgZmFsR2VuZXJhdGU+WzFdKTsKCiAgICAvLyBFeHRyYWN0IHZpZGVvIFVSTCBmcm9tIHdoYXRldmVyIHNoYXBlIGZhbC5haSByZXR1cm5zCiAgICBjb25zdCB2aWRlb1VybCA9IGV4dHJhY3RWaWRlb1VybChyZXN1bHQpOwoKICAgIGlmICh2aWRlb1VybCkgewogICAgICByZXR1cm4gTmV4dFJlc3BvbnNlLmpzb24oewogICAgICAgIHZpZGVvVXJsLAogICAgICAgIHNjZW5lSWQsCiAgICAgICAgbW9kZWw6IHZpZGVvTW9kZWwuaWQsCiAgICAgICAgcHJvdmlkZXI6ICdmYWwuYWknLAogICAgICB9KTsKICAgIH0KCiAgICAvLyBJZiB3ZSBzdGlsbCBjYW4ndCBmaW5kIHRoZSBVUkwsIGxvZyB0aGUgZnVsbCByZXNwb25zZSBmb3IgZGVidWdnaW5nCiAgICBjb25zb2xlLmVycm9yKCdmYWwuYWkgdmlkZW8gcmVzcG9uc2Ug4oCUIGNvdWxkIG5vdCBmaW5kIHZpZGVvIFVSTC4gRnVsbCByZXN1bHQ6JywgSlNPTi5zdHJpbmdpZnkocmVzdWx0LCBudWxsLCAyKS5zbGljZSgwLCAyMDAwKSk7CgogICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsKICAgICAgZXJyb3I6ICdWaWRlbyBnZW5lcmF0aW9uIGNvbXBsZXRlZCBidXQgbm8gdmlkZW8gVVJMIGZvdW5kIGluIHJlc3BvbnNlJywKICAgICAgZGVidWc6IGBNb2RlbDogJHt2aWRlb01vZGVsLmlkfS4gUmVzcG9uc2Uga2V5czogJHtPYmplY3Qua2V5cyhyZXN1bHQgfHwge30pLmpvaW4oJywgJyl9YCwKICAgIH0sIHsgc3RhdHVzOiA1MDAgfSk7CgogIH0gY2F0Y2ggKGVycm9yOiBhbnkpIHsKICAgIGNvbnNvbGUuZXJyb3IoJ1ZpZGVvIGdlbmVyYXRpb24gZXJyb3I6JywgZXJyb3IpOwogICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKAogICAgICB7IGVycm9yOiBlcnJvci5tZXNzYWdlIHx8ICdWaWRlbyBnZW5lcmF0aW9uIGZhaWxlZCcgfSwKICAgICAgeyBzdGF0dXM6IGVycm9yLnN0YXR1cyB8fCA1MDAgfQogICAgKTsKICB9Cn0K
+// app/api/create/animate/route.ts
+// Video generation from storyboard images using fal.ai
+// Supports multiple video models: Wan, LTX, Seedance, Kling, Hailuo, Veo
+import { NextRequest, NextResponse } from 'next/server';
+import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
+
+export const maxDuration = 120;
+
+// ── Extract video URL from varying fal.ai response shapes ────────
+// Different models return results in different JSON structures.
+// This helper walks common patterns to find the video URL.
+function extractVideoUrl(result: any): string | null {
+  // Pattern 1: result.video.url (most common)
+  if (result?.video?.url) return result.video.url;
+
+  // Pattern 2: result.output.video.url
+  if (result?.output?.video?.url) return result.output.video.url;
+
+  // Pattern 3: result.data.video.url
+  if (result?.data?.video?.url) return result.data.video.url;
+
+  // Pattern 4: result.video (direct string URL)
+  if (typeof result?.video === 'string') return result.video;
+
+  // Pattern 5: result.output (direct string URL)
+  if (typeof result?.output === 'string' && result.output.startsWith('http')) return result.output;
+
+  // Pattern 6: result.videos[0].url (array format)
+  if (result?.videos?.[0]?.url) return result.videos[0].url;
+
+  // Pattern 7: result.url (top-level)
+  if (typeof result?.url === 'string' && result.url.includes('.mp4')) return result.url;
+
+  return null;
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const {
+      imageUrl,      // URL of the scene image (preferred)
+      imageBase64,   // Base64 fallback if no URL
+      prompt,        // Scene visual description
+      model = 'wan', // Video model key
+      sceneId,
+      duration = '5',
+      aspectRatio = '16:9',
+    } = await req.json();
+
+    if (!prompt) {
+      return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
+    }
+
+    if (!process.env.FAL_KEY) {
+      return NextResponse.json({ error: 'FAL_KEY not configured — video generation requires fal.ai' }, { status: 500 });
+    }
+
+    const videoModel = FAL_VIDEO_MODELS[model];
+    if (!videoModel) {
+      return NextResponse.json({ error: `Unknown video model: ${model}` }, { status: 400 });
+    }
+
+    // Build fal.ai input based on the model
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const input: Record<string, any> = {
+      prompt: `${prompt}, cinematic motion, smooth animation, professional quality`,
+    };
+
+    // Image-to-video: provide the scene image as reference
+    if (imageUrl) {
+      input.image_url = imageUrl;
+    } else if (imageBase64) {
+      // Strip data URL prefix if present
+      const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+      input.image_url = `data:image/png;base64,${base64Data}`;
+    }
+
+    // Duration handling — varies by model
+    const durationNum = parseInt(duration, 10) || 5;
+    input.duration = durationNum;
+
+    // Aspect ratio
+    if (aspectRatio) {
+      input.aspect_ratio = aspectRatio;
+    }
+
+    // Model-specific config
+    switch (model) {
+      case 'ltx-video':
+        input.num_frames = durationNum * 24; // 24fps
+        break;
+      case 'wan':
+        // Wan uses duration in seconds directly
+        break;
+      case 'seedance':
+        input.motion_mode = 'normal';
+        break;
+      case 'kling':
+        input.mode = 'pro';
+        break;
+      case 'hailuo':
+        // Minimax/Hailuo uses prompt enhancement by default
+        input.prompt_enhancer = true;
+        break;
+    }
+
+    // Generate video via fal.ai queue
+    const result = await falGenerate(videoModel.id, input as Parameters<typeof falGenerate>[1]);
+
+    // Extract video URL from whatever shape fal.ai returns
+    const videoUrl = extractVideoUrl(result);
+
+    if (videoUrl) {
+      return NextResponse.json({
+        videoUrl,
+        sceneId,
+        model: videoModel.id,
+        provider: 'fal.ai',
+      });
+    }
+
+    // If we still can't find the URL, log the full response for debugging
+    console.error('fal.ai video response — could not find video URL. Full result:', JSON.stringify(result, null, 2).slice(0, 2000));
+
+    return NextResponse.json({
+      error: 'Video generation completed but no video URL found in response',
+      debug: `Model: ${videoModel.id}. Response keys: ${Object.keys(result || {}).join(', ')}`,
+    }, { status: 500 });
+
+  } catch (error: any) {
+    console.error('Video generation error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Video generation failed' },
+      { status: error.status || 500 }
+    );
+  }
+}

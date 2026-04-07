@@ -1,1 +1,187 @@
-Ly8gYXBwL2FwaS9jcmVhdGUvaW1hZ2luZS9yb3V0ZS50cwovLyBTY2VuZSBpbWFnZSBnZW5lcmF0aW9uIOKAlCBmYWwuYWkgYXMgcHJpbWFyeSwgSHVnZ2luZ0ZhY2UgYXMgZmFsbGJhY2sKLy8gU3VwcG9ydHMgbXVsdGlwbGUgbW9kZWxzLCBhc3BlY3QgcmF0aW9zLCBuZWdhdGl2ZSBwcm9tcHRzCmltcG9ydCB7IE5leHRSZXF1ZXN0LCBOZXh0UmVzcG9uc2UgfSBmcm9tICduZXh0L3NlcnZlcic7CmltcG9ydCB7IGZhbEdlbmVyYXRlLCBGQUxfSU1BR0VfTU9ERUxTIH0gZnJvbSAnQC9saWIvZmFsJzsKCmV4cG9ydCBjb25zdCBtYXhEdXJhdGlvbiA9IDYwOwoKZXhwb3J0IGFzeW5jIGZ1bmN0aW9uIFBPU1QocmVxOiBOZXh0UmVxdWVzdCkgewogIHRyeSB7CiAgICBjb25zdCB7CiAgICAgIHByb21wdCwKICAgICAgbW9kZWwgPSAnZmx1eC1zY2huZWxsJywKICAgICAgc2NlbmVJZCwKICAgICAgbmVnYXRpdmVfcHJvbXB0LAogICAgICB3aWR0aCwKICAgICAgaGVpZ2h0LAogICAgfSA9IGF3YWl0IHJlcS5qc29uKCk7CgogICAgaWYgKCFwcm9tcHQpIHsKICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsgZXJyb3I6ICdNaXNzaW5nIHByb21wdCcgfSwgeyBzdGF0dXM6IDQwMCB9KTsKICAgIH0KCiAgICBjb25zdCBlbmhhbmNlZFByb21wdCA9IGAke3Byb21wdH0sIGhpZ2ggZGV0YWlsLCBwcm9mZXNzaW9uYWwgcXVhbGl0eSwgNGtgOwoKICAgIC8vIOKUgOKUgCBUcnkgZmFsLmFpIGZpcnN0IChwcmltYXJ5KSDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKICAgIGNvbnN0IGZhbE1vZGVsID0gRkFMX0lNQUdFX01PREVMU1ttb2RlbF07CgogICAgaWYgKGZhbE1vZGVsICYmIHByb2Nlc3MuZW52LkZBTF9LRVkpIHsKICAgICAgdHJ5IHsKICAgICAgICBjb25zdCBpbnB1dDogUmVjb3JkPHN0cmluZywgdW5rbm93bj4gPSB7CiAgICAgICAgICBwcm9tcHQ6IGVuaGFuY2VkUHJvbXB0LAogICAgICAgIH07CgogICAgICAgIC8vIFNldCBpbWFnZSBzaXplIGJhc2VkIG9uIHdpZHRoL2hlaWdodAogICAgICAgIGlmICh3aWR0aCAmJiBoZWlnaHQpIHsKICAgICAgICAgIGlucHV0LmltYWdlX3NpemUgPSB7IHdpZHRoOiBNYXRoLm1pbih3aWR0aCwgMTUzNiksIGhlaWdodDogTWF0aC5taW4oaGVpZ2h0LCAxNTM2KSB9OwogICAgICAgIH0KCiAgICAgICAgaWYgKG5lZ2F0aXZlX3Byb21wdCkgewogICAgICAgICAgaW5wdXQubmVnYXRpdmVfcHJvbXB0ID0gbmVnYXRpdmVfcHJvbXB0OwogICAgICAgIH0KCiAgICAgICAgaW5wdXQubnVtX2ltYWdlcyA9IDE7CgogICAgICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IGZhbEdlbmVyYXRlKGZhbE1vZGVsLmlkLCBpbnB1dCBhcyBQYXJhbWV0ZXJzPHR5cGVvZiBmYWxHZW5lcmF0ZT5bMV0pOwoKICAgICAgICBpZiAocmVzdWx0LmltYWdlcz8uWzBdPy51cmwpIHsKICAgICAgICAgIGNvbnN0IGltYWdlVXJsID0gcmVzdWx0LmltYWdlc1swXS51cmw7CgogICAgICAgICAgLy8gRmV0Y2ggdGhlIGltYWdlIGFuZCBjb252ZXJ0IHRvIGJhc2U2NCBmb3IgY2xpZW50IGRpc3BsYXkKICAgICAgICAgIGNvbnN0IGltZ1JlcyA9IGF3YWl0IGZldGNoKGltYWdlVXJsKTsKICAgICAgICAgIGlmIChpbWdSZXMub2spIHsKICAgICAgICAgICAgY29uc3QgYnVmZmVyID0gYXdhaXQgaW1nUmVzLmFycmF5QnVmZmVyKCk7CiAgICAgICAgICAgIGNvbnN0IGNvbnRlbnRUeXBlID0gaW1nUmVzLmhlYWRlcnMuZ2V0KCdjb250ZW50LXR5cGUnKSB8fCAnaW1hZ2UvcG5nJzsKICAgICAgICAgICAgY29uc3QgYmFzZTY0ID0gQnVmZmVyLmZyb20oYnVmZmVyKS50b1N0cmluZygnYmFzZTY0Jyk7CgogICAgICAgICAgICByZXR1cm4gTmV4dFJlc3BvbnNlLmpzb24oewogICAgICAgICAgICAgIGltYWdlOiBgZGF0YToke2NvbnRlbnRUeXBlfTtiYXNlNjQsJHtiYXNlNjR9YCwKICAgICAgICAgICAgICBpbWFnZVVybCwgLy8gQWxzbyByZXR1cm4gdGhlIFVSTCBmb3IgdmlkZW8gZ2VuCiAgICAgICAgICAgICAgc2NlbmVJZCwKICAgICAgICAgICAgICBtb2RlbDogZmFsTW9kZWwuaWQsCiAgICAgICAgICAgICAgcHJvdmlkZXI6ICdmYWwuYWknLAogICAgICAgICAgICB9KTsKICAgICAgICAgIH0KICAgICAgICB9CiAgICAgIH0gY2F0Y2ggKGZhbEVycjogYW55KSB7CiAgICAgICAgY29uc29sZS53YXJuKGBmYWwuYWkgZ2VuZXJhdGlvbiBmYWlsZWQgZm9yICR7bW9kZWx9LCBmYWxsaW5nIGJhY2sgdG8gSHVnZ2luZ0ZhY2U6YCwgZmFsRXJyLm1lc3NhZ2UpOwogICAgICAgIC8vIEZhbGwgdGhyb3VnaCB0byBIdWdnaW5nRmFjZQogICAgICB9CiAgICB9CgogICAgLy8g4pSA4pSAIEZhbGxiYWNrOiBIdWdnaW5nRmFjZSDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKICAgIGNvbnN0IEhGX01PREVMUzogUmVjb3JkPHN0cmluZywgc3RyaW5nPiA9IHsKICAgICAgJ2ZsdXgtc2NobmVsbCc6ICAnYmxhY2stZm9yZXN0LWxhYnMvRkxVWC4xLXNjaG5lbGwnLAogICAgICAnZmx1eC1kZXYnOiAgICAgICdibGFjay1mb3Jlc3QtbGFicy9GTFVYLjEtZGV2JywKICAgICAgJ3NkeGwnOiAgICAgICAgICAnc3RhYmlsaXR5YWkvc3RhYmxlLWRpZmZ1c2lvbi14bC1iYXNlLTEuMCcsCiAgICB9OwoKICAgIGNvbnN0IGFwaUtleSA9IHByb2Nlc3MuZW52LkhVR0dJTkdGQUNFX0FQSV9LRVk7CiAgICBpZiAoIWFwaUtleSkgewogICAgICByZXR1cm4gTmV4dFJlc3BvbnNlLmpzb24oewogICAgICAgIGVycm9yOiAnTm8gaW1hZ2UgZ2VuZXJhdGlvbiBBUEkgYXZhaWxhYmxlJywKICAgICAgICBkZXRhaWxzOiAhcHJvY2Vzcy5lbnYuRkFMX0tFWSAmJiAhYXBpS2V5CiAgICAgICAgICA/ICdCb3RoIEZBTF9LRVkgYW5kIEhVR0dJTkdGQUNFX0FQSV9LRVkgYXJlIG1pc3NpbmcuIFNldCBhdCBsZWFzdCBvbmUgaW4geW91ciBWZXJjZWwgZW52aXJvbm1lbnQgdmFyaWFibGVzLicKICAgICAgICAgIDogJ0ZBTF9LRVkgZmFpbGVkIGFuZCBIVUdHSU5HRkFDRV9BUElfS0VZIGlzIG5vdCBzZXQuJywKICAgICAgfSwgeyBzdGF0dXM6IDUwMCB9KTsKICAgIH0KCiAgICBjb25zdCBtb2RlbElkID0gSEZfTU9ERUxTW21vZGVsXSB8fCBIRl9NT0RFTFNbJ2ZsdXgtc2NobmVsbCddOwoKICAgIGNvbnN0IGJvZHk6IFJlY29yZDxzdHJpbmcsIHVua25vd24+ID0gewogICAgICBpbnB1dHM6IGVuaGFuY2VkUHJvbXB0LAogICAgfTsKCiAgICBjb25zdCBwYXJhbXM6IFJlY29yZDxzdHJpbmcsIHVua25vd24+ID0ge307CiAgICBpZiAobmVnYXRpdmVfcHJvbXB0KSBwYXJhbXMubmVnYXRpdmVfcHJvbXB0ID0gbmVnYXRpdmVfcHJvbXB0OwogICAgaWYgKHdpZHRoICYmIGhlaWdodCAmJiAhbW9kZWwuc3RhcnRzV2l0aCgnZmx1eCcpKSB7CiAgICAgIHBhcmFtcy53aWR0aCA9IE1hdGgubWluKHdpZHRoLCAxMDI0KTsKICAgICAgcGFyYW1zLmhlaWdodCA9IE1hdGgubWluKGhlaWdodCwgMTAyNCk7CiAgICB9CiAgICBpZiAoT2JqZWN0LmtleXMocGFyYW1zKS5sZW5ndGggPiAwKSBib2R5LnBhcmFtZXRlcnMgPSBwYXJhbXM7CgogICAgLy8gSHVnZ2luZ0ZhY2Ugd2l0aCByZXRyeSBmb3IgY29sZC1zdGFydCA1MDNzCiAgICBjb25zdCBNQVhfSEZfUkVUUklFUyA9IDM7CiAgICBmb3IgKGxldCBhdHRlbXB0ID0gMTsgYXR0ZW1wdCA8PSBNQVhfSEZfUkVUUklFUzsgYXR0ZW1wdCsrKSB7CiAgICAgIGNvbnN0IHJlcyA9IGF3YWl0IGZldGNoKGBodHRwczovL2FwaS1pbmZlcmVuY2UuaHVnZ2luZ2ZhY2UuY28vbW9kZWxzLyR7bW9kZWxJZH1gLCB7CiAgICAgICAgbWV0aG9kOiAnUE9TVCcsCiAgICAgICAgaGVhZGVyczogewogICAgICAgICAgJ0F1dGhvcml6YXRpb24nOiBgQmVhcmVyICR7YXBpS2V5fWAsCiAgICAgICAgICAnQ29udGVudC1UeXBlJzogJ2FwcGxpY2F0aW9uL2pzb24nLAogICAgICAgIH0sCiAgICAgICAgYm9keTogSlNPTi5zdHJpbmdpZnkoYm9keSksCiAgICAgIH0pOwoKICAgICAgaWYgKHJlcy5zdGF0dXMgPT09IDUwMykgewogICAgICAgIGNvbnN0IGVyckRhdGEgPSBhd2FpdCByZXMuanNvbigpLmNhdGNoKCgpID0+ICh7fSkpOwogICAgICAgIGNvbnN0IGVzdGltYXRlZFRpbWUgPSBlcnJEYXRhLmVzdGltYXRlZF90aW1lIHx8IDMwOwoKICAgICAgICAvLyBPbiBsYXN0IGF0dGVtcHQsIHJldHVybiB0aGUgNTAzIHRvIHRoZSBjbGllbnQgd2l0aCB0aW1pbmcgaW5mbwogICAgICAgIGlmIChhdHRlbXB0ID09PSBNQVhfSEZfUkVUUklFUykgewogICAgICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsKICAgICAgICAgICAgbG9hZGluZzogdHJ1ZSwKICAgICAgICAgICAgZXN0aW1hdGVkX3RpbWU6IGVzdGltYXRlZFRpbWUsCiAgICAgICAgICAgIHNjZW5lSWQsCiAgICAgICAgICAgIG1lc3NhZ2U6IGBNb2RlbCBpcyBsb2FkaW5nIChhdHRlbXB0ICR7YXR0ZW1wdH0vJHtNQVhfSEZfUkVUUklFU30pLiBFc3RpbWF0ZWQgd2FpdDogJHtNYXRoLmNlaWwoZXN0aW1hdGVkVGltZSl9cy5gLAogICAgICAgICAgfSwgeyBzdGF0dXM6IDUwMyB9KTsKICAgICAgICB9CgogICAgICAgIC8vIFdhaXQgYmVmb3JlIHJldHJ5aW5nICh1c2UgdGhlIGVzdGltYXRlZCB0aW1lLCBjYXBwZWQgYXQgMzBzKQogICAgICAgIGNvbnN0IHdhaXRNcyA9IE1hdGgubWluKGVzdGltYXRlZFRpbWUgKiAxMDAwLCAzMDAwMCk7CiAgICAgICAgY29uc29sZS5sb2coYEh1Z2dpbmdGYWNlIDUwMyAoYXR0ZW1wdCAke2F0dGVtcHR9LyR7TUFYX0hGX1JFVFJJRVN9KSwgd2FpdGluZyAke01hdGguY2VpbCh3YWl0TXMgLyAxMDAwKX1zLi4uYCk7CiAgICAgICAgYXdhaXQgbmV3IFByb21pc2UociA9PiBzZXRUaW1lb3V0KHIsIHdhaXRNcykpOwogICAgICAgIGNvbnRpbnVlOwogICAgICB9CgogICAgICBpZiAoIXJlcy5vaykgewogICAgICAgIGNvbnN0IGVyclRleHQgPSBhd2FpdCByZXMudGV4dCgpOwogICAgICAgIGNvbnNvbGUuZXJyb3IoYEhGIGltYWdlIGVycm9yICgke3Jlcy5zdGF0dXN9KTpgLCBlcnJUZXh0KTsKICAgICAgICByZXR1cm4gTmV4dFJlc3BvbnNlLmpzb24oewogICAgICAgICAgZXJyb3I6IGBJbWFnZSBnZW5lcmF0aW9uIGZhaWxlZDogJHtyZXMuc3RhdHVzfWAsCiAgICAgICAgICBkZXRhaWxzOiBlcnJUZXh0LnNsaWNlKDAsIDIwMCksCiAgICAgICAgfSwgeyBzdGF0dXM6IHJlcy5zdGF0dXMgPj0gNTAwID8gNTAwIDogcmVzLnN0YXR1cyB9KTsKICAgICAgfQoKICAgICAgY29uc3QgY29udGVudFR5cGUgPSByZXMuaGVhZGVycy5nZXQoJ2NvbnRlbnQtdHlwZScpIHx8ICcnOwoKICAgICAgaWYgKGNvbnRlbnRUeXBlLmluY2x1ZGVzKCdpbWFnZScpKSB7CiAgICAgICAgY29uc3QgYnVmZmVyID0gYXdhaXQgcmVzLmFycmF5QnVmZmVyKCk7CiAgICAgICAgY29uc3QgYmFzZTY0ID0gQnVmZmVyLmZyb20oYnVmZmVyKS50b1N0cmluZygnYmFzZTY0Jyk7CiAgICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsKICAgICAgICAgIGltYWdlOiBgZGF0YToke2NvbnRlbnRUeXBlfTtiYXNlNjQsJHtiYXNlNjR9YCwKICAgICAgICAgIHNjZW5lSWQsCiAgICAgICAgICBtb2RlbDogbW9kZWxJZCwKICAgICAgICAgIHByb3ZpZGVyOiAnaHVnZ2luZ2ZhY2UnLAogICAgICAgIH0pOwogICAgICB9CgogICAgICBjb25zdCB0ZXh0UmVzdWx0ID0gYXdhaXQgcmVzLnRleHQoKTsKICAgICAgdHJ5IHsKICAgICAgICBjb25zdCBqc29uUmVzdWx0ID0gSlNPTi5wYXJzZSh0ZXh0UmVzdWx0KTsKICAgICAgICBpZiAoanNvblJlc3VsdFswXT8uZ2VuZXJhdGVkX2ltYWdlIHx8IGpzb25SZXN1bHRbMF0/LmJsb2IpIHsKICAgICAgICAgIHJldHVybiBOZXh0UmVzcG9uc2UuanNvbih7CiAgICAgICAgICAgIGltYWdlOiBqc29uUmVzdWx0WzBdLmdlbmVyYXRlZF9pbWFnZSB8fCBqc29uUmVzdWx0WzBdLmJsb2IsCiAgICAgICAgICAgIHNjZW5lSWQsCiAgICAgICAgICAgIG1vZGVsOiBtb2RlbElkLAogICAgICAgICAgICBwcm92aWRlcjogJ2h1Z2dpbmdmYWNlJywKICAgICAgICAgIH0pOwogICAgICAgIH0KICAgICAgfSBjYXRjaCB7CiAgICAgICAgLy8gTm90IEpTT04KICAgICAgfQoKICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsKICAgICAgICBlcnJvcjogJ1VuZXhwZWN0ZWQgcmVzcG9uc2UgZm9ybWF0JywKICAgICAgICBkZXRhaWxzOiB0ZXh0UmVzdWx0LnNsaWNlKDAsIDIwMCksCiAgICAgIH0sIHsgc3RhdHVzOiA1MDAgfSk7CiAgICB9CgogICAgLy8gU2hvdWxkIG5vdCByZWFjaCBoZXJlLCBidXQganVzdCBpbiBjYXNlCiAgICByZXR1cm4gTmV4dFJlc3BvbnNlLmpzb24oeyBlcnJvcjogJ0ltYWdlIGdlbmVyYXRpb24gZmFpbGVkIGFmdGVyIHJldHJpZXMnIH0sIHsgc3RhdHVzOiA1MDAgfSk7CgogIH0gY2F0Y2ggKGVycm9yOiBhbnkpIHsKICAgIGNvbnNvbGUuZXJyb3IoJ0ltYWdlIGdlbmVyYXRpb24gZXJyb3I6JywgZXJyb3IpOwogICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsgZXJyb3I6IGVycm9yLm1lc3NhZ2UgfHwgJ0ltYWdlIGdlbmVyYXRpb24gZmFpbGVkJyB9LCB7IHN0YXR1czogNTAwIH0pOwogIH0KfQo=
+// app/api/create/imagine/route.ts
+// Scene image generation — fal.ai as primary, HuggingFace as fallback
+// Supports multiple models, aspect ratios, negative prompts
+import { NextRequest, NextResponse } from 'next/server';
+import { falGenerate, FAL_IMAGE_MODELS } from '@/lib/fal';
+
+export const maxDuration = 60;
+
+export async function POST(req: NextRequest) {
+  try {
+    const {
+      prompt,
+      model = 'flux-schnell',
+      sceneId,
+      negative_prompt,
+      width,
+      height,
+    } = await req.json();
+
+    if (!prompt) {
+      return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
+    }
+
+    const enhancedPrompt = `${prompt}, high detail, professional quality, 4k`;
+
+    // ── Try fal.ai first (primary) ───────────────────────────────
+    const falModel = FAL_IMAGE_MODELS[model];
+
+    if (falModel && process.env.FAL_KEY) {
+      try {
+        const input: Record<string, unknown> = {
+          prompt: enhancedPrompt,
+        };
+
+        // Set image size based on width/height
+        if (width && height) {
+          input.image_size = { width: Math.min(width, 1536), height: Math.min(height, 1536) };
+        }
+
+        if (negative_prompt) {
+          input.negative_prompt = negative_prompt;
+        }
+
+        input.num_images = 1;
+
+        const result = await falGenerate(falModel.id, input as Parameters<typeof falGenerate>[1]);
+
+        if (result.images?.[0]?.url) {
+          const imageUrl = result.images[0].url;
+
+          // Fetch the image and convert to base64 for client display
+          const imgRes = await fetch(imageUrl);
+          if (imgRes.ok) {
+            const buffer = await imgRes.arrayBuffer();
+            const contentType = imgRes.headers.get('content-type') || 'image/png';
+            const base64 = Buffer.from(buffer).toString('base64');
+
+            return NextResponse.json({
+              image: `data:${contentType};base64,${base64}`,
+              imageUrl, // Also return the URL for video gen
+              sceneId,
+              model: falModel.id,
+              provider: 'fal.ai',
+            });
+          }
+        }
+      } catch (falErr: any) {
+        console.warn(`fal.ai generation failed for ${model}, falling back to HuggingFace:`, falErr.message);
+        // Fall through to HuggingFace
+      }
+    }
+
+    // ── Fallback: HuggingFace ────────────────────────────────────
+    const HF_MODELS: Record<string, string> = {
+      'flux-schnell':  'black-forest-labs/FLUX.1-schnell',
+      'flux-dev':      'black-forest-labs/FLUX.1-dev',
+      'sdxl':          'stabilityai/stable-diffusion-xl-base-1.0',
+    };
+
+    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({
+        error: 'No image generation API available',
+        details: !process.env.FAL_KEY && !apiKey
+          ? 'Both FAL_KEY and HUGGINGFACE_API_KEY are missing. Set at least one in your Vercel environment variables.'
+          : 'FAL_KEY failed and HUGGINGFACE_API_KEY is not set.',
+      }, { status: 500 });
+    }
+
+    const modelId = HF_MODELS[model] || HF_MODELS['flux-schnell'];
+
+    const body: Record<string, unknown> = {
+      inputs: enhancedPrompt,
+    };
+
+    const params: Record<string, unknown> = {};
+    if (negative_prompt) params.negative_prompt = negative_prompt;
+    if (width && height && !model.startsWith('flux')) {
+      params.width = Math.min(width, 1024);
+      params.height = Math.min(height, 1024);
+    }
+    if (Object.keys(params).length > 0) body.parameters = params;
+
+    // HuggingFace with retry for cold-start 503s
+    const MAX_HF_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_HF_RETRIES; attempt++) {
+      const res = await fetch(`https://api-inference.huggingface.co/models/${modelId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 503) {
+        const errData = await res.json().catch(() => ({}));
+        const estimatedTime = errData.estimated_time || 30;
+
+        // On last attempt, return the 503 to the client with timing info
+        if (attempt === MAX_HF_RETRIES) {
+          return NextResponse.json({
+            loading: true,
+            estimated_time: estimatedTime,
+            sceneId,
+            message: `Model is loading (attempt ${attempt}/${MAX_HF_RETRIES}). Estimated wait: ${Math.ceil(estimatedTime)}s.`,
+          }, { status: 503 });
+        }
+
+        // Wait before retrying (use the estimated time, capped at 30s)
+        const waitMs = Math.min(estimatedTime * 1000, 30000);
+        console.log(`HuggingFace 503 (attempt ${attempt}/${MAX_HF_RETRIES}), waiting ${Math.ceil(waitMs / 1000)}s...`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`HF image error (${res.status}):`, errText);
+        return NextResponse.json({
+          error: `Image generation failed: ${res.status}`,
+          details: errText.slice(0, 200),
+        }, { status: res.status >= 500 ? 500 : res.status });
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+
+      if (contentType.includes('image')) {
+        const buffer = await res.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        return NextResponse.json({
+          image: `data:${contentType};base64,${base64}`,
+          sceneId,
+          model: modelId,
+          provider: 'huggingface',
+        });
+      }
+
+      const textResult = await res.text();
+      try {
+        const jsonResult = JSON.parse(textResult);
+        if (jsonResult[0]?.generated_image || jsonResult[0]?.blob) {
+          return NextResponse.json({
+            image: jsonResult[0].generated_image || jsonResult[0].blob,
+            sceneId,
+            model: modelId,
+            provider: 'huggingface',
+          });
+        }
+      } catch {
+        // Not JSON
+      }
+
+      return NextResponse.json({
+        error: 'Unexpected response format',
+        details: textResult.slice(0, 200),
+      }, { status: 500 });
+    }
+
+    // Should not reach here, but just in case
+    return NextResponse.json({ error: 'Image generation failed after retries' }, { status: 500 });
+
+  } catch (error: any) {
+    console.error('Image generation error:', error);
+    return NextResponse.json({ error: error.message || 'Image generation failed' }, { status: 500 });
+  }
+}

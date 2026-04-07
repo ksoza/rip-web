@@ -1,1 +1,134 @@
-Ly8gYXBwL2FwaS9jcmVhdGUvc2NyaXB0L3JvdXRlLnRzCi8vIEFJLXBvd2VyZWQgc2NyZWVucGxheSBnZW5lcmF0aW9uIHVzaW5nIEFudGhyb3BpYyBDbGF1ZGUKLy8gR2VuZXJhdGVzIGEgZnVsbCBzY3JpcHQgd2l0aCBzY2VuZSBoZWFkaW5ncywgZGlhbG9ndWUsIGFjdGlvbiwgY2FtZXJhIG5vdGVzCmltcG9ydCB7IE5leHRSZXF1ZXN0LCBOZXh0UmVzcG9uc2UgfSBmcm9tICduZXh0L3NlcnZlcic7CmltcG9ydCBBbnRocm9waWMgZnJvbSAnQGFudGhyb3BpYy1haS9zZGsnOwoKZXhwb3J0IGNvbnN0IG1heER1cmF0aW9uID0gMzA7CgpleHBvcnQgYXN5bmMgZnVuY3Rpb24gUE9TVChyZXE6IE5leHRSZXF1ZXN0KSB7CiAgdHJ5IHsKICAgIGNvbnN0IHsKICAgICAgbWVkaWFUaXRsZSwgY2hhcmFjdGVyLCBwcm9tcHQsIHRvbmUsIGZvcm1hdCwKICAgICAgY3Jvc3NvdmVyLCBxYUFuc3dlcnMsIGlzQ3VzdG9tSVAsIGlzTWFzaHVwLCBjdXN0b21JUERlc2MsCiAgICB9ID0gYXdhaXQgcmVxLmpzb24oKTsKCiAgICBpZiAoIXByb21wdCB8fCAhY2hhcmFjdGVyKSB7CiAgICAgIHJldHVybiBOZXh0UmVzcG9uc2UuanNvbih7IGVycm9yOiAnTWlzc2luZyBwcm9tcHQgb3IgY2hhcmFjdGVyJyB9LCB7IHN0YXR1czogNDAwIH0pOwogICAgfQoKICAgIGlmICghcHJvY2Vzcy5lbnYuQU5USFJPUElDX0FQSV9LRVkpIHsKICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsgZXJyb3I6ICdBTlRIUk9QSUNfQVBJX0tFWSBub3QgY29uZmlndXJlZCcgfSwgeyBzdGF0dXM6IDUwMCB9KTsKICAgIH0KCiAgICAvLyBMYXp5IGluaXQg4oCUIGF2b2lkcyBtb2R1bGUtc2NvcGUgY3Jhc2ggd2hlbiBlbnYgdmFyIGlzIG1pc3NpbmcKICAgIGNvbnN0IGFudGhyb3BpYyA9IG5ldyBBbnRocm9waWMoeyBhcGlLZXk6IHByb2Nlc3MuZW52LkFOVEhST1BJQ19BUElfS0VZIH0pOwoKICAgIC8vIER1cmF0aW9uIGd1aWRlcyBwZXIgZm9ybWF0CiAgICBjb25zdCBkdXJhdGlvbkd1aWRlOiBSZWNvcmQ8c3RyaW5nLCBzdHJpbmc+ID0gewogICAgICBzaG9ydDogICAgICc2MCBzZWNvbmRzICgzLTQgc2NlbmVzLCBwdW5jaHkpJywKICAgICAgc2NlbmU6ICAgICAnMi0zIG1pbnV0ZXMgKDQtNSBzY2VuZXMpJywKICAgICAgZXBpc29kZTogICAnMTAtMTUgbWludXRlcyAoNi04IHNjZW5lcyknLAogICAgICBtdXNpY192aWQ6ICczLTQgbWludXRlcyAoNS02IHZpc3VhbCBzY2VuZXMgd2l0aCBtdXNpYyBjdWVzKScsCiAgICAgIHRyYWlsZXI6ICAgJzkwIHNlY29uZHMgKDUtNiBxdWljayBjdXRzKScsCiAgICB9OwoKICAgIGNvbnN0IHFhQ29udGV4dCA9IHFhQW5zd2Vycz8ubGVuZ3RoCiAgICAgID8gcWFBbnN3ZXJzLm1hcCgocWE6IHsgcTogc3RyaW5nOyBhOiBzdHJpbmcgfSwgaTogbnVtYmVyKSA9PgogICAgICAgICAgYFEke2kgKyAxfTogJHtxYS5xfVxuQSR7aSArIDF9OiAke3FhLmF9YAogICAgICAgICkuam9pbignXG4nKQogICAgICA6ICcnOwoKICAgIGNvbnN0IHN5c3RlbVByb21wdCA9IGBZb3UgYXJlIGEgcHJvZmVzc2lvbmFsIHNjcmVlbndyaXRlciBjcmVhdGluZyBmYW4tbWFkZSByZW1peCBzY3JpcHRzLiBZb3Ugd3JpdGUgdml2aWQsIGNpbmVtYXRpYyBzY3JlZW5wbGF5cyB3aXRoIHByb3BlciBmb3JtYXR0aW5nOiBzY2VuZSBoZWFkaW5ncyAoSU5ULi9FWFQuKSwgYWN0aW9uIGxpbmVzLCBjaGFyYWN0ZXIgZGlhbG9ndWUgd2l0aCBwYXJlbnRoZXRpY2FsIGRpcmVjdGlvbiwgYW5kIGNhbWVyYSBub3Rlcy4KCkNSSVRJQ0FMOiBSZXNwb25kIHdpdGggdmFsaWQgSlNPTiBvbmx5IOKAlCBubyBtYXJrZG93biwgbm8gY29kZSBmZW5jZXMsIG5vIGV4cGxhbmF0aW9uIG91dHNpZGUgdGhlIEpTT04gc3RydWN0dXJlLmA7CgogICAgY29uc3QgdXNlclByb21wdCA9IGBXcml0ZSBhIHNjcmVlbnBsYXkgZm9yIHRoaXMgZmFuLW1hZGUgY3JlYXRpb246CgpJUCAvIFNob3c6ICR7bWVkaWFUaXRsZX0KTWFpbiBDaGFyYWN0ZXI6ICR7Y2hhcmFjdGVyLm5hbWV9ICgke2NoYXJhY3Rlci5yb2xlIHx8ICdtYWluIGNoYXJhY3Rlcid9KQpVc2VyJ3MgVmlzaW9uOiAke3Byb21wdH0KVG9uZTogJHt0b25lfQpGb3JtYXQ6ICR7Zm9ybWF0fSDigJQgJHtkdXJhdGlvbkd1aWRlW2Zvcm1hdF0gfHwgJzYwIHNlY29uZHMgdG90YWwnfQoke2Nyb3Nzb3ZlciA/IGBDcm9zc292ZXIgd2l0aDogJHtjcm9zc292ZXJ9YCA6ICcnfQoke2lzQ3VzdG9tSVAgPyBgT3JpZ2luYWwgSVAgRGVzY3JpcHRpb246ICR7Y3VzdG9tSVBEZXNjfWAgOiAnJ30KJHtpc01hc2h1cCA/IGBNYXNodXAgTW9kZTogQ29tYmluaW5nIG11bHRpcGxlIElQc2AgOiAnJ30KCiR7cWFDb250ZXh0ID8gYEFkZGl0aW9uYWwgY29udGV4dCBmcm9tIGNyZWF0b3IgUSZBOlxuJHtxYUNvbnRleHR9YCA6ICcnfQoKR2VuZXJhdGUgYSBzY3JlZW5wbGF5IGFzIEpTT04gd2l0aCB0aGlzIEVYQUNUIHN0cnVjdHVyZToKewogICJ0aXRsZSI6ICJFcGlzb2RlL3NjZW5lIHRpdGxlIiwKICAibG9nbGluZSI6ICJPbmUtbGluZSBzdW1tYXJ5IiwKICAic2NlbmVzIjogWwogICAgewogICAgICAic2NlbmVOdW0iOiAxLAogICAgICAiaGVhZGluZyI6ICJJTlQuIExPQ0FUSU9OIC0gVElNRSBPRiBEQVkiLAogICAgICAiZGVzY3JpcHRpb24iOiAiQnJpZWYgc2NlbmUgc3VtbWFyeSAoMS0yIHNlbnRlbmNlcykiLAogICAgICAiYWN0aW9uIjogIkRldGFpbGVkIGFjdGlvbiBkZXNjcmlwdGlvbiDigJQgd2hhdCB3ZSBTRUUgaGFwcGVuaW5nLiBXcml0ZSBjaW5lbWF0aWNhbGx5LiAzLTUgc2VudGVuY2VzLiIsCiAgICAgICJkaWFsb2d1ZSI6IFsKICAgICAgICB7CiAgICAgICAgICAiY2hhcmFjdGVyIjogIkNIQVJBQ1RFUiBOQU1FIiwKICAgICAgICAgICJsaW5lIjogIldoYXQgdGhleSBzYXkiLAogICAgICAgICAgImRpcmVjdGlvbiI6ICJob3cgdGhleSBzYXkgaXQgKG9wdGlvbmFsKSIKICAgICAgICB9CiAgICAgIF0sCiAgICAgICJkdXJhdGlvbiI6ICIwOjAwLTA6MTUiLAogICAgICAibW9vZCI6ICJ0ZW5zZS9mdW5ueS9lZXJpZS9ob3BlZnVsL2V0YyIsCiAgICAgICJjYW1lcmFOb3RlIjogIkNhbWVyYSBkaXJlY3Rpb24g4oCUIGUuZy4gJ1NMT1cgUFVTSCBJTiBvbiBmYWNlJyBvciAnVFJBQ0tJTkcgU0hPVCB0aHJvdWdoIGhhbGx3YXknIiwKICAgICAgInRyYW5zaXRpb24iOiAiY3V0IHwgZmFkZSB8IGRpc3NvbHZlIHwgd2lwZSB8IHNtYXNoX2N1dCIKICAgIH0KICBdCn0KClJlcXVpcmVtZW50czoKLSBFYWNoIHNjZW5lIE1VU1QgaGF2ZSBhIHByb3BlciBJTlQuL0VYVC4gaGVhZGluZwotIERpYWxvZ3VlIHNob3VsZCBmZWVsIGF1dGhlbnRpYyB0byB0aGUgY2hhcmFjdGVycyBmcm9tICR7bWVkaWFUaXRsZX0KLSBBY3Rpb24gbGluZXMgc2hvdWxkIGJlIHZpdmlkIGFuZCB2aXN1YWwg4oCUIGRlc2NyaWJlIHdoYXQgdGhlIENBTUVSQSBzZWVzCi0gQ2FtZXJhIG5vdGVzIHNob3VsZCBiZSBzcGVjaWZpYyBhbmQgY2luZW1hdGljCi0gRHVyYXRpb24gdGltZXN0YW1wcyBzaG91bGQgYmUgc2VxdWVudGlhbCBhbmQgbWF0Y2ggdGhlIGZvcm1hdAotIEVhY2ggc2NlbmUgTVVTVCBpbmNsdWRlIGEgInRyYW5zaXRpb24iIGZpZWxkIChjdXQsIGZhZGUsIGRpc3NvbHZlLCB3aXBlLCBvciBzbWFzaF9jdXQpCi0gVGhpcyBpcyBhIEZBTi1NQURFIHJlbWl4IOKAlCBiZSBjcmVhdGl2ZSBidXQgcmVzcGVjdCB0aGUgc291cmNlIG1hdGVyaWFsJ3Mgc3Bpcml0Ci0gR2VuZXJhdGUgJHtmb3JtYXQgPT09ICdzaG9ydCcgPyAnMy00JyA6IGZvcm1hdCA9PT0gJ2VwaXNvZGUnID8gJzYtOCcgOiAnNC02J30gc2NlbmVzCgpSZXNwb25kIHdpdGggT05MWSB0aGUgSlNPTiBvYmplY3QuYDsKCiAgICBjb25zdCBtZXNzYWdlID0gYXdhaXQgYW50aHJvcGljLm1lc3NhZ2VzLmNyZWF0ZSh7CiAgICAgIG1vZGVsOiAgICAgICdjbGF1ZGUtc29ubmV0LTQtMjAyNTA1MTQnLAogICAgICBtYXhfdG9rZW5zOiA0MDk2LAogICAgICBzeXN0ZW06ICAgICBzeXN0ZW1Qcm9tcHQsCiAgICAgIG1lc3NhZ2VzOiAgIFt7IHJvbGU6ICd1c2VyJywgY29udGVudDogdXNlclByb21wdCB9XSwKICAgIH0pOwoKICAgIGNvbnN0IHRleHRDb250ZW50ID0gbWVzc2FnZS5jb250ZW50CiAgICAgIC5tYXAoKGI6IHsgdHlwZTogc3RyaW5nOyB0ZXh0Pzogc3RyaW5nIH0pID0+IGIudHlwZSA9PT0gJ3RleHQnID8gYi50ZXh0IDogJycpCiAgICAgIC5qb2luKCdcbicpOwoKICAgIC8vIFBhcnNlIEpTT04gZnJvbSByZXNwb25zZQogICAgbGV0IHNjcmlwdDsKICAgIHRyeSB7CiAgICAgIHNjcmlwdCA9IEpTT04ucGFyc2UodGV4dENvbnRlbnQpOwogICAgfSBjYXRjaCB7CiAgICAgIGNvbnN0IGpzb25NYXRjaCA9IHRleHRDb250ZW50Lm1hdGNoKC9ce1tcc1xTXSpcfS8pOwogICAgICBpZiAoanNvbk1hdGNoKSB7CiAgICAgICAgc2NyaXB0ID0gSlNPTi5wYXJzZShqc29uTWF0Y2hbMF0pOwogICAgICB9IGVsc2UgewogICAgICAgIGNvbnNvbGUuZXJyb3IoJ0ZhaWxlZCB0byBwYXJzZSBzY3JpcHQgcmVzcG9uc2U6JywgdGV4dENvbnRlbnQuc2xpY2UoMCwgNTAwKSk7CiAgICAgICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsgZXJyb3I6ICdGYWlsZWQgdG8gcGFyc2UgQUkgc2NyaXB0JyB9LCB7IHN0YXR1czogNTAwIH0pOwogICAgICB9CiAgICB9CgogICAgcmV0dXJuIE5leHRSZXNwb25zZS5qc29uKHsKICAgICAgdGl0bGU6IHNjcmlwdC50aXRsZSB8fCBgJHtjaGFyYWN0ZXIubmFtZX06ICR7cHJvbXB0LnNsaWNlKDAsIDUwKX1gLAogICAgICBsb2dsaW5lOiBzY3JpcHQubG9nbGluZSB8fCAnJywKICAgICAgc2NlbmVzOiBzY3JpcHQuc2NlbmVzIHx8IFtdLAogICAgfSk7CgogIH0gY2F0Y2ggKGVycm9yOiBhbnkpIHsKICAgIGNvbnNvbGUuZXJyb3IoJ1NjcmlwdCBnZW5lcmF0aW9uIGVycm9yOicsIGVycm9yKTsKICAgIHJldHVybiBOZXh0UmVzcG9uc2UuanNvbigKICAgICAgeyBlcnJvcjogZXJyb3IubWVzc2FnZSB8fCAnU2NyaXB0IGdlbmVyYXRpb24gZmFpbGVkJyB9LAogICAgICB7IHN0YXR1czogZXJyb3Iuc3RhdHVzIHx8IDUwMCB9CiAgICApOwogIH0KfQo=
+// app/api/create/script/route.ts
+// AI-powered screenplay generation using Anthropic Claude
+// Generates a full script with scene headings, dialogue, action, camera notes
+import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
+
+export const maxDuration = 30;
+
+export async function POST(req: NextRequest) {
+  try {
+    const {
+      mediaTitle, character, prompt, tone, format,
+      crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
+    } = await req.json();
+
+    if (!prompt || !character) {
+      return NextResponse.json({ error: 'Missing prompt or character' }, { status: 400 });
+    }
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
+    }
+
+    // Lazy init — avoids module-scope crash when env var is missing
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    // Duration guides per format
+    const durationGuide: Record<string, string> = {
+      short:     '60 seconds (3-4 scenes, punchy)',
+      scene:     '2-3 minutes (4-5 scenes)',
+      episode:   '10-15 minutes (6-8 scenes)',
+      music_vid: '3-4 minutes (5-6 visual scenes with music cues)',
+      trailer:   '90 seconds (5-6 quick cuts)',
+    };
+
+    const qaContext = qaAnswers?.length
+      ? qaAnswers.map((qa: { q: string; a: string }, i: number) =>
+          `Q${i + 1}: ${qa.q}\nA${i + 1}: ${qa.a}`
+        ).join('\n')
+      : '';
+
+    const systemPrompt = `You are a professional screenwriter creating fan-made remix scripts. You write vivid, cinematic screenplays with proper formatting: scene headings (INT./EXT.), action lines, character dialogue with parenthetical direction, and camera notes.
+
+CRITICAL: Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON structure.`;
+
+    const userPrompt = `Write a screenplay for this fan-made creation:
+
+IP / Show: ${mediaTitle}
+Main Character: ${character.name} (${character.role || 'main character'})
+User's Vision: ${prompt}
+Tone: ${tone}
+Format: ${format} — ${durationGuide[format] || '60 seconds total'}
+${crossover ? `Crossover with: ${crossover}` : ''}
+${isCustomIP ? `Original IP Description: ${customIPDesc}` : ''}
+${isMashup ? `Mashup Mode: Combining multiple IPs` : ''}
+
+${qaContext ? `Additional context from creator Q&A:\n${qaContext}` : ''}
+
+Generate a screenplay as JSON with this EXACT structure:
+{
+  "title": "Episode/scene title",
+  "logline": "One-line summary",
+  "scenes": [
+    {
+      "sceneNum": 1,
+      "heading": "INT. LOCATION - TIME OF DAY",
+      "description": "Brief scene summary (1-2 sentences)",
+      "action": "Detailed action description — what we SEE happening. Write cinematically. 3-5 sentences.",
+      "dialogue": [
+        {
+          "character": "CHARACTER NAME",
+          "line": "What they say",
+          "direction": "how they say it (optional)"
+        }
+      ],
+      "duration": "0:00-0:15",
+      "mood": "tense/funny/eerie/hopeful/etc",
+      "cameraNote": "Camera direction — e.g. 'SLOW PUSH IN on face' or 'TRACKING SHOT through hallway'",
+      "transition": "cut | fade | dissolve | wipe | smash_cut"
+    }
+  ]
+}
+
+Requirements:
+- Each scene MUST have a proper INT./EXT. heading
+- Dialogue should feel authentic to the characters from ${mediaTitle}
+- Action lines should be vivid and visual — describe what the CAMERA sees
+- Camera notes should be specific and cinematic
+- Duration timestamps should be sequential and match the format
+- Each scene MUST include a "transition" field (cut, fade, dissolve, wipe, or smash_cut)
+- This is a FAN-MADE remix — be creative but respect the source material's spirit
+- Generate ${format === 'short' ? '3-4' : format === 'episode' ? '6-8' : '4-6'} scenes
+
+Respond with ONLY the JSON object.`;
+
+    const message = await anthropic.messages.create({
+      model:      'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
+    });
+
+    const textContent = message.content
+      .map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '')
+      .join('\n');
+
+    // Parse JSON from response
+    let script;
+    try {
+      script = JSON.parse(textContent);
+    } catch {
+      const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        script = JSON.parse(jsonMatch[0]);
+      } else {
+        console.error('Failed to parse script response:', textContent.slice(0, 500));
+        return NextResponse.json({ error: 'Failed to parse AI script' }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({
+      title: script.title || `${character.name}: ${prompt.slice(0, 50)}`,
+      logline: script.logline || '',
+      scenes: script.scenes || [],
+    });
+
+  } catch (error: any) {
+    console.error('Script generation error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Script generation failed' },
+      { status: error.status || 500 }
+    );
+  }
+}
