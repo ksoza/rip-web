@@ -195,6 +195,8 @@ const VIDEO_MODELS = [
   { id: 'seedance', name: 'Seedance 1.5 Pro', desc: 'Best motion',      emoji: '💃', tier: 'creator' },
   { id: 'kling',    name: 'Kling 2.6 Pro',   desc: 'Professional',      emoji: '🎥', tier: 'creator' },
   { id: 'hailuo',   name: 'Hailuo 2.3',      desc: 'Realistic motion',  emoji: '🌊', tier: 'creator' },
+  { id: 'seedance-2', name: 'Seedance 2',     desc: 'Cinematic + audio', emoji: '🎭', tier: 'creator' },
+  { id: 'kling-3',  name: 'Kling 3.0 Pro',   desc: 'Top-tier cinematic', emoji: '🏆', tier: 'creator' },
 ];
 
 // ═══════════════════════════════════════════════════════════════

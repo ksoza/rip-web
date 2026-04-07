@@ -1,15 +1,56 @@
 // app/api/create/storyboard/route.ts
-// AI-powered storyboard generation using Anthropic Claude SDK
+// AI-powered storyboard generation — Groq (free) → Anthropic (paid) fallback
 // Enhanced with Showrunner-style video-optimized planning prompts
-// Phase 2: Accepts script context for better visual breakdowns
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 60;
 
+// ── LLM call helper — tries Groq first, then Anthropic ─────────
+async function callLLM(systemPrompt: string, userPrompt: string, signal: AbortSignal) {
+  const groqKey = process.env.GROQ_API_KEY?.trim();
+  if (groqKey) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        max_tokens: 2048,
+        temperature: 0.8,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+      signal,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { text: data.choices?.[0]?.message?.content || '', model: 'groq/llama-4-scout' };
+    }
+    console.warn('Groq failed:', res.status, await res.text().catch(() => ''));
+  }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey) {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: anthropicKey });
+    const msg = await client.messages.create(
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      },
+      { signal },
+    );
+    const text = msg.content.map((b: any) => b.type === 'text' ? b.text : '').join('\n');
+    return { text, model: 'anthropic/claude-sonnet-4' };
+  }
+
+  throw new Error('No AI provider configured. Set GROQ_API_KEY or ANTHROPIC_API_KEY in Vercel.');
+}
+
 // ── Showrunner-enhanced system prompt ────────────────────────────
-// Adapted from scrollmark/showrunner ai-video planner with RemixIP
-// scene structure and fan-remix context
 const STORYBOARD_SYSTEM_PROMPT = `You are a creative director and elite storyboard artist for fan-made TV/film remixes. You create vivid, cinematic visual breakdowns where each scene maps to a single AI-generated image and video clip.
 
 OUTPUT FORMAT: Return a JSON object:
@@ -54,21 +95,13 @@ export async function POST(req: NextRequest) {
       mediaTitle, character, prompt, tone, format,
       crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
       artStyle, artStylePrompt,
-      scriptScenes, // Script context from Phase 2
+      scriptScenes,
     } = await req.json();
 
     if (!prompt || !character) {
       return NextResponse.json({ error: 'Missing prompt or character' }, { status: 400 });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
-    }
-
-    // Lazy init — avoids module-scope crash when env var is missing
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY?.trim() });
-
-    // Build the duration guide based on format
     const durationGuide: Record<string, string> = {
       short:    '60 seconds total (5 scenes, ~12s each)',
       scene:    '3 minutes total (4-5 scenes)',
@@ -83,7 +116,6 @@ export async function POST(req: NextRequest) {
         ).join('\n')
       : '';
 
-    // Build script context if available
     const scriptContext = scriptScenes?.length
       ? `\n\nAPPROVED SCRIPT (use these scenes as your basis):\n${scriptScenes.map((s: any) =>
           `Scene ${s.sceneNum}: ${s.heading}\nAction: ${s.action}\nDialogue: ${s.dialogue?.map((d: any) => `${d.character}: "${d.line}"`).join(', ') || 'none'}\nMood: ${s.mood}\nCamera: ${s.cameraNote}\nTransition: ${s.transition || 'cut'}`
@@ -119,52 +151,37 @@ ${scriptScenes?.length ? 'Create ONE storyboard panel per script scene. Match th
 
 Respond with ONLY valid JSON: { "title": "...", "scenes": [...] }`;
 
-    // Timeout guard: abort before Vercel kills the function
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 50000);
 
-    let message;
+    let result;
     try {
-      message = await anthropic.messages.create(
-        {
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 2048,
-          system:     STORYBOARD_SYSTEM_PROMPT,
-          messages:   [{ role: 'user', content: userPrompt }],
-        },
-        { signal: controller.signal },
-      );
-    } catch (abortErr: any) {
+      result = await callLLM(STORYBOARD_SYSTEM_PROMPT, userPrompt, controller.signal);
+    } catch (err: any) {
       clearTimeout(timeout);
-      if (abortErr.name === 'AbortError' || controller.signal.aborted) {
+      if (err.name === 'AbortError' || controller.signal.aborted) {
         return NextResponse.json(
           { error: 'Storyboard generation timed out — please try again.' },
           { status: 504 },
         );
       }
-      throw abortErr;
+      throw err;
     }
     clearTimeout(timeout);
 
-    const textContent = message.content
-      .map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '')
-      .join('\n');
-
-    // Parse JSON from response
     let storyboard;
     try {
-      storyboard = JSON.parse(textContent);
+      storyboard = JSON.parse(result.text);
     } catch {
-      const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         storyboard = JSON.parse(jsonMatch[0]);
       } else {
-        console.error('Failed to parse AI response:', textContent.slice(0, 500));
-        return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 });
+        console.error('Failed to parse AI response:', result.text.slice(0, 500));
+        return NextResponse.json({ error: 'Failed to parse AI response — try again' }, { status: 500 });
       }
     }
 
-    // Normalize scenes — ensure transition field exists
     const scenes = (storyboard.scenes || storyboard).map((s: any) => ({
       ...s,
       transition: s.transition || 'cut',
@@ -174,6 +191,7 @@ Respond with ONLY valid JSON: { "title": "...", "scenes": [...] }`;
     return NextResponse.json({
       scenes,
       title: storyboard.title || `${character.name}: ${prompt.slice(0, 50)}`,
+      model: result.model,
     });
 
   } catch (error: any) {

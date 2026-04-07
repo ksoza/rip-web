@@ -114,6 +114,22 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     tier: 'creator',
     tags: ['realistic', 'motion'],
   },
+  'seedance-2': {
+    id: 'fal-ai/seedance-2/video',
+    name: 'Seedance 2',
+    type: 'video',
+    description: 'ByteDance latest — cinematic with native audio',
+    tier: 'creator',
+    tags: ['cinematic', 'audio', 'bytedance', 'latest'],
+  },
+  'kling-3': {
+    id: 'fal-ai/kling-video/v3/master',
+    name: 'Kling 3.0 Pro',
+    type: 'video',
+    description: 'Top-tier cinematic video generation',
+    tier: 'creator',
+    tags: ['cinematic', 'professional', 'latest'],
+  },
   'veo': {
     id: 'fal-ai/veo3',
     name: 'Veo 3.1',
