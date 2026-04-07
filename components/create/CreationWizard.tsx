@@ -55,7 +55,7 @@ interface StoryboardScene {
   emoji: string;
 }
 
-type WizardStep = 'character' | 'prompt' | 'script' | 'storyboard' | 'generating' | 'result';
+type WizardStep = 'character' | 'prompt' | 'script' | 'storyboard' | 'generating' | 'review-images' | 'review-videos' | 'result';
 
 interface Props {
   user: User;
@@ -287,7 +287,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   async function runParallelBatches<T, R>(
     items: T[],
     task: (item: T, index: number) => Promise<R>,
-    { concurrency = 3, onProgress }: { concurrency?: number; onProgress?: (completed: number, total: number, result: R | null, index: number) => void } = {}
+    { concurrency = 3, onProgress }: { concurrency?: number; onProgress?: (completed: number, total: number, result: R | null, index: number, error?: string) => void } = {}
   ): Promise<(R | null)[]> {
     const results: (R | null)[] = new Array(items.length).fill(null);
     let completed = 0;
@@ -302,9 +302,9 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
           completed++;
           onProgress?.(completed, items.length, result, globalIdx);
           return result;
-        } catch (err) {
+        } catch (err: any) {
           completed++;
-          onProgress?.(completed, items.length, null, globalIdx);
+          onProgress?.(completed, items.length, null, globalIdx, err?.message || String(err));
           console.error(`Parallel task ${globalIdx + 1} failed:`, err);
           return null;
         }
@@ -358,7 +358,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   const displayTitle = isCustomIP ? (customIPName || 'Your Original IP') : isMashup ? (mashupShows.filter(Boolean).join(' × ') || 'Mashup') : selectedMedia.title;
 
   // ── Step progression ──
-  const STEP_ORDER: WizardStep[] = ['character', 'prompt', 'script', 'storyboard', 'generating', 'result'];
+  const STEP_ORDER: WizardStep[] = ['character', 'prompt', 'script', 'storyboard', 'generating', 'review-images', 'review-videos', 'result'];
   const stepIndex = STEP_ORDER.indexOf(step);
 
   // ── AI Questions (vidmuse-style) ──
@@ -539,7 +539,8 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Image generation failed (${res.status})`);
+        const msg = errData.error || errData.details || `Image generation failed (${res.status})`;
+        throw new Error(msg);
       }
 
       const data = await res.json();
@@ -693,7 +694,8 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
         onProgress: (completed, total, result, idx) => {
           setGenProgress(Math.round((completed / total) * 100));
           if (!result) {
-            setGenError(prev => prev ? `${prev}, Scene ${idx + 1}` : `Failed: Scene ${idx + 1}`);
+            const errMsg = error || 'Unknown error';
+            setGenError(prev => prev ? `${prev}\nScene ${idx + 1}: ${errMsg}` : `Scene ${idx + 1}: ${errMsg}`);
           }
         },
       }
@@ -705,17 +707,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
     setGenProgress(100);
 
     setTimeout(() => {
-      setResultData({
-        title: scriptTitle || `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
-        media: selectedMedia,
-        character: selectedCharacter!,
-        prompt,
-        tone,
-        format,
-        scenes,
-        scriptScenes: scriptScenes.length > 0 ? scriptScenes : undefined,
-      });
-      setStep('result');
+      setStep('review-images');
     }, 600);
   }
 
@@ -758,11 +750,11 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
 
         {/* Step indicator */}
         <div className="hidden sm:flex items-center gap-1">
-          {STEP_ORDER.filter(s => s !== 'generating').map((s, i) => (
+          {STEP_ORDER.filter(s => s !== 'generating' && s !== 'review-videos').map((s, i) => (
             <div key={s} className={`flex items-center gap-1 ${i > 0 ? '' : ''}`}>
               {i > 0 && <div className={`w-4 h-px ${
                 stepIndex > i || (s === 'result' && step === 'result')
-                  ? 'bg-lime' : step === s || (step === 'generating' && s === 'storyboard') ? 'bg-rip' : 'bg-border'
+                  ? 'bg-lime' : step === s || (step === 'generating' && s === 'storyboard') || (step === 'review-images' && s === 'review-images') || (step === 'review-videos' && s === 'review-images') ? 'bg-rip' : 'bg-border'
               }`} />}
               <div className={`w-2 h-2 rounded-full transition-all ${
                 stepIndex > i || (s === 'result' && step === 'result')
@@ -1448,6 +1440,238 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════
+               STEP 5b: REVIEW IMAGES — Approve / Edit / Regenerate
+             ════════════════════════════════════════════════════════ */}
+          {step === 'review-images' && (
+            <div>
+              <div className="text-center mb-6">
+                <div className="text-5xl mb-3">🎨</div>
+                <h3 className="font-display text-3xl text-white mb-1">Review Your Scenes</h3>
+                <p className="text-sm text-muted">Approve, regenerate, or edit each scene before animating</p>
+              </div>
+
+              {genError && (
+                <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                  <p className="text-xs text-red-400 font-bold mb-1">⚠️ Some scenes failed:</p>
+                  <p className="text-xs text-red-400 whitespace-pre-line">{genError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                {scenes.map((scene, i) => (
+                  <div key={scene.id} className="bg-bg2 border border-border rounded-xl overflow-hidden group">
+                    <div className="relative">
+                      {sceneImages[scene.id] ? (
+                        <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
+                          className="aspect-video object-cover w-full" />
+                      ) : (
+                        <div className="aspect-video bg-bg3 flex items-center justify-center">
+                          <span className="text-2xl opacity-40">{scene.emoji} ❌</span>
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                        <span className="text-xs text-white font-bold">Scene {scene.sceneNum}</span>
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-xs text-muted mb-2 line-clamp-2">{scene.description}</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => regenerateScene(scene.id)}
+                          disabled={regeneratingScene === scene.id}
+                          className="flex-1 px-2 py-1.5 rounded-lg bg-rip/10 border border-rip/30 text-rip text-[10px] font-bold hover:bg-rip/20 disabled:opacity-50">
+                          {regeneratingScene === scene.id ? '🔄 Regenerating...' : '🔄 Regenerate'}
+                        </button>
+                        <button onClick={() => {
+                          if (!sceneImages[scene.id]) return;
+                          const link = document.createElement('a');
+                          link.href = sceneImages[scene.id];
+                          link.download = `scene-${scene.sceneNum}.png`;
+                          link.click();
+                        }}
+                          className="px-2 py-1.5 rounded-lg bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold hover:bg-lime/20">
+                          ⬇️
+                        </button>
+                      </div>
+                    </div>
+                    {regeneratingScene === scene.id && (
+                      <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center">
+                        <span className="text-2xl animate-spin">🎨</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Video model selector */}
+              <div className="bg-bg2 border border-cyan/30 rounded-xl p-4 mb-4">
+                <label className="text-[10px] text-muted font-bold block mb-2">🎥 Choose Video Model for Animation</label>
+                <div className="flex flex-wrap gap-2">
+                  {VIDEO_MODELS.map(m => (
+                    <button key={m.id} onClick={() => setVideoModel(m.id)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                        videoModel === m.id
+                          ? 'bg-cyan/15 border border-cyan text-cyan'
+                          : 'bg-bg3 border border-border text-muted hover:text-white'
+                      }`}>
+                      <span>{m.emoji}</span> {m.name}
+                      <span className="text-[8px] px-1 py-0.5 rounded bg-rip/20 text-rip">{m.tier}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setStep('storyboard')}
+                  className="px-4 py-3 rounded-xl bg-bg2 border border-border text-sm text-muted hover:text-white transition-all">
+                  ← Back
+                </button>
+                <button onClick={async () => {
+                  setStep('review-videos');
+                  setVideoGenerating(true);
+                  setVideoProgress(0);
+                  const totalScenes = scenes.length;
+                  setVideoStage(`🎬 Generating ${totalScenes} videos...`);
+                  await runParallelBatches(
+                    scenes,
+                    async (scene, idx) => {
+                      setVideoStage(`🎬 Animating Scene ${idx + 1}/${totalScenes}...`);
+                      const res = await fetch('/api/create/animate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          imageUrl: sceneImageUrls[scene.id] || undefined,
+                          imageBase64: !sceneImageUrls[scene.id] ? sceneImages[scene.id] : undefined,
+                          prompt: scene.visual,
+                          model: videoModel,
+                          sceneId: scene.id,
+                          duration: '5',
+                          aspectRatio,
+                        }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.videoUrl) {
+                          setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
+                          return data.videoUrl;
+                        }
+                      }
+                      return null;
+                    },
+                    {
+                      concurrency: 2,
+                      onProgress: (completed, total) => {
+                        setVideoProgress(Math.round((completed / total) * 100));
+                      },
+                    }
+                  );
+                  setVideoGenerating(false);
+                  setVideoStage('Videos complete! 🎉');
+                }}
+                  disabled={Object.keys(sceneImages).length === 0}
+                  className="flex-1 py-3 rounded-xl font-display text-sm tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }}>
+                  🎬 Animate All Scenes → Video
+                </button>
+                <button onClick={() => {
+                  setResultData({
+                    title: scriptTitle || `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
+                    media: selectedMedia,
+                    character: selectedCharacter!,
+                    prompt, tone, format, scenes,
+                    scriptScenes: scriptScenes.length > 0 ? scriptScenes : undefined,
+                  });
+                  setStep('result');
+                }}
+                  className="px-4 py-3 rounded-xl bg-lime/10 border border-lime/30 text-lime text-sm font-bold hover:bg-lime/20 transition-all">
+                  Skip Video →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════
+               STEP 5c: REVIEW VIDEOS — Approve / Edit clips
+             ════════════════════════════════════════════════════════ */}
+          {step === 'review-videos' && (
+            <div>
+              <div className="text-center mb-6">
+                <div className="text-5xl mb-3">🎬</div>
+                <h3 className="font-display text-3xl text-white mb-1">Review Video Clips</h3>
+                <p className="text-sm text-muted">Approve each clip, then assemble your final video</p>
+              </div>
+
+              {videoGenerating && (
+                <div className="mb-6">
+                  <div className="h-3 bg-bg3 rounded-full overflow-hidden mb-2">
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${videoProgress}%`, background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }} />
+                  </div>
+                  <p className="text-xs text-muted text-center">{videoStage} {videoProgress}%</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                {scenes.map((scene, i) => (
+                  <div key={scene.id} className="bg-bg2 border border-border rounded-xl overflow-hidden">
+                    <div className="relative">
+                      {sceneVideos[scene.id] ? (
+                        <video src={sceneVideos[scene.id]}
+                          className="aspect-video object-cover w-full rounded-t-xl"
+                          controls muted loop playsInline />
+                      ) : sceneImages[scene.id] ? (
+                        <div className="relative">
+                          <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
+                            className="aspect-video object-cover w-full opacity-50" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            {videoGenerating ? (
+                              <span className="text-2xl animate-spin">🎬</span>
+                            ) : (
+                              <span className="text-sm text-muted">No video yet</span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="aspect-video bg-bg3 flex items-center justify-center">
+                          <span className="text-2xl opacity-40">{scene.emoji}</span>
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                        <span className="text-xs text-white font-bold">Scene {scene.sceneNum}</span>
+                        {sceneVideos[scene.id] && <span className="ml-2 text-[9px] text-lime">✅ Ready</span>}
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-xs text-muted line-clamp-1">{scene.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setStep('review-images')}
+                  className="px-4 py-3 rounded-xl bg-bg2 border border-border text-sm text-muted hover:text-white transition-all">
+                  ← Back to Images
+                </button>
+                <button onClick={() => {
+                  setResultData({
+                    title: scriptTitle || `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
+                    media: selectedMedia,
+                    character: selectedCharacter!,
+                    prompt, tone, format, scenes,
+                    scriptScenes: scriptScenes.length > 0 ? scriptScenes : undefined,
+                  });
+                  setStep('result');
+                }}
+                  disabled={videoGenerating}
+                  className="flex-1 py-3 rounded-xl font-display text-sm tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg,#ff2d78,#a855f7,#00d4ff)' }}>
+                  {videoGenerating ? '⏳ Generating...' : `✅ Finalize (${Object.keys(sceneVideos).length} clips ready)`}
+                </button>
               </div>
             </div>
           )}
