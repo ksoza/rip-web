@@ -691,7 +691,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
       },
       {
         concurrency: CONCURRENCY,
-        onProgress: (completed, total, result, idx) => {
+        onProgress: (completed, total, result, idx, error) => {
           setGenProgress(Math.round((completed / total) * 100));
           if (!result) {
             const errMsg = error || 'Unknown error';

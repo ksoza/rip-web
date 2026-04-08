@@ -1,6 +1,5 @@
 // app/api/create/imagine/route.ts
 // Scene image generation — fal.ai as primary, HuggingFace as fallback
-// Supports multiple models, aspect ratios, negative prompts
 import { NextRequest, NextResponse } from 'next/server';
 import { falGenerate, FAL_IMAGE_MODELS } from '@/lib/fal';
 
@@ -22,6 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const enhancedPrompt = `${prompt}, high detail, professional quality, 4k`;
+    let falError = '';
 
     // ── Try fal.ai first (primary) ───────────────────────────────
     const falModel = FAL_IMAGE_MODELS[model];
@@ -30,9 +30,9 @@ export async function POST(req: NextRequest) {
       try {
         const input: Record<string, unknown> = {
           prompt: enhancedPrompt,
+          num_images: 1,
         };
 
-        // Set image size based on width/height
         if (width && height) {
           input.image_size = { width: Math.min(width, 1536), height: Math.min(height, 1536) };
         }
@@ -41,14 +41,14 @@ export async function POST(req: NextRequest) {
           input.negative_prompt = negative_prompt;
         }
 
-        input.num_images = 1;
+        console.log(`[imagine] fal.ai: model=${falModel.id}, prompt="${prompt.slice(0, 60)}..."`);
 
         const result = await falGenerate(falModel.id, input as Parameters<typeof falGenerate>[1]);
 
         if (result.images?.[0]?.url) {
           const imageUrl = result.images[0].url;
 
-          // Fetch the image and convert to base64 for client display
+          // Fetch and convert to base64
           const imgRes = await fetch(imageUrl);
           if (imgRes.ok) {
             const buffer = await imgRes.arrayBuffer();
@@ -57,17 +57,27 @@ export async function POST(req: NextRequest) {
 
             return NextResponse.json({
               image: `data:${contentType};base64,${base64}`,
-              imageUrl, // Also return the URL for video gen
+              imageUrl,
               sceneId,
               model: falModel.id,
               provider: 'fal.ai',
             });
+          } else {
+            falError = `fal.ai image fetch failed: ${imgRes.status}`;
+            console.warn(`[imagine] ${falError}`);
           }
+        } else {
+          falError = 'fal.ai returned no images';
+          console.warn(`[imagine] ${falError}, result keys: ${Object.keys(result).join(',')}`);
         }
       } catch (falErr: any) {
-        console.warn(`fal.ai generation failed for ${model}, falling back to HuggingFace:`, falErr.message);
-        // Fall through to HuggingFace
+        falError = `fal.ai: ${falErr.message || String(falErr)}`;
+        console.warn(`[imagine] ${falError}`);
       }
+    } else if (!process.env.FAL_KEY) {
+      falError = 'FAL_KEY not set';
+    } else {
+      falError = `Model "${model}" not found in FAL_IMAGE_MODELS`;
     }
 
     // ── Fallback: HuggingFace ────────────────────────────────────
@@ -80,19 +90,16 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.HUGGINGFACE_API_KEY;
     if (!apiKey) {
       return NextResponse.json({
-        error: 'No image generation API available',
-        details: !process.env.FAL_KEY && !apiKey
-          ? 'Both FAL_KEY and HUGGINGFACE_API_KEY are missing. Set at least one in your Vercel environment variables.'
-          : 'FAL_KEY failed and HUGGINGFACE_API_KEY is not set.',
+        error: `Image generation failed. fal.ai: ${falError}. HuggingFace: HUGGINGFACE_API_KEY not set.`,
+        details: 'Set FAL_KEY or HUGGINGFACE_API_KEY in Vercel env vars.',
+        sceneId,
       }, { status: 500 });
     }
 
     const modelId = HF_MODELS[model] || HF_MODELS['flux-schnell'];
+    console.log(`[imagine] HuggingFace fallback: model=${modelId}`);
 
-    const body: Record<string, unknown> = {
-      inputs: enhancedPrompt,
-    };
-
+    const body: Record<string, unknown> = { inputs: enhancedPrompt };
     const params: Record<string, unknown> = {};
     if (negative_prompt) params.negative_prompt = negative_prompt;
     if (width && height && !model.startsWith('flux')) {
@@ -101,7 +108,6 @@ export async function POST(req: NextRequest) {
     }
     if (Object.keys(params).length > 0) body.parameters = params;
 
-    // HuggingFace with retry for cold-start 503s
     const MAX_HF_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_HF_RETRIES; attempt++) {
       const res = await fetch(`https://api-inference.huggingface.co/models/${modelId}`, {
@@ -117,29 +123,27 @@ export async function POST(req: NextRequest) {
         const errData = await res.json().catch(() => ({}));
         const estimatedTime = errData.estimated_time || 30;
 
-        // On last attempt, return the 503 to the client with timing info
         if (attempt === MAX_HF_RETRIES) {
           return NextResponse.json({
+            error: `Image generation failed. fal.ai: ${falError}. HuggingFace: model loading (tried ${attempt}x).`,
             loading: true,
             estimated_time: estimatedTime,
             sceneId,
-            message: `Model is loading (attempt ${attempt}/${MAX_HF_RETRIES}). Estimated wait: ${Math.ceil(estimatedTime)}s.`,
           }, { status: 503 });
         }
 
-        // Wait before retrying (use the estimated time, capped at 30s)
         const waitMs = Math.min(estimatedTime * 1000, 30000);
-        console.log(`HuggingFace 503 (attempt ${attempt}/${MAX_HF_RETRIES}), waiting ${Math.ceil(waitMs / 1000)}s...`);
+        console.log(`[imagine] HF 503 (attempt ${attempt}/${MAX_HF_RETRIES}), waiting ${Math.ceil(waitMs / 1000)}s...`);
         await new Promise(r => setTimeout(r, waitMs));
         continue;
       }
 
       if (!res.ok) {
         const errText = await res.text();
-        console.error(`HF image error (${res.status}):`, errText);
+        console.error(`[imagine] HF error (${res.status}):`, errText);
         return NextResponse.json({
-          error: `Image generation failed: ${res.status}`,
-          details: errText.slice(0, 200),
+          error: `Image generation failed. fal.ai: ${falError}. HuggingFace: ${res.status} ${errText.slice(0, 200)}`,
+          sceneId,
         }, { status: res.status >= 500 ? 500 : res.status });
       }
 
@@ -172,16 +176,22 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({
-        error: 'Unexpected response format',
+        error: `Image generation failed. fal.ai: ${falError}. HuggingFace: unexpected response format.`,
         details: textResult.slice(0, 200),
+        sceneId,
       }, { status: 500 });
     }
 
-    // Should not reach here, but just in case
-    return NextResponse.json({ error: 'Image generation failed after retries' }, { status: 500 });
+    return NextResponse.json({
+      error: `Image generation failed after all retries. fal.ai: ${falError}`,
+      sceneId,
+    }, { status: 500 });
 
   } catch (error: any) {
-    console.error('Image generation error:', error);
-    return NextResponse.json({ error: error.message || 'Image generation failed' }, { status: 500 });
+    console.error('[imagine] Top-level error:', error);
+    return NextResponse.json({
+      error: error.message || 'Image generation failed',
+      sceneId: undefined,
+    }, { status: 500 });
   }
 }
