@@ -1,5 +1,5 @@
 // app/api/diagnostic/route.ts
-// Deep health check — tests all providers: Groq, Novita AI (images + video), fal.ai, HuggingFace, Google AI, Anthropic
+// Deep health check — tests all providers: Pollinations, Groq, Novita AI (images + video), fal.ai, HuggingFace, Google AI, Anthropic
 import { NextResponse } from 'next/server';
 
 export const maxDuration = 60;
@@ -14,9 +14,11 @@ export async function GET() {
   const hfKey = process.env.HUGGINGFACE_API_KEY || '';
   const googleKey = process.env.GOOGLE_AI_KEY || process.env.GOOGLE_API_KEY || '';
   const novitaKey = process.env.NOVITA_API_KEY || '';
+  const pollinationsKey = process.env.POLLINATIONS_API_KEY || '';
 
+  checks.POLLINATIONS_API_KEY = pollinationsKey ? `set (${pollinationsKey.length} chars) prefix="${pollinationsKey.slice(0, 8)}..."` : 'MISSING — add POLLINATIONS_API_KEY for primary image gen';
   checks.GROQ_API_KEY = groqKey ? `set (${groqKey.length} chars)` : 'MISSING';
-  checks.NOVITA_API_KEY = novitaKey ? `set (${novitaKey.length} chars) prefix="${novitaKey.slice(0, 8)}..."` : 'MISSING — add NOVITA_API_KEY for image + video gen';
+  checks.NOVITA_API_KEY = novitaKey ? `set (${novitaKey.length} chars) prefix="${novitaKey.slice(0, 8)}..."` : 'MISSING';
   checks.FAL_KEY = falKey ? `set (${falKey.length} chars)` : 'MISSING';
   checks.HUGGINGFACE_API_KEY = hfKey ? `set (${hfKey.length} chars)` : 'MISSING';
   checks.GOOGLE_AI_KEY = googleKey ? `set (${googleKey.length} chars) prefix="${googleKey.slice(0, 8)}..."` : 'MISSING';
@@ -39,10 +41,29 @@ export async function GET() {
       } else {
         checks.groq_llm = `HTTP ${res.status} in ${elapsed}ms — ${(await res.text()).slice(0, 200)}`;
       }
-    } catch (e: any) { checks.groq_llm = `FAILED: ${e.message}`; }
+    } catch (e: unknown) { checks.groq_llm = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  // 2. Test Novita AI Image (FLUX Schnell — primary image gen, ~$0.0002 per tiny test)
+  // 2. Test Pollinations.ai Image (FLUX — primary image gen)
+  if (pollinationsKey) {
+    try {
+      const start = Date.now();
+      const res = await fetch(
+        `https://gen.pollinations.ai/image/${encodeURIComponent('blue square test')}?model=flux&width=256&height=256&nologo=true`,
+        { headers: { 'Authorization': `Bearer ${pollinationsKey.trim()}` } }
+      );
+      const elapsed = Date.now() - start;
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('image')) {
+        const buf = await res.arrayBuffer();
+        checks.pollinations_image = `OK in ${elapsed}ms — ${ct} (${buf.byteLength} bytes)`;
+      } else {
+        checks.pollinations_image = `HTTP ${res.status} in ${elapsed}ms (${ct}) — ${(await res.text()).slice(0, 200)}`;
+      }
+    } catch (e: unknown) { checks.pollinations_image = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
+  }
+
+  // 3. Test Novita AI Image (FLUX Schnell — fallback 1, ~$0.0002 per tiny test)
   if (novitaKey) {
     try {
       const start = Date.now();
@@ -66,14 +87,13 @@ export async function GET() {
       } else {
         checks.novita_image = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
       }
-    } catch (e: any) { checks.novita_image = `FAILED: ${e.message}`; }
+    } catch (e: unknown) { checks.novita_image = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  // 3. Test Novita AI Video (Wan t2v — cheapest at $0.03)
+  // 4. Test Novita AI Video (Wan t2v)
   if (novitaKey) {
     try {
       const start = Date.now();
-      // Use correct Wan format: size not width/height
       const res = await fetch('https://api.novita.ai/v3/async/wan-t2v', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' },
@@ -93,10 +113,10 @@ export async function GET() {
       } else {
         checks.novita_video = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
       }
-    } catch (e: any) { checks.novita_video = `FAILED: ${e.message}`; }
+    } catch (e: unknown) { checks.novita_video = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  // 4. Test HuggingFace (image gen — free)
+  // 5. Test HuggingFace (image gen)
   if (hfKey) {
     try {
       const start = Date.now();
@@ -112,10 +132,10 @@ export async function GET() {
       } else {
         checks.hf_image = `HTTP ${res.status} in ${elapsed}ms (${ct}) — ${(await res.text()).slice(0, 200)}`;
       }
-    } catch (e: any) { checks.hf_image = `FAILED: ${e.message}`; }
+    } catch (e: unknown) { checks.hf_image = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  // 5. Test fal.ai
+  // 6. Test fal.ai
   if (falKey) {
     try {
       const start = Date.now();
@@ -127,10 +147,10 @@ export async function GET() {
       const elapsed = Date.now() - start;
       const body = await res.text();
       checks.fal_ai = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
-    } catch (e: any) { checks.fal_ai = `FAILED: ${e.message}`; }
+    } catch (e: unknown) { checks.fal_ai = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  // 6. Test Google Veo
+  // 7. Test Google Veo
   if (googleKey) {
     try {
       const start = Date.now();
@@ -152,10 +172,10 @@ export async function GET() {
       } else {
         checks.google_veo = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
       }
-    } catch (e: any) { checks.google_veo = `FAILED: ${e.message}`; }
+    } catch (e: unknown) { checks.google_veo = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  // 7. Anthropic
+  // 8. Anthropic
   if (anthropicKey) {
     try {
       const start = Date.now();
@@ -165,8 +185,8 @@ export async function GET() {
         body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 8, messages: [{ role: 'user', content: 'Say OK' }] }),
       });
       checks.anthropic = `HTTP ${res.status} in ${Date.now() - start}ms — ${(await res.text()).slice(0, 200)}`;
-    } catch (e: any) { checks.anthropic = `FAILED: ${e.message}`; }
+    } catch (e: unknown) { checks.anthropic = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  return NextResponse.json({ ts: new Date().toISOString(), version: 'v8-novita-images', checks });
+  return NextResponse.json({ ts: new Date().toISOString(), version: 'v9-pollinations-primary', checks });
 }

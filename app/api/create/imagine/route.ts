@@ -1,5 +1,5 @@
 // app/api/create/imagine/route.ts
-// Scene image generation — Novita AI primary, fal.ai + HuggingFace fallbacks
+// Scene image generation — Pollinations primary, Novita AI fallback 1, fal.ai + HuggingFace fallbacks
 // Supports multiple models, aspect ratios, negative prompts
 import { NextRequest, NextResponse } from 'next/server';
 import { falGenerate, FAL_IMAGE_MODELS } from '@/lib/fal';
@@ -24,7 +24,62 @@ export async function POST(req: NextRequest) {
     const enhancedPrompt = `${prompt}, high detail, professional quality, 4k`;
     const errors: string[] = [];
 
-    // ── 1. Try Novita AI FLUX Schnell (primary) ─────────────────
+    // ── 1. Try Pollinations.ai FLUX (primary — cheapest) ────────
+    const pollinationsKey = process.env.POLLINATIONS_API_KEY || '';
+    if (pollinationsKey) {
+      try {
+        const imgWidth = width ? Math.min(Math.max(width, 64), 2048) : 1024;
+        const imgHeight = height ? Math.min(Math.max(height, 64), 2048) : 1024;
+
+        const encodedPrompt = encodeURIComponent(enhancedPrompt);
+        const params = new URLSearchParams({
+          model: 'flux',
+          width: String(imgWidth),
+          height: String(imgHeight),
+          nologo: 'true',
+          quality: 'medium',
+        });
+        if (negative_prompt) params.set('negative_prompt', negative_prompt);
+
+        const url = `https://gen.pollinations.ai/image/${encodedPrompt}?${params}`;
+        console.log('[imagine] Trying Pollinations.ai FLUX...');
+
+        const polRes = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${pollinationsKey.trim()}` },
+        });
+
+        if (polRes.ok) {
+          const ct = polRes.headers.get('content-type') || '';
+          if (ct.includes('image')) {
+            const buffer = await polRes.arrayBuffer();
+            if (buffer.byteLength > 500) {
+              const contentType = ct.split(';')[0].trim() || 'image/jpeg';
+              const base64 = Buffer.from(buffer).toString('base64');
+              return NextResponse.json({
+                image: `data:${contentType};base64,${base64}`,
+                sceneId,
+                model: 'pollinations-flux',
+                provider: 'pollinations',
+              });
+            }
+            errors.push('Pollinations: image too small / empty');
+          } else {
+            const text = await polRes.text();
+            errors.push(`Pollinations: unexpected content-type ${ct} — ${text.slice(0, 100)}`);
+          }
+        } else {
+          const errText = await polRes.text();
+          console.warn(`[imagine] Pollinations failed (HTTP ${polRes.status}): ${errText.slice(0, 200)}`);
+          errors.push(`Pollinations: HTTP ${polRes.status}`);
+        }
+      } catch (polErr: unknown) {
+        const msg = polErr instanceof Error ? polErr.message : String(polErr);
+        console.warn('[imagine] Pollinations error:', msg);
+        errors.push(`Pollinations: ${msg}`);
+      }
+    }
+
+    // ── 2. Try Novita AI FLUX Schnell (fallback 1) ──────────────
     const novitaKey = process.env.NOVITA_API_KEY || '';
     if (novitaKey) {
       try {
@@ -59,7 +114,7 @@ export async function POST(req: NextRequest) {
           if (!imageUrl && novitaData?.task?.task_id) {
             const taskId = novitaData.task.task_id;
             console.log(`[imagine] Novita: polling task ${taskId}...`);
-            const deadline = Date.now() + 50_000;
+            const deadline = Date.now() + 45_000;
             while (Date.now() < deadline) {
               await new Promise(r => setTimeout(r, 2000));
               const pollRes = await fetch(
@@ -80,7 +135,6 @@ export async function POST(req: NextRequest) {
           }
 
           if (imageUrl) {
-            // Fetch image and convert to base64 for client display
             const imgRes = await fetch(imageUrl);
             if (imgRes.ok) {
               const buffer = await imgRes.arrayBuffer();
@@ -106,13 +160,14 @@ export async function POST(req: NextRequest) {
             errors.push(`Novita: HTTP ${novitaRes.status}`);
           }
         }
-      } catch (novitaErr: any) {
-        console.warn('[imagine] Novita AI error:', novitaErr.message);
-        errors.push(`Novita: ${novitaErr.message}`);
+      } catch (novitaErr: unknown) {
+        const msg = novitaErr instanceof Error ? novitaErr.message : String(novitaErr);
+        console.warn('[imagine] Novita AI error:', msg);
+        errors.push(`Novita: ${msg}`);
       }
     }
 
-    // ── 2. Try fal.ai (fallback 1) ──────────────────────────────
+    // ── 3. Try fal.ai (fallback 2) ──────────────────────────────
     const falModel = FAL_IMAGE_MODELS[model];
 
     if (falModel && process.env.FAL_KEY) {
@@ -121,7 +176,6 @@ export async function POST(req: NextRequest) {
           prompt: enhancedPrompt,
         };
 
-        // Set image size based on width/height
         if (width && height) {
           input.image_size = { width: Math.min(width, 1536), height: Math.min(height, 1536) };
         }
@@ -137,7 +191,6 @@ export async function POST(req: NextRequest) {
         if (result.images?.[0]?.url) {
           const imageUrl = result.images[0].url;
 
-          // Fetch the image and convert to base64 for client display
           const imgRes = await fetch(imageUrl);
           if (imgRes.ok) {
             const buffer = await imgRes.arrayBuffer();
@@ -146,7 +199,7 @@ export async function POST(req: NextRequest) {
 
             return NextResponse.json({
               image: `data:${contentType};base64,${base64}`,
-              imageUrl, // Also return the URL for video gen
+              imageUrl,
               sceneId,
               model: falModel.id,
               provider: 'fal.ai',
@@ -154,13 +207,14 @@ export async function POST(req: NextRequest) {
           }
         }
         errors.push('fal.ai: no image in response');
-      } catch (falErr: any) {
-        console.warn(`[imagine] fal.ai failed for ${model}:`, falErr.message);
-        errors.push(`fal.ai: ${falErr.message}`);
+      } catch (falErr: unknown) {
+        const msg = falErr instanceof Error ? falErr.message : String(falErr);
+        console.warn(`[imagine] fal.ai failed for ${model}:`, msg);
+        errors.push(`fal.ai: ${msg}`);
       }
     }
 
-    // ── 3. Fallback: HuggingFace ────────────────────────────────
+    // ── 4. Fallback: HuggingFace ────────────────────────────────
     const HF_MODELS: Record<string, string> = {
       'flux-schnell':  'black-forest-labs/FLUX.1-schnell',
       'flux-dev':      'black-forest-labs/FLUX.1-dev',
@@ -184,7 +238,6 @@ export async function POST(req: NextRequest) {
         }
         if (Object.keys(params).length > 0) body.parameters = params;
 
-        // HuggingFace with retry for cold-start 503s
         const MAX_HF_RETRIES = 3;
         for (let attempt = 1; attempt <= MAX_HF_RETRIES; attempt++) {
           const res = await fetch(`https://router.huggingface.co/hf-inference/models/${modelId}`, {
@@ -198,9 +251,8 @@ export async function POST(req: NextRequest) {
 
           if (res.status === 503) {
             const errData = await res.json().catch(() => ({}));
-            const estimatedTime = errData.estimated_time || 30;
+            const estimatedTime = (errData as Record<string, number>).estimated_time || 30;
 
-            // On last attempt, return the 503 to the client with timing info
             if (attempt === MAX_HF_RETRIES) {
               return NextResponse.json({
                 loading: true,
@@ -210,7 +262,6 @@ export async function POST(req: NextRequest) {
               }, { status: 503 });
             }
 
-            // Wait before retrying (use the estimated time, capped at 30s)
             const waitMs = Math.min(estimatedTime * 1000, 30000);
             console.log(`HuggingFace 503 (attempt ${attempt}/${MAX_HF_RETRIES}), waiting ${Math.ceil(waitMs / 1000)}s...`);
             await new Promise(r => setTimeout(r, waitMs));
@@ -255,8 +306,9 @@ export async function POST(req: NextRequest) {
           errors.push('HuggingFace: unexpected response format');
           break;
         }
-      } catch (hfErr: any) {
-        errors.push(`HuggingFace: ${hfErr.message}`);
+      } catch (hfErr: unknown) {
+        const msg = hfErr instanceof Error ? hfErr.message : String(hfErr);
+        errors.push(`HuggingFace: ${msg}`);
       }
     }
 
@@ -267,8 +319,9 @@ export async function POST(req: NextRequest) {
       sceneId,
     }, { status: 500 });
 
-  } catch (error: any) {
-    console.error('Image generation error:', error);
-    return NextResponse.json({ error: error.message || 'Image generation failed' }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('Image generation error:', msg);
+    return NextResponse.json({ error: msg || 'Image generation failed' }, { status: 500 });
   }
 }
