@@ -867,7 +867,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                     }`}>
                     <div className="flex items-center gap-2 mb-1.5">
                       {c.imageUrl ? (
-                        <img src={c.imageUrl} alt={c.name}
+                        <img src={c.imageUrl} alt={c.name} referrerPolicy="no-referrer"
                           className="w-8 h-8 rounded-full object-cover border border-border" />
                       ) : (
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
