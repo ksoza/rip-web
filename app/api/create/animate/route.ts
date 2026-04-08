@@ -6,14 +6,25 @@ import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
 
 export const maxDuration = 60;
 
-function extractVideoUrl(result: any): string | null {
-  if (result?.video?.url) return result.video.url;
-  if (result?.output?.video?.url) return result.output.video.url;
-  if (result?.data?.video?.url) return result.data.video.url;
-  if (typeof result?.video === 'string') return result.video;
-  if (typeof result?.output === 'string' && result.output.startsWith('http')) return result.output;
-  if (result?.videos?.[0]?.url) return result.videos[0].url;
-  if (typeof result?.url === 'string' && result.url.includes('.mp4')) return result.url;
+function extractVideoUrl(result: Record<string, unknown>): string | null {
+  const r = result as Record<string, unknown>;
+  const vid = r?.video as Record<string, unknown> | string | undefined;
+  if (typeof vid === 'object' && vid && typeof vid.url === 'string') return vid.url;
+  if (typeof vid === 'string') return vid;
+  const out = r?.output as Record<string, unknown> | string | undefined;
+  if (typeof out === 'object' && out) {
+    const ov = out.video as Record<string, unknown> | undefined;
+    if (ov && typeof ov.url === 'string') return ov.url;
+  }
+  if (typeof out === 'string' && out.startsWith('http')) return out;
+  const d = r?.data as Record<string, unknown> | undefined;
+  if (d) {
+    const dv = d.video as Record<string, unknown> | undefined;
+    if (dv && typeof dv.url === 'string') return dv.url;
+  }
+  const videos = r?.videos as Array<Record<string, unknown>> | undefined;
+  if (videos?.[0] && typeof videos[0].url === 'string') return videos[0].url;
+  if (typeof r?.url === 'string' && (r.url as string).includes('.mp4')) return r.url as string;
   return null;
 }
 
@@ -56,8 +67,9 @@ export async function GET(req: NextRequest) {
 
       // Still processing
       return NextResponse.json({ done: false, status, progress, taskId });
-    } catch (e: any) {
-      return NextResponse.json({ error: `Poll error: ${e.message}` }, { status: 500 });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: `Poll error: ${msg}` }, { status: 500 });
     }
   }
 
@@ -77,10 +89,16 @@ async function novitaSubmit(opts: {
     'Content-Type': 'application/json',
   };
 
-  const models = imageUrl
+  // Only use image-to-video models when we have a real HTTP URL.
+  // Base64 data URIs from Pollinations/local providers won't work with Novita i2v endpoints.
+  const hasRealImageUrl = imageUrl && imageUrl.startsWith('http');
+
+  const models = hasRealImageUrl
     ? [
         { endpoint: 'minimax-hailuo-02', body: { prompt, image: imageUrl, duration, resolution: '768P', enable_prompt_expansion: true } },
         { endpoint: 'kling-v2.1-i2v-master', body: { prompt, image_url: imageUrl, duration: String(duration), mode: 'Standard' } },
+        // Always include Wan as text-to-video fallback even when image URL is available
+        { endpoint: 'wan-t2v', body: { prompt, size: '832*480', steps: 20, fast_mode: true } },
       ]
     : [
         { endpoint: 'wan-t2v', body: { prompt, size: '832*480', steps: 20, fast_mode: true } },
@@ -111,8 +129,9 @@ async function novitaSubmit(opts: {
         console.log(`[animate] Novita ${m.endpoint}: task ${task_id} submitted`);
         return { taskId: task_id, model: m.endpoint };
       }
-    } catch (e: any) {
-      errors.push(`${m.endpoint}: ${e.message}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`${m.endpoint}: ${msg}`);
     }
   }
   return { error: `Novita: all models failed (${errors.join(', ')})` };
@@ -137,13 +156,18 @@ export async function POST(req: NextRequest) {
 
     const errors: string[] = [];
 
+    // Only use real HTTP URLs for image-to-video.
+    // Data URIs / base64 images (e.g. from Pollinations) are not supported by Novita i2v.
+    const realImageUrl = imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http')
+      ? imageUrl
+      : undefined;
+
     // ── 1. Try Novita AI (submit + quick poll for 45s) ──────────
     const novitaKey = process.env.NOVITA_API_KEY || '';
     if (novitaKey) {
-      const imgSrc = imageUrl || (imageBase64 ? imageBase64 : undefined);
       const result = await novitaSubmit({
         prompt: `${prompt}, cinematic motion, smooth animation`,
-        imageUrl: imgSrc,
+        imageUrl: realImageUrl,
         duration: parseInt(duration, 10) || 6,
         novitaKey,
       });
@@ -173,7 +197,7 @@ export async function POST(req: NextRequest) {
               errors.push(`Novita ${result.model}: ${pollData?.task?.reason || 'generation failed'}`);
               break;
             }
-          } catch {}
+          } catch { /* poll retry */ }
         }
 
         // Not done yet — return taskId for client-side polling
@@ -199,24 +223,27 @@ export async function POST(req: NextRequest) {
       const videoModel = FAL_VIDEO_MODELS[model];
       if (videoModel) {
         try {
-          const falInput: Record<string, any> = {
+          const falInput: Record<string, unknown> = {
             prompt: `${prompt}, cinematic motion, smooth animation`,
           };
-          if (imageUrl) falInput.image_url = imageUrl;
-          else if (imageBase64) {
-            falInput.image_url = `data:image/png;base64,${imageBase64.replace(/^data:image\/[a-z]+;base64,/, '')}`;
+          if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http')) {
+            falInput.image_url = imageUrl;
+          } else if (imageBase64 && typeof imageBase64 === 'string') {
+            const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+            falInput.image_url = `data:image/png;base64,${cleanBase64}`;
           }
           falInput.duration = parseInt(duration, 10) || 5;
           if (aspectRatio) falInput.aspect_ratio = aspectRatio;
 
-          const result = await falGenerate(videoModel.id, falInput as any);
-          const videoUrl = extractVideoUrl(result);
+          const result = await falGenerate(videoModel.id, falInput as Parameters<typeof falGenerate>[1]);
+          const videoUrl = extractVideoUrl(result as Record<string, unknown>);
           if (videoUrl) {
             return NextResponse.json({ videoUrl, sceneId, model: videoModel.id, provider: 'fal.ai' });
           }
           errors.push('fal.ai: no video URL in response');
-        } catch (e: any) {
-          errors.push(`fal.ai: ${e.message}`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          errors.push(`fal.ai: ${msg}`);
         }
       }
     } else {
@@ -241,8 +268,9 @@ export async function POST(req: NextRequest) {
         if (!veoRes.ok) {
           errors.push(`Google Veo: HTTP ${veoRes.status}`);
         }
-      } catch (e: any) {
-        errors.push(`Google Veo: ${e.message}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        errors.push(`Google Veo: ${msg}`);
       }
     }
 
@@ -251,11 +279,12 @@ export async function POST(req: NextRequest) {
       sceneId,
     }, { status: 500 });
 
-  } catch (error: any) {
-    console.error('[animate] Top-level error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[animate] Top-level error:', msg);
     return NextResponse.json(
-      { error: error.message || 'Video generation failed' },
-      { status: error.status || 500 }
+      { error: msg || 'Video generation failed' },
+      { status: 500 }
     );
   }
 }
