@@ -7,18 +7,57 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tmdb, tmdbImage, TMDB_ID_MAP } from '@/lib/tmdb';
 
-// ── Jikan (MyAnimeList) — real character artwork for anime/cartoons ──
-async function fetchJikanCharacterImages(showTitle: string): Promise<Record<string, string>> {
-  const imageMap: Record<string, string> = {}; // normalized character name → image URL
+// ── Fandom Wiki subdomain map for Western cartoons ──
+const FANDOM_WIKI_MAP: Record<number, string> = {
+  // TMDB ID → fandom wiki subdomain
+  60625: 'rickandmorty',    // Rick and Morty
+  456:   'simpsons',        // The Simpsons
+  2190:  'southpark',       // South Park
+  1434:  'familyguy',       // Family Guy
+  387:   'spongebob',       // SpongeBob
+  246:   'avatar',          // Avatar: The Last Airbender
+};
+
+// ── Fandom Wiki — character images for Western cartoons (free, no API key) ──
+async function fetchFandomCharacterImages(tmdbId: number, characterNames: string[]): Promise<Record<string, string>> {
+  const imageMap: Record<string, string> = {};
+  const wiki = FANDOM_WIKI_MAP[tmdbId];
+  if (!wiki || characterNames.length === 0) return imageMap;
+
+  // Fandom API accepts multiple titles at once (up to 50)
+  const titles = characterNames.slice(0, 30).map(n => {
+    // Clean up "(voice)" suffix and convert spaces to underscores
+    const clean = n.replace(/\s*\(voice\)\s*/i, '').trim();
+    return clean.replace(/\s+/g, '_');
+  });
+
   try {
-    // Step 1: Search Jikan for the show
+    const url = `https://${wiki}.fandom.com/api.php?action=query&titles=${titles.join('|')}&prop=pageimages&format=json&pithumbsize=200`;
+    const res = await fetch(url);
+    if (!res.ok) return imageMap;
+    const data = await res.json();
+
+    for (const page of Object.values(data.query?.pages || {}) as any[]) {
+      if (page.thumbnail?.source && page.title) {
+        imageMap[page.title.toLowerCase()] = page.thumbnail.source;
+      }
+    }
+  } catch (e) {
+    console.error(`[Fandom/${wiki}] Error:`, e);
+  }
+  return imageMap;
+}
+
+// ── Jikan (MyAnimeList) — real character artwork for anime ──
+async function fetchJikanCharacterImages(showTitle: string): Promise<Record<string, string>> {
+  const imageMap: Record<string, string> = {};
+  try {
     const searchRes = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(showTitle)}&limit=1`);
     if (!searchRes.ok) return imageMap;
     const searchData = await searchRes.json();
     const malId = searchData.data?.[0]?.mal_id;
     if (!malId) return imageMap;
 
-    // Step 2: Get all characters with images (one API call)
     const charRes = await fetch(`https://api.jikan.moe/v4/anime/${malId}/characters`);
     if (!charRes.ok) return imageMap;
     const charData = await charRes.json();
@@ -27,35 +66,36 @@ async function fetchJikanCharacterImages(showTitle: string): Promise<Record<stri
       const char = entry.character;
       if (!char?.name || !char?.images?.jpg?.image_url) continue;
       const imgUrl = char.images.jpg.image_url;
-
-      // Jikan uses "Last, First" format — normalize both ways
       const jikanName = char.name;
       imageMap[jikanName.toLowerCase()] = imgUrl;
-      // Also store reversed: "First Last"
       if (jikanName.includes(', ')) {
         const [last, first] = jikanName.split(', ');
         imageMap[`${first} ${last}`.toLowerCase()] = imgUrl;
-        imageMap[first.toLowerCase()] = imgUrl; // just first name too
-      } else {
-        imageMap[jikanName.toLowerCase()] = imgUrl;
+        imageMap[first.toLowerCase()] = imgUrl;
       }
     }
   } catch (e) {
-    console.error('[Jikan] Error fetching character images:', e);
+    console.error('[Jikan] Error:', e);
   }
   return imageMap;
 }
 
-// Match a TMDB character name to a Jikan image
-function findJikanImage(characterName: string, imageMap: Record<string, string>): string | null {
-  const normalized = characterName.toLowerCase().trim();
+// ── Match a character name to an image from either source ──
+function findCharacterImage(characterName: string, imageMap: Record<string, string>): string | null {
+  // Clean "(voice)" suffix
+  const cleaned = characterName.replace(/\s*\(voice\)\s*/i, '').trim();
+  const normalized = cleaned.toLowerCase();
+
   // Direct match
   if (imageMap[normalized]) return imageMap[normalized];
-  // Partial match — character name contains or is contained in a Jikan entry
+  // Underscore variant (Fandom uses spaces in titles but we search with underscores)
+  const underscored = normalized.replace(/\s+/g, '_');
+  if (imageMap[underscored]) return imageMap[underscored];
+  // Partial match
   for (const [key, url] of Object.entries(imageMap)) {
     if (normalized.includes(key) || key.includes(normalized)) return url;
   }
-  // Match by first word (e.g., "Goku" matches "Son, Gokuu")
+  // First word match (e.g., "Goku" matches "Son, Gokuu")
   const firstName = normalized.split(/\s+/)[0];
   if (firstName.length >= 3) {
     for (const [key, url] of Object.entries(imageMap)) {
@@ -89,19 +129,30 @@ export async function GET(req: NextRequest) {
           ? await tmdb.getTVCast(entry.tmdbId)
           : await tmdb.getMovieCast(entry.tmdbId);
 
-        // For animated content, fetch real character artwork from Jikan (MyAnimeList)
+        // For animated content, fetch real character artwork:
+        // 1. Fandom Wiki (Western cartoons — Rick & Morty, Simpsons, etc.)
+        // 2. Jikan/MyAnimeList (anime — Naruto, Dragon Ball Z, etc.)
         const showTitle = (details as any).name || (details as any).title || '';
-        const jikanImages = isAnimated ? await fetchJikanCharacterImages(showTitle) : {};
+        const characterNames = cast.map(m => m.roles?.[0]?.character || m.character || 'Unknown');
+
+        let charImageMap: Record<string, string> = {};
+        if (isAnimated) {
+          // Try Fandom first (Western cartoons), then Jikan (anime)
+          charImageMap = await fetchFandomCharacterImages(entry.tmdbId, characterNames);
+          if (Object.keys(charImageMap).length === 0) {
+            charImageMap = await fetchJikanCharacterImages(showTitle);
+          }
+        }
 
         // Transform to our format — ALL characters, no limits
         const characters = cast.map((member, idx) => {
           const characterName = member.roles?.[0]?.character || member.character || 'Unknown';
           const actorName = member.name;
 
-          // For animated: use Jikan character art; for live-action: use actor photo
+          // For animated: use character art from Fandom/Jikan; for live-action: actor photo
           let imageUrl: string | null;
           if (isAnimated) {
-            imageUrl = findJikanImage(characterName, jikanImages) || null;
+            imageUrl = findCharacterImage(characterName, charImageMap) || null;
           } else {
             imageUrl = tmdbImage.profile(member.profile_path, 'w185');
           }
@@ -127,7 +178,7 @@ export async function GET(req: NextRequest) {
           totalCharacters: characters.length,
           characters,
         }, {
-          headers: { 'Cache-Control': 'public, max-age=86400, s-maxage=86400' },
+          headers: { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' },
         });
       }
 
