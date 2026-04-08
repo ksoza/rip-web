@@ -1,5 +1,5 @@
 // app/api/create/animate/route.ts
-// Video generation — fal.ai primary, HuggingFace fallback
+// Video generation — fal.ai primary, Google Veo + HuggingFace fallbacks
 import { NextRequest, NextResponse } from 'next/server';
 import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
 
@@ -39,30 +39,40 @@ export async function POST(req: NextRequest) {
       const videoModel = FAL_VIDEO_MODELS[model];
       if (videoModel) {
         try {
-          const input: Record<string, any> = {
-            prompt: `${prompt}, cinematic motion, smooth animation, professional quality`,
-          };
+          const prompt_full = `${prompt}, cinematic motion, smooth animation, professional quality`;
+          const durationNum = parseInt(duration, 10) || 5;
+
+          // Build typed fal.ai input
+          const falInput: {
+            prompt: string;
+            image_url?: string;
+            duration?: number;
+            aspect_ratio?: string;
+            num_frames?: number;
+            motion_mode?: string;
+            mode?: string;
+            prompt_enhancer?: boolean;
+          } = { prompt: prompt_full };
 
           if (imageUrl) {
-            input.image_url = imageUrl;
+            falInput.image_url = imageUrl;
           } else if (imageBase64) {
             const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-            input.image_url = `data:image/png;base64,${base64Data}`;
+            falInput.image_url = `data:image/png;base64,${base64Data}`;
           }
 
-          const durationNum = parseInt(duration, 10) || 5;
-          input.duration = durationNum;
-          if (aspectRatio) input.aspect_ratio = aspectRatio;
+          falInput.duration = durationNum;
+          if (aspectRatio) falInput.aspect_ratio = aspectRatio;
 
           switch (model) {
-            case 'ltx-video': input.num_frames = durationNum * 24; break;
-            case 'seedance': input.motion_mode = 'normal'; break;
-            case 'kling': input.mode = 'pro'; break;
-            case 'hailuo': input.prompt_enhancer = true; break;
+            case 'ltx-video': falInput.num_frames = durationNum * 24; break;
+            case 'seedance': falInput.motion_mode = 'normal'; break;
+            case 'kling': falInput.mode = 'pro'; break;
+            case 'hailuo': falInput.prompt_enhancer = true; break;
           }
 
           console.log(`[animate] fal.ai: model=${videoModel.id}`);
-          const result = await falGenerate(videoModel.id, input);
+          const result = await falGenerate(videoModel.id, falInput as any);
           const videoUrl = extractVideoUrl(result);
 
           if (videoUrl) {
@@ -72,7 +82,7 @@ export async function POST(req: NextRequest) {
               provider: 'fal.ai',
             });
           }
-          falError = `No video URL in fal.ai response (keys: ${Object.keys(result || {}).join(',')})`;
+          falError = `No video URL in response (keys: ${Object.keys(result || {}).join(',')})`;
         } catch (e: any) {
           falError = `fal.ai: ${e.message || String(e)}`;
           console.warn(`[animate] ${falError}`);
@@ -103,7 +113,6 @@ export async function POST(req: NextRequest) {
 
         if (veoRes.ok) {
           const veoData = await veoRes.json();
-          // Long-running operation — poll for result
           const opName = veoData.name;
           if (opName) {
             const deadline = Date.now() + 90_000;
@@ -128,7 +137,7 @@ export async function POST(req: NextRequest) {
           }
         } else {
           const errBody = await veoRes.text();
-          console.warn(`[animate] Google Veo failed: ${veoRes.status} ${errBody.slice(0, 200)}`);
+          console.warn(`[animate] Google Veo: ${veoRes.status} ${errBody.slice(0, 200)}`);
         }
       } catch (e: any) {
         console.warn(`[animate] Google Veo error: ${e.message}`);
@@ -140,8 +149,6 @@ export async function POST(req: NextRequest) {
     if (hfKey && (imageUrl || imageBase64)) {
       try {
         console.log('[animate] Trying HuggingFace SVD...');
-
-        // For HF image-to-video, we need to send the image
         const imgInput = imageUrl || imageBase64;
 
         const hfRes = await fetch(
@@ -159,34 +166,28 @@ export async function POST(req: NextRequest) {
         const ct = hfRes.headers.get('content-type') || '';
 
         if (hfRes.ok && ct.includes('video')) {
-          // HF returns raw video bytes
           const buffer = await hfRes.arrayBuffer();
           const base64 = Buffer.from(buffer).toString('base64');
           const videoDataUrl = `data:video/mp4;base64,${base64}`;
 
           return NextResponse.json({
-            videoUrl: videoDataUrl,
-            sceneId,
+            videoUrl: videoDataUrl, sceneId,
             model: 'stable-video-diffusion',
             provider: 'huggingface',
           });
         }
 
-        if (hfRes.status === 503) {
-          console.warn('[animate] HuggingFace SVD: model loading (503)');
-        } else {
-          const errText = await hfRes.text();
-          console.warn(`[animate] HuggingFace SVD: ${hfRes.status} ${errText.slice(0, 200)}`);
-        }
+        const errText = await hfRes.text();
+        console.warn(`[animate] HF SVD: ${hfRes.status} (${ct}) ${errText.slice(0, 200)}`);
       } catch (e: any) {
-        console.warn(`[animate] HuggingFace SVD error: ${e.message}`);
+        console.warn(`[animate] HF SVD error: ${e.message}`);
       }
     }
 
     // ── All providers failed ────────────────────────────────────
     return NextResponse.json({
-      error: `Video generation failed. ${falError}. All fallbacks exhausted.`,
-      details: 'fal.ai balance exhausted. Top up at fal.ai/dashboard/billing, or add GOOGLE_AI_KEY for Veo.',
+      error: `Video generation failed across all providers. ${falError}`,
+      details: 'fal.ai balance exhausted. Google Veo quota may be limited. HuggingFace SVD is experimental.',
       sceneId,
     }, { status: 500 });
 
