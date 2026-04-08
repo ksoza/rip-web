@@ -15,7 +15,9 @@ export async function GET() {
   const googleKey = process.env.GOOGLE_AI_KEY || process.env.GOOGLE_API_KEY || '';
   const novitaKey = process.env.NOVITA_API_KEY || '';
   const pollinationsKey = process.env.POLLINATIONS_API_KEY || '';
+  const fishKey = process.env.FISH_AUDIO_API_KEY || '';
 
+  checks.FISH_AUDIO_API_KEY = fishKey ? `set (${fishKey.length} chars)` : 'MISSING — add for character voice TTS';
   checks.POLLINATIONS_API_KEY = pollinationsKey ? `set (${pollinationsKey.length} chars) prefix="${pollinationsKey.slice(0, 8)}..."` : 'MISSING — add POLLINATIONS_API_KEY for primary image gen';
   checks.GROQ_API_KEY = groqKey ? `set (${groqKey.length} chars)` : 'MISSING';
   checks.NOVITA_API_KEY = novitaKey ? `set (${novitaKey.length} chars) prefix="${novitaKey.slice(0, 8)}..."` : 'MISSING';
@@ -116,6 +118,51 @@ export async function GET() {
     } catch (e: unknown) { checks.novita_video = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
+
+  // 4b. Test Novita TTS (MiniMax Speech)
+  if (novitaKey) {
+    try {
+      const start = Date.now();
+      const res = await fetch('https://api.novita.ai/v3/sync/minimax-speech-02-hd', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Test.', voice_id: 'male-qn-qingse', speed: 1.0, vol: 1.0, output_format: 'mp3' }),
+      });
+      const elapsed = Date.now() - start;
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && (ct.includes('audio') || ct.includes('octet'))) {
+        const buf = await res.arrayBuffer();
+        checks.novita_tts = `OK in ${elapsed}ms — ${ct} (${buf.byteLength} bytes)`;
+      } else if (res.ok) {
+        const body = await res.text();
+        checks.novita_tts = `OK in ${elapsed}ms — ${ct} — ${body.slice(0, 150)}`;
+      } else {
+        checks.novita_tts = `HTTP ${res.status} in ${elapsed}ms — ${(await res.text()).slice(0, 200)}`;
+      }
+    } catch (e: unknown) { checks.novita_tts = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
+  }
+
+
+  // 4c. Test Fish Audio TTS (character voices)
+  if (fishKey) {
+    try {
+      const start = Date.now();
+      const searchRes = await fetch(
+        'https://api.fish.audio/model?title=batman&language=en&page_size=1',
+        { headers: { 'Authorization': `Bearer ${fishKey.trim()}` } }
+      );
+      const elapsed = Date.now() - start;
+      if (searchRes.ok) {
+        const data = await searchRes.json();
+        const voiceId = data.items?.[0]?._id || '';
+        const voiceName = data.items?.[0]?.title || 'unknown';
+        checks.fish_audio_tts = `OK in ${elapsed}ms — found voice "${voiceName}" (${voiceId.slice(0, 12)}...) from 1.6M+ library`;
+      } else {
+        checks.fish_audio_tts = `HTTP ${searchRes.status} in ${elapsed}ms — ${(await searchRes.text()).slice(0, 200)}`;
+      }
+    } catch (e: unknown) { checks.fish_audio_tts = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
+  }
+
   // 5. Test HuggingFace (image gen)
   if (hfKey) {
     try {
@@ -188,5 +235,5 @@ export async function GET() {
     } catch (e: unknown) { checks.anthropic = `FAILED: ${e instanceof Error ? e.message : String(e)}`; }
   }
 
-  return NextResponse.json({ ts: new Date().toISOString(), version: 'v9-pollinations-primary', checks });
+  return NextResponse.json({ ts: new Date().toISOString(), version: 'v11-character-voices', checks });
 }

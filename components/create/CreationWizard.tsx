@@ -571,17 +571,26 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
     }
   }
 
-  // ── Parallel narration generation for all scenes ───────────────
+  // ── Generate character dialogue audio for all scenes ────────────
   async function generateNarration() {
     setNarrationLoading(true);
 
     await runParallelBatches(
       scenes,
       async (scene) => {
+        // Find matching script scene for dialogue data
+        const scriptScene = scriptScenes.find(ss => ss.sceneNum === scene.sceneNum);
+        const dialogue = scriptScene?.dialogue?.filter(d => d.line?.trim());
+
+        // Build request body — dialogue mode (character voices) or fallback to description
+        const bodyPayload = dialogue && dialogue.length > 0
+          ? { dialogue: dialogue.map(d => ({ character: d.character, line: d.line })), sceneId: scene.id }
+          : { text: scene.description, sceneId: scene.id };
+
         const res = await fetch('/api/create/narrate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: scene.description, sceneId: scene.id }),
+          body: JSON.stringify(bodyPayload),
         });
         if (res.ok) {
           const data = await res.json();
@@ -592,7 +601,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
         }
         return null;
       },
-      { concurrency: 3 }
+      { concurrency: 2 }
     );
 
     setNarrationLoading(false);
@@ -1755,7 +1764,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                     <div className="flex gap-2">
                       <button onClick={generateNarration} disabled={narrationLoading}
                         className="px-3 py-1.5 rounded-lg bg-purple/10 border border-purple/30 text-purple text-[10px] font-bold hover:bg-purple/20 transition-all disabled:opacity-50">
-                        {narrationLoading ? '🔊 Generating...' : '🔊 Narrate All'}
+                        {narrationLoading ? '🗣️ Generating...' : '🗣️ Voice Dialogue'}
                       </button>
                       <button onClick={downloadAllImages} disabled={downloadingAll}
                         className="px-3 py-1.5 rounded-lg bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold hover:bg-lime/20 transition-all disabled:opacity-50">
