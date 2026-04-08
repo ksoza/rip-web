@@ -100,7 +100,7 @@ export async function GET() {
   if (hfKey) {
     try {
       const start = Date.now();
-      const res = await fetch('https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell', {
+      const res = await fetch('https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${hfKey.trim()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ inputs: 'a blue square on white background, simple test' }),
