@@ -7,6 +7,64 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tmdb, tmdbImage, TMDB_ID_MAP } from '@/lib/tmdb';
 
+// ── Jikan (MyAnimeList) — real character artwork for anime/cartoons ──
+async function fetchJikanCharacterImages(showTitle: string): Promise<Record<string, string>> {
+  const imageMap: Record<string, string> = {}; // normalized character name → image URL
+  try {
+    // Step 1: Search Jikan for the show
+    const searchRes = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(showTitle)}&limit=1`);
+    if (!searchRes.ok) return imageMap;
+    const searchData = await searchRes.json();
+    const malId = searchData.data?.[0]?.mal_id;
+    if (!malId) return imageMap;
+
+    // Step 2: Get all characters with images (one API call)
+    const charRes = await fetch(`https://api.jikan.moe/v4/anime/${malId}/characters`);
+    if (!charRes.ok) return imageMap;
+    const charData = await charRes.json();
+
+    for (const entry of (charData.data || [])) {
+      const char = entry.character;
+      if (!char?.name || !char?.images?.jpg?.image_url) continue;
+      const imgUrl = char.images.jpg.image_url;
+
+      // Jikan uses "Last, First" format — normalize both ways
+      const jikanName = char.name;
+      imageMap[jikanName.toLowerCase()] = imgUrl;
+      // Also store reversed: "First Last"
+      if (jikanName.includes(', ')) {
+        const [last, first] = jikanName.split(', ');
+        imageMap[`${first} ${last}`.toLowerCase()] = imgUrl;
+        imageMap[first.toLowerCase()] = imgUrl; // just first name too
+      } else {
+        imageMap[jikanName.toLowerCase()] = imgUrl;
+      }
+    }
+  } catch (e) {
+    console.error('[Jikan] Error fetching character images:', e);
+  }
+  return imageMap;
+}
+
+// Match a TMDB character name to a Jikan image
+function findJikanImage(characterName: string, imageMap: Record<string, string>): string | null {
+  const normalized = characterName.toLowerCase().trim();
+  // Direct match
+  if (imageMap[normalized]) return imageMap[normalized];
+  // Partial match — character name contains or is contained in a Jikan entry
+  for (const [key, url] of Object.entries(imageMap)) {
+    if (normalized.includes(key) || key.includes(normalized)) return url;
+  }
+  // Match by first word (e.g., "Goku" matches "Son, Gokuu")
+  const firstName = normalized.split(/\s+/)[0];
+  if (firstName.length >= 3) {
+    for (const [key, url] of Object.entries(imageMap)) {
+      if (key.includes(firstName)) return url;
+    }
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');
@@ -31,18 +89,35 @@ export async function GET(req: NextRequest) {
           ? await tmdb.getTVCast(entry.tmdbId)
           : await tmdb.getMovieCast(entry.tmdbId);
 
+        // For animated content, fetch real character artwork from Jikan (MyAnimeList)
+        const showTitle = (details as any).name || (details as any).title || '';
+        const jikanImages = isAnimated ? await fetchJikanCharacterImages(showTitle) : {};
+
         // Transform to our format — ALL characters, no limits
-        // For animated content, skip voice actor photos (they don't match the character)
-        const characters = cast.map((member, idx) => ({
-          id: `tmdb-${member.id}`,
-          tmdbId: member.id,
-          name: member.name,
-          character: member.roles?.[0]?.character || member.character || 'Unknown',
-          imageUrl: isAnimated ? null : tmdbImage.profile(member.profile_path, 'w185'),
-          order: member.order ?? idx,
-          popularity: member.popularity,
-          episodeCount: member.roles?.[0]?.episode_count,
-        }));
+        const characters = cast.map((member, idx) => {
+          const characterName = member.roles?.[0]?.character || member.character || 'Unknown';
+          const actorName = member.name;
+
+          // For animated: use Jikan character art; for live-action: use actor photo
+          let imageUrl: string | null;
+          if (isAnimated) {
+            imageUrl = findJikanImage(characterName, jikanImages) || null;
+          } else {
+            imageUrl = tmdbImage.profile(member.profile_path, 'w185');
+          }
+
+          return {
+            id: `tmdb-${member.id}`,
+            tmdbId: member.id,
+            // Always use character name as primary, actor as secondary
+            name: actorName,
+            character: characterName,
+            imageUrl,
+            order: member.order ?? idx,
+            popularity: member.popularity,
+            episodeCount: member.roles?.[0]?.episode_count,
+          };
+        });
 
         return NextResponse.json({
           mediaId,
