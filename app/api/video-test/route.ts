@@ -1,5 +1,5 @@
-// app/api/create/video-test/route.ts
-// Quick test to verify video fallback chain is deployed
+// app/api/video-test/route.ts
+// Tests ALL video providers: Novita AI, fal.ai, Google Veo
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,18 +7,40 @@ export const maxDuration = 60;
 
 export async function GET() {
   const results: Record<string, string> = {};
-  results.version = 'video-test-v1';
+  results.version = 'video-test-v2';
   results.timestamp = new Date().toISOString();
 
+  const novitaKey = process.env.NOVITA_API_KEY || '';
   const falKey = process.env.FAL_KEY || '';
   const googleKey = process.env.GOOGLE_AI_KEY || process.env.GOOGLE_API_KEY || '';
-  const hfKey = process.env.HUGGINGFACE_API_KEY || '';
 
+  results.NOVITA_API_KEY = novitaKey ? `set (${novitaKey.length}ch) prefix="${novitaKey.slice(0,8)}"` : 'MISSING';
   results.FAL_KEY = falKey ? `set (${falKey.length}ch)` : 'MISSING';
-  results.GOOGLE_AI_KEY = googleKey ? `set (${googleKey.length}ch) prefix="${googleKey.slice(0,8)}"` : 'MISSING — video gen needs this';
-  results.HUGGINGFACE_API_KEY = hfKey ? `set (${hfKey.length}ch)` : 'MISSING';
+  results.GOOGLE_AI_KEY = googleKey ? `set (${googleKey.length}ch) prefix="${googleKey.slice(0,8)}"` : 'MISSING';
 
-  // Test 1: fal.ai
+  // Test 1: Novita AI — submit a tiny Wan t2v job (cheapest)
+  if (novitaKey) {
+    try {
+      const r = await fetch('https://api.novita.ai/v3/async/wan-t2v', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${novitaKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'spinning red cube test', width: 480, height: 480, steps: 10, fast_mode: true }),
+      });
+      const body = await r.text();
+      if (r.ok) {
+        results.novita_video = `OK — task submitted: ${body.slice(0, 150)}`;
+      } else {
+        results.novita_video = `HTTP ${r.status} — ${body.slice(0, 200)}`;
+      }
+    } catch (e: any) { results.novita_video = `ERROR: ${e.message}`; }
+  } else {
+    results.novita_video = 'SKIP (no key)';
+  }
+
+  // Test 2: fal.ai
   if (falKey) {
     try {
       const r = await fetch('https://queue.fal.run/fal-ai/wan/v2.1/1.3b', {
@@ -32,7 +54,7 @@ export async function GET() {
     results.fal_video = 'SKIP (no key)';
   }
 
-  // Test 2: Google Veo
+  // Test 3: Google Veo
   if (googleKey) {
     try {
       const r = await fetch(
@@ -46,29 +68,7 @@ export async function GET() {
       results.google_veo = `HTTP ${r.status} — ${(await r.text()).slice(0, 150)}`;
     } catch (e: any) { results.google_veo = `ERROR: ${e.message}`; }
   } else {
-    results.google_veo = 'SKIP (no GOOGLE_AI_KEY)';
-  }
-
-  // Test 3: HuggingFace SVD
-  if (hfKey) {
-    try {
-      const r = await fetch(
-        'https://router.huggingface.co/hf-inference/models/stabilityai/stable-video-diffusion-img2vid-xt',
-        {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${hfKey.trim()}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputs: 'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png' }),
-        }
-      );
-      const ct = r.headers.get('content-type') || '';
-      if (ct.includes('video')) {
-        results.hf_svd = `OK — returned video (${ct})`;
-      } else {
-        results.hf_svd = `HTTP ${r.status} (${ct}) — ${(await r.text()).slice(0, 150)}`;
-      }
-    } catch (e: any) { results.hf_svd = `ERROR: ${e.message}`; }
-  } else {
-    results.hf_svd = 'SKIP (no key)';
+    results.google_veo = 'SKIP (no key)';
   }
 
   return NextResponse.json(results);

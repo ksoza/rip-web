@@ -1,5 +1,5 @@
 // app/api/diagnostic/route.ts
-// Deep health check — tests all providers: Groq, fal.ai, HuggingFace, Google AI, Anthropic
+// Deep health check — tests all providers: Groq, Novita AI, fal.ai, HuggingFace, Google AI, Anthropic
 import { NextResponse } from 'next/server';
 
 export const maxDuration = 60;
@@ -13,12 +13,14 @@ export async function GET() {
   const falKey = process.env.FAL_KEY || '';
   const hfKey = process.env.HUGGINGFACE_API_KEY || '';
   const googleKey = process.env.GOOGLE_AI_KEY || process.env.GOOGLE_API_KEY || '';
+  const novitaKey = process.env.NOVITA_API_KEY || '';
 
   checks.GROQ_API_KEY = groqKey ? `set (${groqKey.length} chars)` : 'MISSING';
-  checks.ANTHROPIC_API_KEY = anthropicKey ? `set (${anthropicKey.length} chars)` : 'MISSING';
+  checks.NOVITA_API_KEY = novitaKey ? `set (${novitaKey.length} chars) prefix="${novitaKey.slice(0, 8)}..."` : 'MISSING — add NOVITA_API_KEY for video gen';
   checks.FAL_KEY = falKey ? `set (${falKey.length} chars)` : 'MISSING';
   checks.HUGGINGFACE_API_KEY = hfKey ? `set (${hfKey.length} chars)` : 'MISSING';
-  checks.GOOGLE_AI_KEY = googleKey ? `set (${googleKey.length} chars) prefix="${googleKey.slice(0, 8)}..."` : 'MISSING — add GOOGLE_AI_KEY to Vercel env vars for video gen';
+  checks.GOOGLE_AI_KEY = googleKey ? `set (${googleKey.length} chars) prefix="${googleKey.slice(0, 8)}..."` : 'MISSING';
+  checks.ANTHROPIC_API_KEY = anthropicKey ? `set (${anthropicKey.length} chars)` : 'MISSING';
   checks.NODE_VERSION = process.version;
 
   // 1. Test Groq
@@ -40,7 +42,28 @@ export async function GET() {
     } catch (e: any) { checks.groq_llm = `FAILED: ${e.message}`; }
   }
 
-  // 2. Test fal.ai (image)
+  // 2. Test Novita AI (auth + balance check via smallest request)
+  if (novitaKey) {
+    try {
+      const start = Date.now();
+      const res = await fetch('https://api.novita.ai/v3/async/wan-t2v', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'test', width: 480, height: 480, steps: 10, fast_mode: true }),
+      });
+      const elapsed = Date.now() - start;
+      const body = await res.text();
+      if (res.ok) {
+        checks.novita_video = `OK in ${elapsed}ms — task submitted: ${body.slice(0, 100)}`;
+      } else if (body.includes('NOT_ENOUGH_BALANCE')) {
+        checks.novita_video = `AUTH OK but $0 balance in ${elapsed}ms — top up at novita.ai/billing`;
+      } else {
+        checks.novita_video = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
+      }
+    } catch (e: any) { checks.novita_video = `FAILED: ${e.message}`; }
+  }
+
+  // 3. Test fal.ai (image)
   if (falKey) {
     try {
       const start = Date.now();
@@ -55,7 +78,7 @@ export async function GET() {
     } catch (e: any) { checks.fal_ai = `FAILED: ${e.message}`; }
   }
 
-  // 3. Test HuggingFace (image)
+  // 4. Test HuggingFace (image)
   if (hfKey) {
     try {
       const start = Date.now();
@@ -74,28 +97,6 @@ export async function GET() {
     } catch (e: any) { checks.hf_image = `FAILED: ${e.message}`; }
   }
 
-  // 4. Test HuggingFace SVD (video) — just auth check, don't generate
-  if (hfKey) {
-    try {
-      const start = Date.now();
-      const res = await fetch('https://router.huggingface.co/hf-inference/models/stabilityai/stable-video-diffusion-img2vid-xt', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${hfKey.trim()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: 'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png' }),
-      });
-      const elapsed = Date.now() - start;
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('video')) {
-        checks.hf_video_svd = `OK in ${elapsed}ms — returned video`;
-      } else if (res.status === 503) {
-        checks.hf_video_svd = `503 in ${elapsed}ms — model loading (cold start, retry later)`;
-      } else {
-        const body = await res.text();
-        checks.hf_video_svd = `HTTP ${res.status} in ${elapsed}ms (${ct}) — ${body.slice(0, 200)}`;
-      }
-    } catch (e: any) { checks.hf_video_svd = `FAILED: ${e.message}`; }
-  }
-
   // 5. Test Google Veo (video)
   if (googleKey) {
     try {
@@ -105,10 +106,7 @@ export async function GET() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            instances: [{ prompt: 'a spinning red cube, minimal test' }],
-            parameters: { sampleCount: 1 },
-          }),
+          body: JSON.stringify({ instances: [{ prompt: 'spinning red cube' }], parameters: { sampleCount: 1 } }),
         }
       );
       const elapsed = Date.now() - start;
@@ -117,9 +115,7 @@ export async function GET() {
         try {
           const data = JSON.parse(body);
           checks.google_veo = `OK in ${elapsed}ms — operation: ${data.name || 'started'}`;
-        } catch {
-          checks.google_veo = `OK(${res.status}) in ${elapsed}ms — ${body.slice(0, 200)}`;
-        }
+        } catch { checks.google_veo = `OK(${res.status}) in ${elapsed}ms — ${body.slice(0, 200)}`; }
       } else {
         checks.google_veo = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
       }
@@ -139,5 +135,5 @@ export async function GET() {
     } catch (e: any) { checks.anthropic = `FAILED: ${e.message}`; }
   }
 
-  return NextResponse.json({ ts: new Date().toISOString(), checks });
+  return NextResponse.json({ ts: new Date().toISOString(), version: 'v6-novita', checks });
 }
