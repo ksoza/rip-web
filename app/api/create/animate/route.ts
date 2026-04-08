@@ -210,47 +210,17 @@ export async function POST(req: NextRequest) {
       });
 
       if ('taskId' in result) {
-        // Quick poll for up to 45s (fits in 60s function limit)
-        const deadline = Date.now() + 45_000;
-        while (Date.now() < deadline) {
-          await new Promise(r => setTimeout(r, 4000));
-          try {
-            const pollRes = await fetch(
-              `https://api.novita.ai/v3/async/task-result?task_id=${result.taskId}`,
-              { headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' } }
-            );
-            if (!pollRes.ok) continue;
-            const pollData = await pollRes.json();
-            const status = pollData?.task?.status;
-
-            if (status === 'TASK_STATUS_SUCCEED') {
-              const videoUrl = pollData?.videos?.[0]?.video_url
-                || findVideoUrlDeep(pollData);
-              if (videoUrl) {
-                return NextResponse.json({ videoUrl, sceneId, model: result.model, provider: 'novita' });
-              }
-              // Succeeded but no URL — break to return pending so client can retry
-              console.error(`[animate] Task ${result.taskId} SUCCEED but no video URL. Keys: ${JSON.stringify(Object.keys(pollData || {}))}`);
-              break;
-            }
-            if (status === 'TASK_STATUS_FAILED') {
-              errors.push(`Novita ${result.model}: ${pollData?.task?.reason || 'generation failed'}`);
-              break;
-            }
-          } catch { /* poll retry */ }
-        }
-
-        // Not done yet — return taskId for client-side polling
-        if (!errors.length) {
-          return NextResponse.json({
-            pending: true,
-            taskId: result.taskId,
-            provider: 'novita',
-            model: result.model,
-            sceneId,
-            message: 'Video is generating. Poll GET /api/create/animate?taskId=...&provider=novita',
-          });
-        }
+        // Return pending immediately — let client poll.
+        // Wan t2v takes 60-180s; server-side polling wastes the Vercel function time
+        // and eats into the client's available polling window.
+        return NextResponse.json({
+          pending: true,
+          taskId: result.taskId,
+          provider: 'novita',
+          model: result.model,
+          sceneId,
+          message: 'Video is generating. Poll GET /api/create/animate?taskId=...&provider=novita',
+        });
       } else {
         errors.push(result.error);
       }

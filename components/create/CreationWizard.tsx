@@ -628,7 +628,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
       // Pending — poll until done (up to 120s client-side)
       if (data.pending && data.taskId) {
         setVideoStage(`🎬 Scene ${idx + 1}: generating video (${data.model})...`);
-        const deadline = Date.now() + 120_000;
+        const deadline = Date.now() + 300_000; // 5 min — Wan t2v needs 60-180s
         while (Date.now() < deadline) {
           await new Promise(r => setTimeout(r, 5000));
           try {
