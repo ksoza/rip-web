@@ -280,6 +280,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   const [videoGenerating, setVideoGenerating] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoStage, setVideoStage] = useState('');
+  const [videoError, setVideoError] = useState('');
   const [showVideoGen, setShowVideoGen] = useState(false);
 
   // ── Parallel batch runner (Showrunner-style concurrency) ──────
@@ -597,43 +598,83 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
     setNarrationLoading(false);
   }
 
+  // ── Animate a single scene (submit + poll if pending) ─────────
+  async function animateScene(scene: any, idx: number, totalScenes: number): Promise<string | null> {
+    setVideoStage(`🎬 Animating Scene ${idx + 1}/${totalScenes}: ${scene.description.slice(0, 40)}...`);
+
+    try {
+      const res = await fetch('/api/create/animate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: sceneImageUrls[scene.id] || undefined,
+          imageBase64: !sceneImageUrls[scene.id] ? sceneImages[scene.id] : undefined,
+          prompt: scene.visual,
+          model: videoModel,
+          sceneId: scene.id,
+          duration: '5',
+          aspectRatio,
+        }),
+      });
+
+      const data = await res.json();
+
+      // Direct success
+      if (data.videoUrl) {
+        setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
+        return data.videoUrl;
+      }
+
+      // Pending — poll until done (up to 120s client-side)
+      if (data.pending && data.taskId) {
+        setVideoStage(`🎬 Scene ${idx + 1}: generating video (${data.model})...`);
+        const deadline = Date.now() + 120_000;
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 5000));
+          try {
+            const pollRes = await fetch(`/api/create/animate?taskId=${data.taskId}&provider=${data.provider}`);
+            const pollData = await pollRes.json();
+            if (pollData.done && pollData.videoUrl) {
+              setSceneVideos(prev => ({ ...prev, [scene.id]: pollData.videoUrl }));
+              return pollData.videoUrl;
+            }
+            if (pollData.done && pollData.error) {
+              setVideoError(prev => prev ? prev + ' | ' + pollData.error : pollData.error);
+              return null;
+            }
+            if (pollData.progress) {
+              setVideoStage(`🎬 Scene ${idx + 1}: ${pollData.progress}% (${data.model})`);
+            }
+          } catch {}
+        }
+        setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: timed out` : `Scene ${idx + 1}: timed out`);
+        return null;
+      }
+
+      // Error response
+      if (data.error) {
+        setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: ${data.error}` : `Scene ${idx + 1}: ${data.error}`);
+      }
+      return null;
+    } catch (err: any) {
+      setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: ${err.message}` : `Scene ${idx + 1}: ${err.message}`);
+      return null;
+    }
+  }
+
   // ── Parallel video generation for all scenes ──────────────────
   async function generateVideos() {
     setVideoGenerating(true);
     setVideoProgress(0);
+    setVideoError('');
     const totalScenes = scenes.length;
-    const CONCURRENCY = Math.min(2, totalScenes); // 2 videos at a time (heavier than images)
+    const CONCURRENCY = Math.min(2, totalScenes);
 
     setVideoStage(`🎬 Generating ${totalScenes} videos (${CONCURRENCY} in parallel)...`);
 
     await runParallelBatches(
       scenes,
-      async (scene, idx) => {
-        setVideoStage(`🎬 Animating Scene ${idx + 1}/${totalScenes}: ${scene.description.slice(0, 40)}...`);
-
-        const res = await fetch('/api/create/animate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageUrl: sceneImageUrls[scene.id] || undefined,
-            imageBase64: !sceneImageUrls[scene.id] ? sceneImages[scene.id] : undefined,
-            prompt: scene.visual,
-            model: videoModel,
-            sceneId: scene.id,
-            duration: '5',
-            aspectRatio,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.videoUrl) {
-            setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
-            return data.videoUrl;
-          }
-        }
-        return null;
-      },
+      (scene, idx) => animateScene(scene, idx, totalScenes),
       {
         concurrency: CONCURRENCY,
         onProgress: (completed, total) => {
@@ -642,7 +683,8 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
       }
     );
 
-    setVideoStage('Videos complete! 🎉');
+    const videoCount = Object.keys(sceneVideos).length;
+    setVideoStage(videoCount > 0 ? `${videoCount} videos ready! 🎉` : 'Video generation finished');
     setVideoGenerating(false);
   }
 
@@ -1534,34 +1576,12 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                   setStep('review-videos');
                   setVideoGenerating(true);
                   setVideoProgress(0);
+                  setVideoError('');
                   const totalScenes = scenes.length;
                   setVideoStage(`🎬 Generating ${totalScenes} videos...`);
                   await runParallelBatches(
                     scenes,
-                    async (scene, idx) => {
-                      setVideoStage(`🎬 Animating Scene ${idx + 1}/${totalScenes}...`);
-                      const res = await fetch('/api/create/animate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          imageUrl: sceneImageUrls[scene.id] || undefined,
-                          imageBase64: !sceneImageUrls[scene.id] ? sceneImages[scene.id] : undefined,
-                          prompt: scene.visual,
-                          model: videoModel,
-                          sceneId: scene.id,
-                          duration: '5',
-                          aspectRatio,
-                        }),
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        if (data.videoUrl) {
-                          setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
-                          return data.videoUrl;
-                        }
-                      }
-                      return null;
-                    },
+                    (scene, idx) => animateScene(scene, idx, totalScenes),
                     {
                       concurrency: 2,
                       onProgress: (completed, total) => {
@@ -1570,7 +1590,8 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                     }
                   );
                   setVideoGenerating(false);
-                  setVideoStage('Videos complete! 🎉');
+                  const videoCount = Object.keys(sceneVideos).length;
+                  setVideoStage(videoCount > 0 ? `${videoCount} videos ready! 🎉` : 'Video generation finished');
                 }}
                   disabled={Object.keys(sceneImages).length === 0}
                   className="flex-1 py-3 rounded-xl font-display text-sm tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50"
@@ -1612,6 +1633,13 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                       style={{ width: `${videoProgress}%`, background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }} />
                   </div>
                   <p className="text-xs text-muted text-center">{videoStage} {videoProgress}%</p>
+                </div>
+              )}
+
+              {videoError && !videoGenerating && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+                  <p className="text-xs text-red-400 font-bold mb-1">⚠️ Video generation errors:</p>
+                  <p className="text-xs text-red-300">{videoError}</p>
                 </div>
               )}
 

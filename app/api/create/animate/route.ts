@@ -1,9 +1,10 @@
 // app/api/create/animate/route.ts
-// Video generation — Novita AI primary (Hailuo-02 / Wan / Kling V2.1), fal.ai + Google Veo fallbacks
+// Video generation — Novita AI primary, fal.ai + Google Veo fallbacks
+// Split submit/poll pattern for Vercel Hobby plan (60s limit)
 import { NextRequest, NextResponse } from 'next/server';
 import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 function extractVideoUrl(result: any): string | null {
   if (result?.video?.url) return result.video.url;
@@ -16,117 +17,108 @@ function extractVideoUrl(result: any): string | null {
   return null;
 }
 
-// ── Novita AI video generation ────────────────────────────────────
-// Confirmed working endpoints (2026-04-08):
-//   POST https://api.novita.ai/v3/async/minimax-hailuo-02     (t2v + i2v, $0.19-0.32/vid)
-//   POST https://api.novita.ai/v3/async/wan-t2v                (t2v only, $0.03/vid)
-//   POST https://api.novita.ai/v3/async/kling-v2.1-t2v-master  (t2v, $0.17/s)
-//   POST https://api.novita.ai/v3/async/kling-v2.1-i2v-master  (i2v, $0.17/s)
-// Poll: GET https://api.novita.ai/v3/async/task-result?task_id={id}
-async function novitaGenerate(opts: {
+// ── GET: Poll for task status ───────────────────────────────────
+export async function GET(req: NextRequest) {
+  const taskId = req.nextUrl.searchParams.get('taskId');
+  const provider = req.nextUrl.searchParams.get('provider') || 'novita';
+
+  if (!taskId) {
+    return NextResponse.json({ error: 'Missing taskId' }, { status: 400 });
+  }
+
+  if (provider === 'novita') {
+    const novitaKey = process.env.NOVITA_API_KEY || '';
+    if (!novitaKey) {
+      return NextResponse.json({ error: 'NOVITA_API_KEY not set' }, { status: 500 });
+    }
+
+    try {
+      const pollRes = await fetch(
+        `https://api.novita.ai/v3/async/task-result?task_id=${taskId}`,
+        { headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' } }
+      );
+
+      if (!pollRes.ok) {
+        return NextResponse.json({ error: `Novita poll failed: HTTP ${pollRes.status}` }, { status: 500 });
+      }
+
+      const pollData = await pollRes.json();
+      const status = pollData?.task?.status;
+      const progress = pollData?.task?.progress_percent || 0;
+
+      if (status === 'TASK_STATUS_SUCCEED') {
+        const videoUrl = pollData?.videos?.[0]?.video_url;
+        return NextResponse.json({ done: true, videoUrl, taskId });
+      }
+      if (status === 'TASK_STATUS_FAILED') {
+        return NextResponse.json({ done: true, error: `Video failed: ${pollData?.task?.reason || 'unknown'}`, taskId });
+      }
+
+      // Still processing
+      return NextResponse.json({ done: false, status, progress, taskId });
+    } catch (e: any) {
+      return NextResponse.json({ error: `Poll error: ${e.message}` }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ error: `Unknown provider: ${provider}` }, { status: 400 });
+}
+
+// ── Novita: Submit task (no polling) ────────────────────────────
+async function novitaSubmit(opts: {
   prompt: string;
   imageUrl?: string;
   duration?: number;
   novitaKey: string;
-}): Promise<{ videoUrl: string; model: string } | null> {
+}): Promise<{ taskId: string; model: string } | { error: string }> {
   const { prompt, imageUrl, duration = 6, novitaKey } = opts;
   const headers = {
     'Authorization': `Bearer ${novitaKey.trim()}`,
     'Content-Type': 'application/json',
   };
 
-  // Models ordered by cost (cheapest first)
   const models = imageUrl
     ? [
-        // Image-to-video models
-        {
-          endpoint: 'minimax-hailuo-02',
-          body: { prompt, image: imageUrl, duration, resolution: '768P', enable_prompt_expansion: true },
-        },
-        {
-          endpoint: 'kling-v2.1-i2v-master',
-          body: { prompt, image_url: imageUrl, duration: String(duration), mode: 'Standard' },
-        },
+        { endpoint: 'minimax-hailuo-02', body: { prompt, image: imageUrl, duration, resolution: '768P', enable_prompt_expansion: true } },
+        { endpoint: 'kling-v2.1-i2v-master', body: { prompt, image_url: imageUrl, duration: String(duration), mode: 'Standard' } },
       ]
     : [
-        // Text-to-video models (cheapest first)
-        {
-          endpoint: 'wan-t2v',
-          body: { prompt, size: '832*480', steps: 20, fast_mode: true },
-        },
-        {
-          endpoint: 'minimax-hailuo-02',
-          body: { prompt, duration, resolution: '768P', enable_prompt_expansion: true },
-        },
-        {
-          endpoint: 'kling-v2.1-t2v-master',
-          body: { prompt, duration: String(duration), aspect_ratio: '16:9' },
-        },
+        { endpoint: 'wan-t2v', body: { prompt, size: '832*480', steps: 20, fast_mode: true } },
+        { endpoint: 'minimax-hailuo-02', body: { prompt, duration, resolution: '768P', enable_prompt_expansion: true } },
+        { endpoint: 'kling-v2.1-t2v-master', body: { prompt, duration: String(duration), aspect_ratio: '16:9' } },
       ];
 
+  const errors: string[] = [];
   for (const m of models) {
     try {
-      console.log(`[animate] Novita: trying ${m.endpoint}...`);
+      console.log(`[animate] Novita: submitting to ${m.endpoint}...`);
       const submitRes = await fetch(`https://api.novita.ai/v3/async/${m.endpoint}`, {
-        method: 'POST', headers,
-        body: JSON.stringify(m.body),
+        method: 'POST', headers, body: JSON.stringify(m.body),
       });
 
       if (!submitRes.ok) {
         const errText = await submitRes.text();
         console.warn(`[animate] Novita ${m.endpoint}: HTTP ${submitRes.status} — ${errText.slice(0, 200)}`);
         if (errText.includes('NOT_ENOUGH_BALANCE')) {
-          console.warn('[animate] Novita: insufficient balance, skipping all Novita models');
-          break;
+          return { error: 'Novita AI: insufficient balance. Top up at novita.ai/billing' };
         }
+        errors.push(`${m.endpoint}: HTTP ${submitRes.status}`);
         continue;
       }
 
       const { task_id } = await submitRes.json();
-      if (!task_id) continue;
-
-      console.log(`[animate] Novita ${m.endpoint}: task ${task_id} submitted, polling...`);
-
-      // Poll for result (up to 100 seconds)
-      const deadline = Date.now() + 100_000;
-      while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 5000));
-        try {
-          const pollRes = await fetch(
-            `https://api.novita.ai/v3/async/task-result?task_id=${task_id}`,
-            { headers }
-          );
-          if (!pollRes.ok) continue;
-
-          const pollData = await pollRes.json();
-          const status = pollData?.task?.status;
-          const progress = pollData?.task?.progress_percent || 0;
-          console.log(`[animate] Novita ${m.endpoint}: ${status} (${progress}%)`);
-
-          if (status === 'TASK_STATUS_SUCCEED') {
-            const videoUrl = pollData?.videos?.[0]?.video_url;
-            if (videoUrl) {
-              return { videoUrl, model: m.endpoint };
-            }
-            break;
-          }
-          if (status === 'TASK_STATUS_FAILED') {
-            console.warn(`[animate] Novita ${m.endpoint} failed: ${pollData?.task?.reason || 'unknown'}`);
-            break;
-          }
-          // TASK_STATUS_PROCESSING or TASK_STATUS_QUEUED — keep polling
-        } catch (pollErr: any) {
-          console.warn(`[animate] Poll error: ${pollErr.message}`);
-        }
+      if (task_id) {
+        console.log(`[animate] Novita ${m.endpoint}: task ${task_id} submitted`);
+        return { taskId: task_id, model: m.endpoint };
       }
-      console.warn(`[animate] Novita ${m.endpoint}: timed out or no video, trying next model...`);
     } catch (e: any) {
-      console.warn(`[animate] Novita ${m.endpoint} error: ${e.message}`);
+      errors.push(`${m.endpoint}: ${e.message}`);
     }
   }
-  return null;
+  return { error: `Novita: all models failed (${errors.join(', ')})` };
 }
 
+// ── POST: Submit new video generation ───────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const {
@@ -145,27 +137,58 @@ export async function POST(req: NextRequest) {
 
     const errors: string[] = [];
 
-    // ── 1. Try Novita AI first (cheapest, confirmed working) ────
+    // ── 1. Try Novita AI (submit + quick poll for 45s) ──────────
     const novitaKey = process.env.NOVITA_API_KEY || '';
     if (novitaKey) {
-      try {
-        const imgSrc = imageUrl || (imageBase64 ? imageBase64 : undefined);
-        const novResult = await novitaGenerate({
-          prompt: `${prompt}, cinematic motion, smooth animation`,
-          imageUrl: imgSrc,
-          duration: parseInt(duration, 10) || 6,
-          novitaKey,
-        });
-        if (novResult) {
+      const imgSrc = imageUrl || (imageBase64 ? imageBase64 : undefined);
+      const result = await novitaSubmit({
+        prompt: `${prompt}, cinematic motion, smooth animation`,
+        imageUrl: imgSrc,
+        duration: parseInt(duration, 10) || 6,
+        novitaKey,
+      });
+
+      if ('taskId' in result) {
+        // Quick poll for up to 45s (fits in 60s function limit)
+        const deadline = Date.now() + 45_000;
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 4000));
+          try {
+            const pollRes = await fetch(
+              `https://api.novita.ai/v3/async/task-result?task_id=${result.taskId}`,
+              { headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' } }
+            );
+            if (!pollRes.ok) continue;
+            const pollData = await pollRes.json();
+            const status = pollData?.task?.status;
+
+            if (status === 'TASK_STATUS_SUCCEED') {
+              const videoUrl = pollData?.videos?.[0]?.video_url;
+              if (videoUrl) {
+                return NextResponse.json({ videoUrl, sceneId, model: result.model, provider: 'novita' });
+              }
+              break;
+            }
+            if (status === 'TASK_STATUS_FAILED') {
+              errors.push(`Novita ${result.model}: ${pollData?.task?.reason || 'generation failed'}`);
+              break;
+            }
+          } catch {}
+        }
+
+        // Not done yet — return taskId for client-side polling
+        if (!errors.length) {
           return NextResponse.json({
-            videoUrl: novResult.videoUrl, sceneId,
-            model: novResult.model,
+            pending: true,
+            taskId: result.taskId,
             provider: 'novita',
+            model: result.model,
+            sceneId,
+            message: 'Video is generating. Poll GET /api/create/animate?taskId=...&provider=novita',
           });
         }
-        errors.push('Novita AI: all models failed or timed out');
-      } catch (e: any) {
-        errors.push(`Novita AI: ${e.message}`);
+      } else {
+        errors.push(result.error);
       }
     } else {
       errors.push('NOVITA_API_KEY not set');
@@ -176,30 +199,22 @@ export async function POST(req: NextRequest) {
       const videoModel = FAL_VIDEO_MODELS[model];
       if (videoModel) {
         try {
-          const prompt_full = `${prompt}, cinematic motion, smooth animation, professional quality`;
-          const durationNum = parseInt(duration, 10) || 5;
-          const falInput: Record<string, any> = { prompt: prompt_full };
-
+          const falInput: Record<string, any> = {
+            prompt: `${prompt}, cinematic motion, smooth animation`,
+          };
           if (imageUrl) falInput.image_url = imageUrl;
           else if (imageBase64) {
-            const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-            falInput.image_url = `data:image/png;base64,${base64Data}`;
+            falInput.image_url = `data:image/png;base64,${imageBase64.replace(/^data:image\/[a-z]+;base64,/, '')}`;
           }
-          falInput.duration = durationNum;
+          falInput.duration = parseInt(duration, 10) || 5;
           if (aspectRatio) falInput.aspect_ratio = aspectRatio;
 
-          console.log(`[animate] fal.ai: model=${videoModel.id}`);
           const result = await falGenerate(videoModel.id, falInput as any);
           const videoUrl = extractVideoUrl(result);
-
           if (videoUrl) {
-            return NextResponse.json({
-              videoUrl, sceneId,
-              model: videoModel.id,
-              provider: 'fal.ai',
-            });
+            return NextResponse.json({ videoUrl, sceneId, model: videoModel.id, provider: 'fal.ai' });
           }
-          errors.push(`fal.ai: no video URL in response`);
+          errors.push('fal.ai: no video URL in response');
         } catch (e: any) {
           errors.push(`fal.ai: ${e.message}`);
         }
@@ -212,7 +227,6 @@ export async function POST(req: NextRequest) {
     const googleKey = process.env.GOOGLE_AI_KEY || process.env.GOOGLE_API_KEY || '';
     if (googleKey) {
       try {
-        console.log('[animate] Trying Google Veo...');
         const veoRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-lite-generate-preview:predictLongRunning?key=${googleKey.trim()}`,
           {
@@ -224,51 +238,23 @@ export async function POST(req: NextRequest) {
             }),
           }
         );
-
-        if (veoRes.ok) {
-          const veoData = await veoRes.json();
-          const opName = veoData.name;
-          if (opName) {
-            const deadline = Date.now() + 90_000;
-            while (Date.now() < deadline) {
-              await new Promise(r => setTimeout(r, 5000));
-              const pollRes = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/${opName}?key=${googleKey.trim()}`
-              );
-              const pollData = await pollRes.json();
-              if (pollData.done) {
-                const videoUri = pollData.response?.generatedSamples?.[0]?.video?.uri;
-                if (videoUri) {
-                  return NextResponse.json({
-                    videoUrl: videoUri, sceneId,
-                    model: 'veo-3.1-lite',
-                    provider: 'google',
-                  });
-                }
-                break;
-              }
-            }
-          }
-        } else {
-          const errBody = await veoRes.text();
-          errors.push(`Google Veo: HTTP ${veoRes.status} ${errBody.slice(0, 100)}`);
+        if (!veoRes.ok) {
+          errors.push(`Google Veo: HTTP ${veoRes.status}`);
         }
       } catch (e: any) {
         errors.push(`Google Veo: ${e.message}`);
       }
     }
 
-    // ── All providers failed ────────────────────────────────────
     return NextResponse.json({
-      error: `Video generation failed. Tried: ${errors.join(' | ')}`,
-      details: 'All video providers exhausted. Check API keys and balances.',
+      error: `Video generation failed: ${errors.join(' | ')}`,
       sceneId,
     }, { status: 500 });
 
   } catch (error: any) {
     console.error('[animate] Top-level error:', error);
     return NextResponse.json(
-      { error: error.message || 'Video generation failed', sceneId: undefined },
+      { error: error.message || 'Video generation failed' },
       { status: error.status || 500 }
     );
   }
