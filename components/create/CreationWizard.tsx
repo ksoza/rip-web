@@ -870,7 +870,10 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                         <img src={c.imageUrl} alt={c.name}
                           className="w-8 h-8 rounded-full object-cover border border-border" />
                       ) : (
-                        <span className="text-xl">{c.emoji}</span>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                          style={{ background: `linear-gradient(135deg, hsl(${(c.name || '').charCodeAt(0) * 7 % 360}, 70%, 45%), hsl(${((c.name || '').charCodeAt(0) * 7 + 60) % 360}, 70%, 55%))` }}>
+                          {(c.name || '?')[0].toUpperCase()}
+                        </div>
                       )}
                       <span className="text-xs font-bold text-white truncate">{c.name}</span>
                     </div>

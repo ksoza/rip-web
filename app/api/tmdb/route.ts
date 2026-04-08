@@ -21,17 +21,24 @@ export async function GET(req: NextRequest) {
         const entry = TMDB_ID_MAP[mediaId];
         if (!entry) return NextResponse.json({ error: `Unknown media ID: ${mediaId}` }, { status: 404 });
 
+        // Fetch details to check if animated (genre 16 = Animation)
+        const details = entry.type === 'tv'
+          ? await tmdb.getTVDetails(entry.tmdbId)
+          : await tmdb.getMovieDetails(entry.tmdbId);
+        const isAnimated = (details as any).genres?.some((g: any) => g.id === 16) || false;
+
         const cast = entry.type === 'tv'
           ? await tmdb.getTVCast(entry.tmdbId)
           : await tmdb.getMovieCast(entry.tmdbId);
 
         // Transform to our format — ALL characters, no limits
+        // For animated content, skip voice actor photos (they don't match the character)
         const characters = cast.map((member, idx) => ({
           id: `tmdb-${member.id}`,
           tmdbId: member.id,
           name: member.name,
           character: member.roles?.[0]?.character || member.character || 'Unknown',
-          imageUrl: tmdbImage.profile(member.profile_path, 'w185'),
+          imageUrl: isAnimated ? null : tmdbImage.profile(member.profile_path, 'w185'),
           order: member.order ?? idx,
           popularity: member.popularity,
           episodeCount: member.roles?.[0]?.episode_count,
@@ -41,6 +48,7 @@ export async function GET(req: NextRequest) {
           mediaId,
           tmdbId: entry.tmdbId,
           type: entry.type,
+          isAnimated,
           totalCharacters: characters.length,
           characters,
         }, {
