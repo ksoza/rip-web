@@ -325,7 +325,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   useEffect(() => {
     if (isCustomIP || !selectedMedia?.id) return;
     setTmdbLoading(true);
-    fetch(`/api/tmdb?action=cast&id=${selectedMedia.id}`)
+    fetch(`/api/tmdb?action=cast&id=${selectedMedia.id}&v=2`, { cache: 'no-cache' })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data?.characters?.length) {
