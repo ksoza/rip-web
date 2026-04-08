@@ -1,5 +1,5 @@
 // app/api/diagnostic/route.ts
-// Deep health check — tests all providers: Groq, Novita AI, fal.ai, HuggingFace, Google AI, Anthropic
+// Deep health check — tests all providers: Groq, Novita AI (images + video), fal.ai, HuggingFace, Google AI, Anthropic
 import { NextResponse } from 'next/server';
 
 export const maxDuration = 60;
@@ -16,7 +16,7 @@ export async function GET() {
   const novitaKey = process.env.NOVITA_API_KEY || '';
 
   checks.GROQ_API_KEY = groqKey ? `set (${groqKey.length} chars)` : 'MISSING';
-  checks.NOVITA_API_KEY = novitaKey ? `set (${novitaKey.length} chars) prefix="${novitaKey.slice(0, 8)}..."` : 'MISSING — add NOVITA_API_KEY for video gen';
+  checks.NOVITA_API_KEY = novitaKey ? `set (${novitaKey.length} chars) prefix="${novitaKey.slice(0, 8)}..."` : 'MISSING — add NOVITA_API_KEY for image + video gen';
   checks.FAL_KEY = falKey ? `set (${falKey.length} chars)` : 'MISSING';
   checks.HUGGINGFACE_API_KEY = hfKey ? `set (${hfKey.length} chars)` : 'MISSING';
   checks.GOOGLE_AI_KEY = googleKey ? `set (${googleKey.length} chars) prefix="${googleKey.slice(0, 8)}..."` : 'MISSING';
@@ -42,7 +42,34 @@ export async function GET() {
     } catch (e: any) { checks.groq_llm = `FAILED: ${e.message}`; }
   }
 
-  // 2. Test Novita AI (video — Wan is cheapest to test, $0.03)
+  // 2. Test Novita AI Image (FLUX Schnell — primary image gen, ~$0.0002 per tiny test)
+  if (novitaKey) {
+    try {
+      const start = Date.now();
+      const res = await fetch('https://api.novita.ai/v3beta/flux-1-schnell', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'blue square on white background', width: 256, height: 256, steps: 4, image_num: 1 }),
+      });
+      const elapsed = Date.now() - start;
+      const body = await res.text();
+      if (res.ok) {
+        try {
+          const data = JSON.parse(body);
+          const hasImage = data?.images?.[0]?.image_url;
+          checks.novita_image = `OK in ${elapsed}ms — ${hasImage ? 'image generated!' : `task: ${data?.task?.task_id || 'submitted'}`}`;
+        } catch {
+          checks.novita_image = `OK(${res.status}) in ${elapsed}ms — ${body.slice(0, 100)}`;
+        }
+      } else if (body.includes('NOT_ENOUGH_BALANCE')) {
+        checks.novita_image = `AUTH OK but $0 balance in ${elapsed}ms — top up at novita.ai/billing`;
+      } else {
+        checks.novita_image = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
+      }
+    } catch (e: any) { checks.novita_image = `FAILED: ${e.message}`; }
+  }
+
+  // 3. Test Novita AI Video (Wan t2v — cheapest at $0.03)
   if (novitaKey) {
     try {
       const start = Date.now();
@@ -69,7 +96,7 @@ export async function GET() {
     } catch (e: any) { checks.novita_video = `FAILED: ${e.message}`; }
   }
 
-  // 3. Test HuggingFace (image gen — free)
+  // 4. Test HuggingFace (image gen — free)
   if (hfKey) {
     try {
       const start = Date.now();
@@ -88,7 +115,7 @@ export async function GET() {
     } catch (e: any) { checks.hf_image = `FAILED: ${e.message}`; }
   }
 
-  // 4. Test fal.ai
+  // 5. Test fal.ai
   if (falKey) {
     try {
       const start = Date.now();
@@ -103,7 +130,7 @@ export async function GET() {
     } catch (e: any) { checks.fal_ai = `FAILED: ${e.message}`; }
   }
 
-  // 5. Test Google Veo
+  // 6. Test Google Veo
   if (googleKey) {
     try {
       const start = Date.now();
@@ -128,7 +155,7 @@ export async function GET() {
     } catch (e: any) { checks.google_veo = `FAILED: ${e.message}`; }
   }
 
-  // 6. Anthropic
+  // 7. Anthropic
   if (anthropicKey) {
     try {
       const start = Date.now();
@@ -141,5 +168,5 @@ export async function GET() {
     } catch (e: any) { checks.anthropic = `FAILED: ${e.message}`; }
   }
 
-  return NextResponse.json({ ts: new Date().toISOString(), version: 'v7-novita-fixed', checks });
+  return NextResponse.json({ ts: new Date().toISOString(), version: 'v8-novita-images', checks });
 }
