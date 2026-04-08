@@ -1,5 +1,5 @@
 // app/api/create/animate/route.ts
-// Video generation — Novita AI primary, fal.ai + Google Veo fallbacks
+// Video generation — Novita AI primary (Hailuo-02 / Wan / Kling V2.1), fal.ai + Google Veo fallbacks
 import { NextRequest, NextResponse } from 'next/server';
 import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
 
@@ -17,10 +17,11 @@ function extractVideoUrl(result: any): string | null {
 }
 
 // ── Novita AI video generation ────────────────────────────────────
-// Endpoints: https://api.novita.ai/v3/async/{model}
-// Models: minimax-hailuo-2.3-fast-t2v ($0.19/vid), minimax-hailuo-2.3-fast-i2v ($0.19/vid),
-//         kling-v3.0-standard-t2v ($0.168/s), kling-v3.0-standard-i2v ($0.168/s),
-//         wan-t2v ($0.03/vid)
+// Confirmed working endpoints (2026-04-08):
+//   POST https://api.novita.ai/v3/async/minimax-hailuo-02     (t2v + i2v, $0.19-0.32/vid)
+//   POST https://api.novita.ai/v3/async/wan-t2v                (t2v only, $0.03/vid)
+//   POST https://api.novita.ai/v3/async/kling-v2.1-t2v-master  (t2v, $0.17/s)
+//   POST https://api.novita.ai/v3/async/kling-v2.1-i2v-master  (i2v, $0.17/s)
 // Poll: GET https://api.novita.ai/v3/async/task-result?task_id={id}
 async function novitaGenerate(opts: {
   prompt: string;
@@ -34,17 +35,33 @@ async function novitaGenerate(opts: {
     'Content-Type': 'application/json',
   };
 
-  // Choose model: image-to-video if image provided, else text-to-video
-  // Try Hailuo 2.3 Fast first (cheapest), then Wan (even cheaper for t2v)
+  // Models ordered by cost (cheapest first)
   const models = imageUrl
     ? [
-        { endpoint: 'minimax-hailuo-2.3-fast-i2v', body: { prompt, image: imageUrl, duration, resolution: '768P', enable_prompt_expansion: true } },
-        { endpoint: 'kling-v3.0-standard-i2v', body: { prompt, image_url: imageUrl, duration, mode: 'Standard' } },
+        // Image-to-video models
+        {
+          endpoint: 'minimax-hailuo-02',
+          body: { prompt, image: imageUrl, duration, resolution: '768P', enable_prompt_expansion: true },
+        },
+        {
+          endpoint: 'kling-v2.1-i2v-master',
+          body: { prompt, image_url: imageUrl, duration: String(duration), mode: 'Standard' },
+        },
       ]
     : [
-        { endpoint: 'minimax-hailuo-2.3-fast-t2v', body: { prompt, duration, resolution: '768P', enable_prompt_expansion: true } },
-        { endpoint: 'wan-t2v', body: { prompt, width: 832, height: 480, steps: 20, fast_mode: true } },
-        { endpoint: 'kling-v3.0-standard-t2v', body: { prompt, duration, mode: 'Standard' } },
+        // Text-to-video models (cheapest first)
+        {
+          endpoint: 'wan-t2v',
+          body: { prompt, size: '832*480', steps: 20, fast_mode: true },
+        },
+        {
+          endpoint: 'minimax-hailuo-02',
+          body: { prompt, duration, resolution: '768P', enable_prompt_expansion: true },
+        },
+        {
+          endpoint: 'kling-v2.1-t2v-master',
+          body: { prompt, duration: String(duration), aspect_ratio: '16:9' },
+        },
       ];
 
   for (const m of models) {
@@ -58,7 +75,6 @@ async function novitaGenerate(opts: {
       if (!submitRes.ok) {
         const errText = await submitRes.text();
         console.warn(`[animate] Novita ${m.endpoint}: HTTP ${submitRes.status} — ${errText.slice(0, 200)}`);
-        // If insufficient balance, skip all Novita models
         if (errText.includes('NOT_ENOUGH_BALANCE')) {
           console.warn('[animate] Novita: insufficient balance, skipping all Novita models');
           break;
@@ -69,32 +85,41 @@ async function novitaGenerate(opts: {
       const { task_id } = await submitRes.json();
       if (!task_id) continue;
 
-      // Poll for result (up to 90 seconds)
-      const deadline = Date.now() + 90_000;
+      console.log(`[animate] Novita ${m.endpoint}: task ${task_id} submitted, polling...`);
+
+      // Poll for result (up to 100 seconds)
+      const deadline = Date.now() + 100_000;
       while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 4000));
-        const pollRes = await fetch(
-          `https://api.novita.ai/v3/async/task-result?task_id=${task_id}`,
-          { headers }
-        );
-        if (!pollRes.ok) continue;
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          const pollRes = await fetch(
+            `https://api.novita.ai/v3/async/task-result?task_id=${task_id}`,
+            { headers }
+          );
+          if (!pollRes.ok) continue;
 
-        const pollData = await pollRes.json();
-        const status = pollData?.task?.status;
+          const pollData = await pollRes.json();
+          const status = pollData?.task?.status;
+          const progress = pollData?.task?.progress_percent || 0;
+          console.log(`[animate] Novita ${m.endpoint}: ${status} (${progress}%)`);
 
-        if (status === 'TASK_STATUS_SUCCEED') {
-          const videoUrl = pollData?.videos?.[0]?.video_url;
-          if (videoUrl) {
-            return { videoUrl, model: m.endpoint };
+          if (status === 'TASK_STATUS_SUCCEED') {
+            const videoUrl = pollData?.videos?.[0]?.video_url;
+            if (videoUrl) {
+              return { videoUrl, model: m.endpoint };
+            }
+            break;
           }
-          break;
+          if (status === 'TASK_STATUS_FAILED') {
+            console.warn(`[animate] Novita ${m.endpoint} failed: ${pollData?.task?.reason || 'unknown'}`);
+            break;
+          }
+          // TASK_STATUS_PROCESSING or TASK_STATUS_QUEUED — keep polling
+        } catch (pollErr: any) {
+          console.warn(`[animate] Poll error: ${pollErr.message}`);
         }
-        if (status === 'TASK_STATUS_FAILED') {
-          console.warn(`[animate] Novita ${m.endpoint} failed: ${pollData?.task?.reason || 'unknown'}`);
-          break;
-        }
-        // Still processing — continue polling
       }
+      console.warn(`[animate] Novita ${m.endpoint}: timed out or no video, trying next model...`);
     } catch (e: any) {
       console.warn(`[animate] Novita ${m.endpoint} error: ${e.message}`);
     }
@@ -120,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     const errors: string[] = [];
 
-    // ── 1. Try Novita AI first (cheapest) ───────────────────────
+    // ── 1. Try Novita AI first (cheapest, confirmed working) ────
     const novitaKey = process.env.NOVITA_API_KEY || '';
     if (novitaKey) {
       try {
@@ -128,7 +153,7 @@ export async function POST(req: NextRequest) {
         const novResult = await novitaGenerate({
           prompt: `${prompt}, cinematic motion, smooth animation`,
           imageUrl: imgSrc,
-          duration: parseInt(duration, 10) || 5,
+          duration: parseInt(duration, 10) || 6,
           novitaKey,
         });
         if (novResult) {
@@ -187,7 +212,7 @@ export async function POST(req: NextRequest) {
     const googleKey = process.env.GOOGLE_AI_KEY || process.env.GOOGLE_API_KEY || '';
     if (googleKey) {
       try {
-        console.log('[animate] Trying Google Veo 3.1 lite...');
+        console.log('[animate] Trying Google Veo...');
         const veoRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-lite-generate-preview:predictLongRunning?key=${googleKey.trim()}`,
           {

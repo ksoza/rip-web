@@ -23,7 +23,7 @@ export async function GET() {
   checks.ANTHROPIC_API_KEY = anthropicKey ? `set (${anthropicKey.length} chars)` : 'MISSING';
   checks.NODE_VERSION = process.version;
 
-  // 1. Test Groq
+  // 1. Test Groq (LLM)
   if (groqKey) {
     try {
       const start = Date.now();
@@ -42,19 +42,25 @@ export async function GET() {
     } catch (e: any) { checks.groq_llm = `FAILED: ${e.message}`; }
   }
 
-  // 2. Test Novita AI (auth + balance check via smallest request)
+  // 2. Test Novita AI (video — Wan is cheapest to test, $0.03)
   if (novitaKey) {
     try {
       const start = Date.now();
+      // Use correct Wan format: size not width/height
       const res = await fetch('https://api.novita.ai/v3/async/wan-t2v', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${novitaKey.trim()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'test', width: 480, height: 480, steps: 10, fast_mode: true }),
+        body: JSON.stringify({ prompt: 'diagnostic test spinning cube', size: '832*480', steps: 10, fast_mode: true }),
       });
       const elapsed = Date.now() - start;
       const body = await res.text();
       if (res.ok) {
-        checks.novita_video = `OK in ${elapsed}ms — task submitted: ${body.slice(0, 100)}`;
+        try {
+          const data = JSON.parse(body);
+          checks.novita_video = `OK in ${elapsed}ms — task: ${data.task_id} (Wan t2v, balance OK!)`;
+        } catch {
+          checks.novita_video = `OK in ${elapsed}ms — ${body.slice(0, 100)}`;
+        }
       } else if (body.includes('NOT_ENOUGH_BALANCE')) {
         checks.novita_video = `AUTH OK but $0 balance in ${elapsed}ms — top up at novita.ai/billing`;
       } else {
@@ -63,22 +69,7 @@ export async function GET() {
     } catch (e: any) { checks.novita_video = `FAILED: ${e.message}`; }
   }
 
-  // 3. Test fal.ai (image)
-  if (falKey) {
-    try {
-      const start = Date.now();
-      const res = await fetch('https://queue.fal.run/fal-ai/flux/schnell', {
-        method: 'POST',
-        headers: { 'Authorization': `Key ${falKey.trim()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'test', num_images: 1, image_size: { width: 256, height: 256 } }),
-      });
-      const elapsed = Date.now() - start;
-      const body = await res.text();
-      checks.fal_ai = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
-    } catch (e: any) { checks.fal_ai = `FAILED: ${e.message}`; }
-  }
-
-  // 4. Test HuggingFace (image)
+  // 3. Test HuggingFace (image gen — free)
   if (hfKey) {
     try {
       const start = Date.now();
@@ -97,7 +88,22 @@ export async function GET() {
     } catch (e: any) { checks.hf_image = `FAILED: ${e.message}`; }
   }
 
-  // 5. Test Google Veo (video)
+  // 4. Test fal.ai
+  if (falKey) {
+    try {
+      const start = Date.now();
+      const res = await fetch('https://queue.fal.run/fal-ai/flux/schnell', {
+        method: 'POST',
+        headers: { 'Authorization': `Key ${falKey.trim()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'test', num_images: 1, image_size: { width: 256, height: 256 } }),
+      });
+      const elapsed = Date.now() - start;
+      const body = await res.text();
+      checks.fal_ai = `HTTP ${res.status} in ${elapsed}ms — ${body.slice(0, 200)}`;
+    } catch (e: any) { checks.fal_ai = `FAILED: ${e.message}`; }
+  }
+
+  // 5. Test Google Veo
   if (googleKey) {
     try {
       const start = Date.now();
@@ -135,5 +141,5 @@ export async function GET() {
     } catch (e: any) { checks.anthropic = `FAILED: ${e.message}`; }
   }
 
-  return NextResponse.json({ ts: new Date().toISOString(), version: 'v6-novita', checks });
+  return NextResponse.json({ ts: new Date().toISOString(), version: 'v7-novita-fixed', checks });
 }
