@@ -618,6 +618,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
       });
 
       const data = await res.json();
+      console.log(`[animate] Scene ${idx + 1} POST response (HTTP ${res.status}):`, JSON.stringify(data).slice(0, 300));
 
       // Direct success
       if (data.videoUrl) {
@@ -625,7 +626,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
         return data.videoUrl;
       }
 
-      // Pending — poll until done (up to 120s client-side)
+      // Pending — poll until done (up to 5 min for Wan t2v)
       if (data.pending && data.taskId) {
         setVideoStage(`🎬 Scene ${idx + 1}: generating video (${data.model})...`);
         const deadline = Date.now() + 300_000; // 5 min — Wan t2v needs 60-180s
@@ -654,7 +655,13 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
       // Error response
       if (data.error) {
         setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: ${data.error}` : `Scene ${idx + 1}: ${data.error}`);
+        return null;
       }
+
+      // Unexpected response — show it so we can debug
+      const debugMsg = `Scene ${idx + 1}: unexpected response (HTTP ${res.status}): ${JSON.stringify(data).slice(0, 150)}`;
+      console.error('[animate]', debugMsg);
+      setVideoError(prev => prev ? prev + ' | ' + debugMsg : debugMsg);
       return null;
     } catch (err: any) {
       setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: ${err.message}` : `Scene ${idx + 1}: ${err.message}`);
