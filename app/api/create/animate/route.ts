@@ -1,46 +1,28 @@
 // app/api/create/animate/route.ts
-// Video generation from storyboard images using fal.ai
-// Supports multiple video models: Wan, LTX, Seedance, Kling, Hailuo, Veo
+// Video generation — fal.ai primary, HuggingFace fallback
 import { NextRequest, NextResponse } from 'next/server';
 import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
 
 export const maxDuration = 120;
 
-// ── Extract video URL from varying fal.ai response shapes ────────
-// Different models return results in different JSON structures.
-// This helper walks common patterns to find the video URL.
 function extractVideoUrl(result: any): string | null {
-  // Pattern 1: result.video.url (most common)
   if (result?.video?.url) return result.video.url;
-
-  // Pattern 2: result.output.video.url
   if (result?.output?.video?.url) return result.output.video.url;
-
-  // Pattern 3: result.data.video.url
   if (result?.data?.video?.url) return result.data.video.url;
-
-  // Pattern 4: result.video (direct string URL)
   if (typeof result?.video === 'string') return result.video;
-
-  // Pattern 5: result.output (direct string URL)
   if (typeof result?.output === 'string' && result.output.startsWith('http')) return result.output;
-
-  // Pattern 6: result.videos[0].url (array format)
   if (result?.videos?.[0]?.url) return result.videos[0].url;
-
-  // Pattern 7: result.url (top-level)
   if (typeof result?.url === 'string' && result.url.includes('.mp4')) return result.url;
-
   return null;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const {
-      imageUrl,      // URL of the scene image (preferred)
-      imageBase64,   // Base64 fallback if no URL
-      prompt,        // Scene visual description
-      model = 'wan', // Video model key
+      imageUrl,
+      imageBase64,
+      prompt,
+      model = 'wan',
       sceneId,
       duration = '5',
       aspectRatio = '16:9',
@@ -50,86 +32,168 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
-    if (!process.env.FAL_KEY) {
-      return NextResponse.json({ error: 'FAL_KEY not configured — video generation requires fal.ai' }, { status: 500 });
+    let falError = '';
+
+    // ── Try fal.ai first ────────────────────────────────────────
+    if (process.env.FAL_KEY) {
+      const videoModel = FAL_VIDEO_MODELS[model];
+      if (videoModel) {
+        try {
+          const input: Record<string, any> = {
+            prompt: `${prompt}, cinematic motion, smooth animation, professional quality`,
+          };
+
+          if (imageUrl) {
+            input.image_url = imageUrl;
+          } else if (imageBase64) {
+            const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+            input.image_url = `data:image/png;base64,${base64Data}`;
+          }
+
+          const durationNum = parseInt(duration, 10) || 5;
+          input.duration = durationNum;
+          if (aspectRatio) input.aspect_ratio = aspectRatio;
+
+          switch (model) {
+            case 'ltx-video': input.num_frames = durationNum * 24; break;
+            case 'seedance': input.motion_mode = 'normal'; break;
+            case 'kling': input.mode = 'pro'; break;
+            case 'hailuo': input.prompt_enhancer = true; break;
+          }
+
+          console.log(`[animate] fal.ai: model=${videoModel.id}`);
+          const result = await falGenerate(videoModel.id, input);
+          const videoUrl = extractVideoUrl(result);
+
+          if (videoUrl) {
+            return NextResponse.json({
+              videoUrl, sceneId,
+              model: videoModel.id,
+              provider: 'fal.ai',
+            });
+          }
+          falError = `No video URL in fal.ai response (keys: ${Object.keys(result || {}).join(',')})`;
+        } catch (e: any) {
+          falError = `fal.ai: ${e.message || String(e)}`;
+          console.warn(`[animate] ${falError}`);
+        }
+      } else {
+        falError = `Unknown model: ${model}`;
+      }
+    } else {
+      falError = 'FAL_KEY not set';
     }
 
-    const videoModel = FAL_VIDEO_MODELS[model];
-    if (!videoModel) {
-      return NextResponse.json({ error: `Unknown video model: ${model}` }, { status: 400 });
+    // ── Fallback: Google Veo via Gemini API ─────────────────────
+    const googleKey = process.env.GOOGLE_AI_KEY || process.env.GOOGLE_API_KEY || '';
+    if (googleKey) {
+      try {
+        console.log('[animate] Trying Google Veo 3.1 lite...');
+        const veoRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-lite-generate-preview:predictLongRunning?key=${googleKey.trim()}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              instances: [{ prompt: `${prompt}, cinematic, professional` }],
+              parameters: { sampleCount: 1 },
+            }),
+          }
+        );
+
+        if (veoRes.ok) {
+          const veoData = await veoRes.json();
+          // Long-running operation — poll for result
+          const opName = veoData.name;
+          if (opName) {
+            const deadline = Date.now() + 90_000;
+            while (Date.now() < deadline) {
+              await new Promise(r => setTimeout(r, 5000));
+              const pollRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/${opName}?key=${googleKey.trim()}`
+              );
+              const pollData = await pollRes.json();
+              if (pollData.done) {
+                const videoUri = pollData.response?.generatedSamples?.[0]?.video?.uri;
+                if (videoUri) {
+                  return NextResponse.json({
+                    videoUrl: videoUri, sceneId,
+                    model: 'veo-3.1-lite',
+                    provider: 'google',
+                  });
+                }
+                break;
+              }
+            }
+          }
+        } else {
+          const errBody = await veoRes.text();
+          console.warn(`[animate] Google Veo failed: ${veoRes.status} ${errBody.slice(0, 200)}`);
+        }
+      } catch (e: any) {
+        console.warn(`[animate] Google Veo error: ${e.message}`);
+      }
     }
 
-    // Build fal.ai input based on the model
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const input: Record<string, any> = {
-      prompt: `${prompt}, cinematic motion, smooth animation, professional quality`,
-    };
+    // ── Fallback: HuggingFace image-to-video ────────────────────
+    const hfKey = process.env.HUGGINGFACE_API_KEY || '';
+    if (hfKey && (imageUrl || imageBase64)) {
+      try {
+        console.log('[animate] Trying HuggingFace SVD...');
 
-    // Image-to-video: provide the scene image as reference
-    if (imageUrl) {
-      input.image_url = imageUrl;
-    } else if (imageBase64) {
-      // Strip data URL prefix if present
-      const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-      input.image_url = `data:image/png;base64,${base64Data}`;
+        // For HF image-to-video, we need to send the image
+        const imgInput = imageUrl || imageBase64;
+
+        const hfRes = await fetch(
+          'https://router.huggingface.co/hf-inference/models/stabilityai/stable-video-diffusion-img2vid-xt',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${hfKey.trim()}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ inputs: imgInput }),
+          }
+        );
+
+        const ct = hfRes.headers.get('content-type') || '';
+
+        if (hfRes.ok && ct.includes('video')) {
+          // HF returns raw video bytes
+          const buffer = await hfRes.arrayBuffer();
+          const base64 = Buffer.from(buffer).toString('base64');
+          const videoDataUrl = `data:video/mp4;base64,${base64}`;
+
+          return NextResponse.json({
+            videoUrl: videoDataUrl,
+            sceneId,
+            model: 'stable-video-diffusion',
+            provider: 'huggingface',
+          });
+        }
+
+        if (hfRes.status === 503) {
+          console.warn('[animate] HuggingFace SVD: model loading (503)');
+        } else {
+          const errText = await hfRes.text();
+          console.warn(`[animate] HuggingFace SVD: ${hfRes.status} ${errText.slice(0, 200)}`);
+        }
+      } catch (e: any) {
+        console.warn(`[animate] HuggingFace SVD error: ${e.message}`);
+      }
     }
 
-    // Duration handling — varies by model
-    const durationNum = parseInt(duration, 10) || 5;
-    input.duration = durationNum;
-
-    // Aspect ratio
-    if (aspectRatio) {
-      input.aspect_ratio = aspectRatio;
-    }
-
-    // Model-specific config
-    switch (model) {
-      case 'ltx-video':
-        input.num_frames = durationNum * 24; // 24fps
-        break;
-      case 'wan':
-        // Wan uses duration in seconds directly
-        break;
-      case 'seedance':
-        input.motion_mode = 'normal';
-        break;
-      case 'kling':
-        input.mode = 'pro';
-        break;
-      case 'hailuo':
-        // Minimax/Hailuo uses prompt enhancement by default
-        input.prompt_enhancer = true;
-        break;
-    }
-
-    // Generate video via fal.ai queue
-    const result = await falGenerate(videoModel.id, input as Parameters<typeof falGenerate>[1]);
-
-    // Extract video URL from whatever shape fal.ai returns
-    const videoUrl = extractVideoUrl(result);
-
-    if (videoUrl) {
-      return NextResponse.json({
-        videoUrl,
-        sceneId,
-        model: videoModel.id,
-        provider: 'fal.ai',
-      });
-    }
-
-    // If we still can't find the URL, log the full response for debugging
-    console.error('fal.ai video response — could not find video URL. Full result:', JSON.stringify(result, null, 2).slice(0, 2000));
-
+    // ── All providers failed ────────────────────────────────────
     return NextResponse.json({
-      error: 'Video generation completed but no video URL found in response',
-      debug: `Model: ${videoModel.id}. Response keys: ${Object.keys(result || {}).join(', ')}`,
+      error: `Video generation failed. ${falError}. All fallbacks exhausted.`,
+      details: 'fal.ai balance exhausted. Top up at fal.ai/dashboard/billing, or add GOOGLE_AI_KEY for Veo.',
+      sceneId,
     }, { status: 500 });
 
   } catch (error: any) {
-    console.error('Video generation error:', error);
+    console.error('[animate] Top-level error:', error);
     return NextResponse.json(
-      { error: error.message || 'Video generation failed' },
+      { error: error.message || 'Video generation failed', sceneId: undefined },
       { status: error.status || 500 }
     );
   }
