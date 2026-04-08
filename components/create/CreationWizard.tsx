@@ -331,8 +331,8 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
         if (data?.characters?.length) {
           setTmdbCharacters(data.characters.map((c: any) => ({
             id: c.id,
-            name: c.name,
-            role: c.character,
+            name: c.character || c.name,   // Show CHARACTER name (e.g. "Walter White"), not actor
+            role: c.name ? `Played by ${c.name}` : '',  // Actor name as subtitle
             emoji: '🎭',
             imageUrl: c.imageUrl,
             tmdbId: c.tmdbId,
