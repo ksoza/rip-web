@@ -28,6 +28,31 @@ function extractVideoUrl(result: Record<string, unknown>): string | null {
   return null;
 }
 
+// ── Deep-search for any video URL in a Novita task-result response ──
+function findVideoUrlDeep(obj: unknown, depth = 0): string | null {
+  if (depth > 5 || !obj) return null;
+  if (typeof obj === 'string' && obj.startsWith('http') && (obj.includes('.mp4') || obj.includes('video'))) return obj;
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = findVideoUrlDeep(item, depth + 1);
+      if (found) return found;
+    }
+  }
+  if (typeof obj === 'object' && obj !== null) {
+    // Check known fields first
+    const o = obj as Record<string, unknown>;
+    for (const key of ['video_url', 'videoUrl', 'url', 'download_url', 'video_download_url']) {
+      if (typeof o[key] === 'string' && (o[key] as string).startsWith('http')) return o[key] as string;
+    }
+    // Then recurse
+    for (const val of Object.values(o)) {
+      const found = findVideoUrlDeep(val, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 // ── GET: Poll for task status ───────────────────────────────────
 export async function GET(req: NextRequest) {
   const taskId = req.nextUrl.searchParams.get('taskId');
@@ -58,8 +83,20 @@ export async function GET(req: NextRequest) {
       const progress = pollData?.task?.progress_percent || 0;
 
       if (status === 'TASK_STATUS_SUCCEED') {
-        const videoUrl = pollData?.videos?.[0]?.video_url;
-        return NextResponse.json({ done: true, videoUrl, taskId });
+        // Try known field first, then deep-search the entire response
+        const videoUrl = pollData?.videos?.[0]?.video_url
+          || findVideoUrlDeep(pollData);
+        if (videoUrl) {
+          return NextResponse.json({ done: true, videoUrl, taskId });
+        }
+        // Succeeded but couldn't find video URL — return error with raw keys for debugging
+        const keys = JSON.stringify(Object.keys(pollData || {}));
+        console.error(`[animate-poll] Task ${taskId} SUCCEED but no video URL found. Top keys: ${keys}`);
+        return NextResponse.json({
+          done: true,
+          error: `Video task succeeded but URL not found (keys: ${keys})`,
+          taskId,
+        });
       }
       if (status === 'TASK_STATUS_FAILED') {
         return NextResponse.json({ done: true, error: `Video failed: ${pollData?.task?.reason || 'unknown'}`, taskId });
@@ -187,10 +224,13 @@ export async function POST(req: NextRequest) {
             const status = pollData?.task?.status;
 
             if (status === 'TASK_STATUS_SUCCEED') {
-              const videoUrl = pollData?.videos?.[0]?.video_url;
+              const videoUrl = pollData?.videos?.[0]?.video_url
+                || findVideoUrlDeep(pollData);
               if (videoUrl) {
                 return NextResponse.json({ videoUrl, sceneId, model: result.model, provider: 'novita' });
               }
+              // Succeeded but no URL — break to return pending so client can retry
+              console.error(`[animate] Task ${result.taskId} SUCCEED but no video URL. Keys: ${JSON.stringify(Object.keys(pollData || {}))}`);
               break;
             }
             if (status === 'TASK_STATUS_FAILED') {
