@@ -152,7 +152,11 @@ export async function GET(req: NextRequest) {
           // For animated: use character art from Fandom/Jikan; for live-action: actor photo
           let imageUrl: string | null;
           if (isAnimated) {
-            imageUrl = findCharacterImage(characterName, charImageMap) || null;
+            const rawUrl = findCharacterImage(characterName, charImageMap) || null;
+            // Proxy Fandom wiki images through /api/img to bypass hotlink protection
+            imageUrl = rawUrl && rawUrl.includes('wikia.nocookie.net')
+              ? `/api/img?url=${encodeURIComponent(rawUrl)}`
+              : rawUrl;
           } else {
             imageUrl = tmdbImage.profile(member.profile_path, 'w185');
           }
