@@ -9,12 +9,14 @@ import { TimelineEditor } from './TimelineEditor';
 import { LipSyncPanel } from './LipSyncPanel';
 import { CharacterController } from './CharacterController';
 import { SceneComposer } from './SceneComposer';
+import { SceneGenPanel } from './SceneGenPanel';
 
 // ── Mode Definitions ────────────────────────────────────────────
 const MODES: { id: StudioMode; icon: string; label: string; desc: string; color: string }[] = [
   { id: 'script',    icon: '✍️', label: 'Script',    desc: 'Stories & dialogue',    color: '#00d4ff' },
   { id: 'character', icon: '🎨', label: 'Character', desc: 'Design characters',     color: '#ff2d78' },
   { id: 'scene',     icon: '🖼️', label: 'Scene',     desc: 'Generate images',       color: '#a855f7' },
+  { id: 'scenegen',  icon: '🎥', label: 'Scene Gen', desc: 'Video + audio together', color: '#6d28d9' },
   { id: 'video',     icon: '🎬', label: 'Video',     desc: 'AI video clips',        color: '#ffcc00' },
   { id: 'audio',      icon: '🔊', label: 'Audio',      desc: 'Voice, music & SFX',    color: '#8aff00' },
   { id: 'lipsync',   icon: '👄', label: 'Lip Sync',  desc: 'Sync audio to face',    color: '#ff69b4' },
@@ -123,6 +125,7 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
           {mode === 'script'    && <ScriptPanel user={user} profile={profile} onProfileUpdate={onProfileUpdate} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} genLeft={genLeft} preselectedShow={preselectedShow} preselectedCategory={preselectedCategory} />}
           {mode === 'character' && <CharacterPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} characters={characters} addCharacter={addCharacter} />}
           {mode === 'scene'     && <ScenePanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} characters={characters} />}
+          {mode === 'scenegen'  && <SceneGenPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
           {mode === 'video'     && <VideoPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
           {mode === 'audio'      && <AudioPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}
           {mode === 'lipsync'   && <LipSyncPanel user={user} loading={loading} setLoading={setLoading} error={error} setError={setError} saveAsset={saveAsset} />}

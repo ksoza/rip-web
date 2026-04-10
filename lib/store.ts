@@ -65,7 +65,7 @@ export interface TimelineTrack {
 }
 
 // ── Studio Mode — Phase 3A: added lipsync, compose, controller ─
-export type StudioMode = 'script' | 'character' | 'scene' | 'video' | 'audio' | 'lipsync' | 'compose' | 'controller' | 'timeline';
+export type StudioMode = 'script' | 'character' | 'scene' | 'scenegen' | 'video' | 'audio' | 'lipsync' | 'compose' | 'controller' | 'timeline';
 
 // ── Main App Tab ────────────────────────────────────────────────
 export type AppTab = 'studio' | 'discover' | 'wallet' | 'settings';
