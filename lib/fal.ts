@@ -3,7 +3,7 @@
 // Handles image & video generation through a single API
 // Cost: 30-50% cheaper than direct providers
 
-// ── Model Catalog ───────────────────────────────────────────────
+// ── Model Catalog ─────────────────────────────────────────────
 
 export interface FalModel {
   id: string;             // fal.ai model identifier
@@ -146,7 +146,7 @@ export const FAL_MODELS: Record<string, FalModel> = {
   ...FAL_VIDEO_MODELS,
 };
 
-// ── fal.ai API Helpers ──────────────────────────────────────────
+// ── fal.ai API Helpers ────────────────────────────────────────
 
 const FAL_API_URL = 'https://queue.fal.run';
 
@@ -175,9 +175,11 @@ interface FalVideoInput {
   [key: string]: any;
 }
 
-interface FalResult {
+export interface FalResult {
   images?: { url: string; content_type?: string }[];
   video?: { url: string };
+  /** Audio output from audio-capable models (Veo 3.1, Seedance 2) */
+  audio?: { url: string };
   request_id?: string;
 }
 
@@ -207,7 +209,7 @@ export async function falGenerate(
 
   // If result is already available (sync response)
   if (submitData.images || submitData.video) {
-    return submitData;
+    return normalizeResult(submitData);
   }
 
   // Poll for result (async/queue response)
@@ -235,7 +237,8 @@ export async function falGenerate(
       if (!resultRes.ok) {
         throw new Error(`fal.ai result fetch error: ${await resultRes.text()}`);
       }
-      return resultRes.json();
+      const raw = await resultRes.json();
+      return normalizeResult(raw);
     }
 
     if (status.status === 'FAILED') {
@@ -244,6 +247,41 @@ export async function falGenerate(
   }
 
   throw new Error('fal.ai generation timed out (5 min)');
+}
+
+/**
+ * Normalize fal.ai response to extract all media outputs.
+ * Audio-capable models (Veo 3.1, Seedance 2) may return audio in different fields.
+ */
+function normalizeResult(raw: any): FalResult {
+  const result: FalResult = {
+    request_id: raw.request_id,
+  };
+
+  // Images
+  if (raw.images) {
+    result.images = raw.images;
+  }
+
+  // Video — check multiple possible response shapes
+  if (raw.video?.url) {
+    result.video = raw.video;
+  } else if (raw.video_url) {
+    result.video = { url: raw.video_url };
+  } else if (raw.output?.video?.url) {
+    result.video = raw.output.video;
+  }
+
+  // Audio — audio-capable models may return this alongside video
+  if (raw.audio?.url) {
+    result.audio = raw.audio;
+  } else if (raw.audio_url) {
+    result.audio = { url: raw.audio_url };
+  } else if (raw.output?.audio?.url) {
+    result.audio = raw.output.audio;
+  }
+
+  return result;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -266,6 +304,12 @@ export function getAvailableModels(
       const tierDiff = tierOrder.indexOf(a.tier) - tierOrder.indexOf(b.tier);
       return tierDiff !== 0 ? tierDiff : a.name.localeCompare(b.name);
     });
+}
+
+/** Check if a model supports native audio generation */
+export function modelHasAudio(modelKey: string): boolean {
+  const model = FAL_VIDEO_MODELS[modelKey];
+  return model?.tags.includes('audio') ?? false;
 }
 
 export function mapSizeToFal(size?: string): string | { width: number; height: number } {
