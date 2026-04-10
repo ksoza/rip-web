@@ -1,11 +1,11 @@
 // lib/episode-pipeline.ts
-// Episode generation pipeline — chains script → scene pipeline
-// Prompt → AI Script → Scene-by-scene video+audio via unified pipeline
+// Episode generation pipeline - chains script -> scene pipeline
+// Prompt -> AI Script -> Scene-by-scene video+audio via unified pipeline
 
 import type { ArtStyleId } from './shows';
 import type { SceneInput } from './scene-pipeline';
 
-// ── Script types (matches /api/create/script output) ──────────
+// -- Script types (matches /api/create/script output) ----------
 
 export interface ScriptDialogue {
   character: string;
@@ -32,7 +32,7 @@ export interface Script {
   model?: string;
 }
 
-// ── Episode types ─────────────────────────────────────────────
+// -- Episode types ---------------------------------------------
 
 export interface EpisodeInput {
   show: string;
@@ -53,9 +53,9 @@ export interface EpisodeResult {
   sceneInputs: EpisodeSceneInput[];
 }
 
-// ── Duration parsing ──────────────────────────────────────────
+// -- Duration parsing ------------------------------------------
 
-/** Parse "0:00-0:15" → 15 (seconds) */
+/** Parse "0:00-0:15" -> 15 (seconds) */
 export function parseScriptDuration(duration: string): number {
   const match = duration.match(/(\d+):(\d{2})\s*-\s*(\d+):(\d{2})/);
   if (!match) return 8;
@@ -64,11 +64,11 @@ export function parseScriptDuration(duration: string): number {
   const endSec   = parseInt(match[3]) * 60 + parseInt(match[4]);
   const dur      = endSec - startSec;
 
-  // Clamp to model limits: 3–16 s per scene
+  // Clamp to model limits: 3-16 s per scene
   return Math.min(16, Math.max(3, dur));
 }
 
-// ── Script scene → SceneInput mapping ─────────────────────────
+// -- Script scene -> SceneInput mapping -------------------------
 
 /** Convert one script scene into a SceneInput for generateScene() */
 export function scriptSceneToSceneInput(

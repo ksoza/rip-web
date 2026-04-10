@@ -1,14 +1,14 @@
 // lib/store.ts
-// Zustand store for Creative Studio state â V2 + Phase 3A
+// Zustand store for Creative Studio state - V2 + Phase 3A
 import { create } from 'zustand';
 
-// ââ Utilities âââââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Utilities ---------------------------------------------------
 let _c = 0;
 export function genId(prefix = 'id') {
   return `${prefix}_${Date.now().toString(36)}_${(++_c).toString(36)}`;
 }
 
-// ââ Asset Types âââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Asset Types -------------------------------------------------
 export type AssetType = 'text' | 'image' | 'video' | 'audio' | 'sprite' | 'voice' | 'sfx' | 'music' | 'voiceover';
 
 export interface Asset {
@@ -24,7 +24,7 @@ export interface Asset {
   createdAt: number;
 }
 
-// ââ Character âââââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Character ---------------------------------------------------
 export interface Character {
   id: string;
   name: string;
@@ -35,7 +35,7 @@ export interface Character {
   voiceId?: string;
 }
 
-// ââ Timeline Types ââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Timeline Types ----------------------------------------------
 export type ClipType = 'video' | 'image' | 'audio' | 'voiceover' | 'music' | 'sfx' | 'text';
 
 export interface TimelineClip {
@@ -64,33 +64,33 @@ export interface TimelineTrack {
   locked: boolean;
 }
 
-// ââ Studio Mode â Phase 3A: added lipsync, compose, controller â
+// -- Studio Mode - Phase 3A: added lipsync, compose, controller -
 export type StudioMode = 'script' | 'character' | 'scene' | 'scenegen' | 'episode' | 'video' | 'audio' | 'lipsync' | 'compose' | 'controller' | 'timeline';
 
-// ââ Main App Tab ââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Main App Tab ------------------------------------------------
 export type AppTab = 'studio' | 'discover' | 'wallet' | 'settings';
 
-// ââ Store Interface âââââââââââââââââââââââââââââââââââââââââââââ
+// -- Store Interface ---------------------------------------------
 interface StudioState {
-  // â App-level navigation âââââââââââââââââââââââââââââââââââââ
+  // - App-level navigation -------------------------------------
   tab: AppTab;
   setTab: (tab: AppTab) => void;
 
-  // â Studio mode ââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Studio mode ----------------------------------------------
   mode: StudioMode;
   setMode: (mode: StudioMode) => void;
 
-  // â Assets âââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Assets ---------------------------------------------------
   assets: Asset[];
   addAsset: (asset: Asset) => void;
   removeAsset: (id: string) => void;
 
-  // â Characters âââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Characters -----------------------------------------------
   characters: Character[];
   addCharacter: (char: Character) => void;
   removeCharacter: (id: string) => void;
 
-  // â Timeline âââââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Timeline -------------------------------------------------
   tracks: TimelineTrack[];
   playhead: number;
   zoom: number;             // pixels per second
@@ -104,7 +104,7 @@ interface StudioState {
   setPlayhead: (time: number) => void;
   setZoom: (zoom: number) => void;
 
-  // â Selection ââââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Selection ------------------------------------------------
   selectedAssetId: string | null;
   selectedClipId: string | null;
   selectedCharacterId: string | null;
@@ -113,28 +113,28 @@ interface StudioState {
   selectCharacter: (id: string | null) => void;
 }
 
-// ââ Create Store ââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Create Store ------------------------------------------------
 export const useStudioStore = create<StudioState>((set) => ({
-  // â App tab ââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // - App tab --------------------------------------------------
   tab: 'studio',
   setTab: (tab) => set({ tab }),
 
-  // â Studio mode ââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Studio mode ----------------------------------------------
   mode: 'script',
   setMode: (mode) => set({ mode }),
 
-  // â Assets âââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Assets ---------------------------------------------------
   assets: [],
   addAsset: (asset) => set((s) => ({ assets: [asset, ...s.assets] })),
   removeAsset: (id) => set((s) => ({ assets: s.assets.filter((a) => a.id !== id) })),
 
-  // â Characters âââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Characters -----------------------------------------------
   characters: [],
   addCharacter: (char) => set((s) => ({ characters: [...s.characters, char] })),
   removeCharacter: (id) => set((s) => ({ characters: s.characters.filter((c) => c.id !== id) })),
 
-  // â Timeline âââââââââââââââââââââââââââââââââââââââââââââââââ
-  tracks: [],   // Start empty â user adds tracks as needed
+  // - Timeline -------------------------------------------------
+  tracks: [],   // Start empty - user adds tracks as needed
   playhead: 0,
   zoom: 40,     // 40px per second default
 
@@ -181,7 +181,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   setPlayhead: (time) => set({ playhead: time }),
   setZoom: (zoom) => set({ zoom: Math.max(10, Math.min(200, zoom)) }),
 
-  // â Selection ââââââââââââââââââââââââââââââââââââââââââââââââ
+  // - Selection ------------------------------------------------
   selectedAssetId: null,
   selectedClipId: null,
   selectedCharacterId: null,

@@ -1,5 +1,5 @@
 // app/api/create/episode/route.ts
-// Full episode pipeline — prompt → AI script → mapped scene inputs
+// Full episode pipeline - prompt -> AI script -> mapped scene inputs
 // Client receives script + ready-to-generate scene inputs, then
 // calls /api/generate/scene per scene to get video + audio
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,14 +11,14 @@ import {
 
 export const maxDuration = 60;
 
-// ── LLM helper (Groq → Anthropic fallback) ────────────────────
+// -- LLM helper (Groq -> Anthropic fallback) --------------------
 
 async function callLLM(
   systemPrompt: string,
   userPrompt: string,
   signal: AbortSignal,
 ) {
-  // Priority 1 — Groq (free tier)
+  // Priority 1 - Groq (free tier)
   const groqKey = process.env.GROQ_API_KEY?.trim();
   if (groqKey) {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -48,7 +48,7 @@ async function callLLM(
     console.warn('[episode] Groq failed:', res.status);
   }
 
-  // Priority 2 — Anthropic (paid)
+  // Priority 2 - Anthropic (paid)
   const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (anthropicKey) {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
@@ -73,7 +73,7 @@ async function callLLM(
   );
 }
 
-// ── Episode-optimised script prompt ───────────────────────────
+// -- Episode-optimised script prompt ---------------------------
 
 function buildEpisodePrompt(input: EpisodeInput) {
   const durationGuide: Record<string, string> = {
@@ -89,14 +89,14 @@ function buildEpisodePrompt(input: EpisodeInput) {
 Show / IP: ${input.show}
 Characters: ${input.characters.join(', ')}
 Episode Idea: ${input.prompt}
-Format: ${input.format} — ${durationGuide[input.format] || '60 seconds'}
+Format: ${input.format} - ${durationGuide[input.format] || '60 seconds'}
 Art Style: ${input.artStyle}
 
 CRITICAL RULES:
 - Characters SPEAK as themselves with authentic voices and mannerisms
-- NO narrator, NO voiceover — all audio comes from characters talking + ambient sound
-- Every scene must have dialogue — characters reacting, arguing, joking, etc.
-- Write the way the show actually sounds — match the tone, humour, pacing
+- NO narrator, NO voiceover - all audio comes from characters talking + ambient sound
+- Every scene must have dialogue - characters reacting, arguing, joking, etc.
+- Write the way the show actually sounds - match the tone, humour, pacing
 - Each scene is a SINGLE CONTINUOUS SHOT (generated as one video clip)
 - Keep each scene 5-16 seconds of screen time
 - Dialogue should be punchy: 1-3 lines per character per scene
@@ -132,7 +132,7 @@ Generate ${
 Respond with ONLY valid JSON.`;
 }
 
-// ── POST handler ──────────────────────────────────────────────
+// -- POST handler ----------------------------------------------
 
 export async function POST(req: NextRequest) {
   try {
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Generate script via LLM ─────────────────────────────
+    // -- Generate script via LLM -----------------------------
     const systemPrompt = `You are a professional TV screenwriter creating fan-made remix episodes. Write vivid, authentic screenplays where characters speak in their own voices. CRITICAL: No narration, no voiceover. Characters talk as themselves. Respond with valid JSON only.`;
 
     const controller = new AbortController();
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
       clearTimeout(timeout);
       if (err.name === 'AbortError') {
         return NextResponse.json(
-          { error: 'Script generation timed out — try a shorter format' },
+          { error: 'Script generation timed out \u2014 try a shorter format' },
           { status: 504 },
         );
       }
@@ -186,7 +186,7 @@ export async function POST(req: NextRequest) {
     }
     clearTimeout(timeout);
 
-    // ── Parse script JSON ───────────────────────────────────
+    // -- Parse script JSON -----------------------------------
     let script: Script;
     try {
       script = JSON.parse(result.text);
@@ -196,14 +196,14 @@ export async function POST(req: NextRequest) {
         script = JSON.parse(match[0]);
       } else {
         return NextResponse.json(
-          { error: 'Failed to parse AI script — try again' },
+          { error: 'Failed to parse AI script \u2014 try again' },
           { status: 500 },
         );
       }
     }
     script.model = result.model;
 
-    // ── Map script → scene pipeline inputs ──────────────────
+    // -- Map script -> scene pipeline inputs ------------------
     const sceneInputs = mapScriptToSceneInputs(script, input);
 
     return NextResponse.json({

@@ -1,9 +1,9 @@
 // lib/fal.ts
-// fal.ai — Unified AI media generation gateway (600+ models)
+// fal.ai - Unified AI media generation gateway (600+ models)
 // Handles image & video generation through a single API
 // Cost: 30-50% cheaper than direct providers
 
-// ── Model Catalog ─────────────────────────────────────────────
+// -- Model Catalog ---------------------------------------------
 
 export interface FalModel {
   id: string;             // fal.ai model identifier
@@ -27,7 +27,7 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/fast-sdxl',
     name: 'Stable Diffusion XL',
     type: 'image',
-    description: 'Classic SDXL — great for artistic styles',
+    description: 'Classic SDXL \u2014 great for artistic styles',
     tier: 'free',
     tags: ['classic', 'artistic'],
   },
@@ -51,7 +51,7 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/recraft-v3',
     name: 'Recraft V3',
     type: 'image',
-    description: 'Professional design — logos, icons, illustrations',
+    description: 'Professional design \u2014 logos, icons, illustrations',
     tier: 'creator',
     tags: ['design', 'professional'],
   },
@@ -67,7 +67,7 @@ export const FAL_IMAGE_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/seedream-3',
     name: 'Seedream 3.0',
     type: 'image',
-    description: 'ByteDance Seedream — stylized imagery',
+    description: 'ByteDance Seedream \u2014 stylized imagery',
     tier: 'creator',
     tags: ['stylized', 'bytedance'],
   },
@@ -78,7 +78,7 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/ltx-video/v0.9.1',
     name: 'LTX Video 2.0',
     type: 'video',
-    description: 'Fast open-source video — cheapest option',
+    description: 'Fast open-source video \u2014 cheapest option',
     tier: 'starter',
     tags: ['fast', 'budget', 'open-source'],
   },
@@ -94,7 +94,7 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/seedance/video',
     name: 'Seedance 1.5 Pro',
     type: 'video',
-    description: 'ByteDance Seedance — superior motion control',
+    description: 'ByteDance Seedance \u2014 superior motion control',
     tier: 'creator',
     tags: ['motion', 'bytedance', 'popular'],
   },
@@ -110,7 +110,7 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/minimax-video/video-01',
     name: 'Hailuo 2.3',
     type: 'video',
-    description: 'Minimax video — realistic motion',
+    description: 'Minimax video \u2014 realistic motion',
     tier: 'creator',
     tags: ['realistic', 'motion'],
   },
@@ -118,7 +118,7 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/seedance-2/video',
     name: 'Seedance 2',
     type: 'video',
-    description: 'ByteDance latest — cinematic with native audio',
+    description: 'ByteDance latest \u2014 cinematic with native audio',
     tier: 'creator',
     tags: ['cinematic', 'audio', 'bytedance', 'latest'],
   },
@@ -134,7 +134,7 @@ export const FAL_VIDEO_MODELS: Record<string, FalModel> = {
     id: 'fal-ai/veo3',
     name: 'Veo 3.1',
     type: 'video',
-    description: 'Google Veo — best audio-video sync',
+    description: 'Google Veo \u2014 best audio-video sync',
     tier: 'studio',
     tags: ['premium', 'audio', 'google'],
   },
@@ -146,7 +146,7 @@ export const FAL_MODELS: Record<string, FalModel> = {
   ...FAL_VIDEO_MODELS,
 };
 
-// ── fal.ai API Helpers ────────────────────────────────────────
+// -- fal.ai API Helpers ----------------------------------------
 
 const FAL_API_URL = 'https://queue.fal.run';
 
@@ -263,7 +263,7 @@ function normalizeResult(raw: any): FalResult {
     result.images = raw.images;
   }
 
-  // Video — check multiple possible response shapes
+  // Video - check multiple possible response shapes
   if (raw.video?.url) {
     result.video = raw.video;
   } else if (raw.video_url) {
@@ -272,7 +272,7 @@ function normalizeResult(raw: any): FalResult {
     result.video = raw.output.video;
   }
 
-  // Audio — audio-capable models may return this alongside video
+  // Audio - audio-capable models may return this alongside video
   if (raw.audio?.url) {
     result.audio = raw.audio;
   } else if (raw.audio_url) {
@@ -284,7 +284,7 @@ function normalizeResult(raw: any): FalResult {
   return result;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────
+// -- Helpers -----------------------------------------------------
 
 export function getModelByKey(key: string): FalModel | null {
   return FAL_MODELS[key] || null;

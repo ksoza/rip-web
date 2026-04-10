@@ -1,6 +1,6 @@
 'use client';
 // components/wallet/WalletTab.tsx
-// $RIP Token + Wallet Management â real Phantom integration
+// $RIP Token + Wallet Management - real Phantom integration
 // Phase 2: Connects to Phantom via window.solana, fetches real SOL balance
 // Also wired to /api/transactions, /api/staking, /api/nfts, /api/payout
 import { useState, useEffect, useCallback } from 'react';
@@ -10,7 +10,7 @@ import { getSolBalance, getTokenBalances } from '@/lib/solana/metaplex-mint';
 import { NFTGallery } from './NFTGallery';
 import { RaydiumStaking } from './RaydiumStaking';
 
-// ââ Types âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Types -------------------------------------------------------
 interface TokenBalance {
   symbol: string;
   name: string;
@@ -63,7 +63,7 @@ interface PayoutSummary {
 
 type WalletView = 'portfolio' | 'nfts' | 'staking' | 'history' | 'revenue';
 
-// ââ Revenue Split Config ââââââââââââââââââââââââââââââââââââââââ
+// -- Revenue Split Config ----------------------------------------
 const REVENUE_SPLIT = [
   { label: 'Founder', pct: 13, color: '#ff2d78' },
   { label: 'Launch Fund', pct: 50, color: '#00d4ff' },
@@ -90,13 +90,13 @@ export function WalletTab({ user }: { user: User }) {
   const [stakeAmount, setStakeAmount] = useState('');
   const [staking, setStaking] = useState(false);
 
-  // ââ Fetch real token balances when wallet connects ââââââââââââââ
+  // -- Fetch real token balances when wallet connects --------------
   useEffect(() => {
     if (!wallet.connected || !wallet.publicKey) {
       setTokens([
-        { symbol: '$RIP', name: 'Remix IP Token', balance: 'â', value: 'â', icon: 'â½' },
-        { symbol: 'SOL', name: 'Solana', balance: 'â', value: 'â', icon: 'â' },
-        { symbol: 'USDC', name: 'USD Coin', balance: 'â', value: 'â', icon: 'ð²' },
+        { symbol: '$RIP', name: 'Remix IP Token', balance: '\u2014', value: '\u2014', icon: '\u263D' },
+        { symbol: 'SOL', name: 'Solana', balance: '\u2014', value: '\u2014', icon: '\u25CE' },
+        { symbol: 'USDC', name: 'USD Coin', balance: '\u2014', value: '\u2014', icon: '\u{1F4B2}' },
       ]);
       return;
     }
@@ -125,7 +125,7 @@ export function WalletTab({ user }: { user: User }) {
               name: 'SPL Token',
               balance: ta.amount.toFixed(4),
               value: `${ta.amount.toFixed(4)}`,
-              icon: 'ðª',
+              icon: '\u{1FA99}',
               mint: ta.mint,
             }];
           });
@@ -134,7 +134,7 @@ export function WalletTab({ user }: { user: User }) {
     }).catch(() => {});
   }, [wallet.connected, wallet.publicKey]);
 
-  // ââ Fetch DB data ââââââââââââââââââââââââââââââââââââââââââââââ
+  // -- Fetch DB data ----------------------------------------------
   const fetchTransactions = useCallback(async () => {
     try {
       const res = await fetch(`/api/transactions?userId=${userId}`);
@@ -172,7 +172,7 @@ export function WalletTab({ user }: { user: User }) {
       .finally(() => setLoading(false));
   }, [fetchTransactions, fetchStaking, fetchNFTs, fetchPayouts]);
 
-  // ââ Staking action ââ
+  // -- Staking action --
   const handleStake = async () => {
     if (!stakeAmount) return;
     setStaking(true);
@@ -190,7 +190,7 @@ export function WalletTab({ user }: { user: User }) {
     setStaking(false);
   };
 
-  // ââ Computed values ââ
+  // -- Computed values --
   const totalStaked = stakingPositions.filter(p => p.status === 'locked').reduce((sum, p) => sum + p.amount_sol, 0);
   const totalRewards = stakingPositions.reduce((sum, p) => sum + (p.rewards_earned || 0), 0);
   const avgApy = stakingPositions.length > 0
@@ -198,19 +198,19 @@ export function WalletTab({ user }: { user: User }) {
     : 0;
 
   const VIEW_TABS: { id: WalletView; label: string; icon: string }[] = [
-    { id: 'portfolio', label: 'Portfolio', icon: 'ð°' },
-    { id: 'nfts', label: 'NFTs', icon: 'ð' },
-    { id: 'staking', label: 'Staking', icon: 'ð' },
-    { id: 'history', label: 'History', icon: 'ð' },
-    { id: 'revenue', label: 'Revenue', icon: 'ð¸' },
+    { id: 'portfolio', label: 'Portfolio', icon: '\u{1F4B0}' },
+    { id: 'nfts', label: 'NFTs', icon: '\u{1F48E}' },
+    { id: 'staking', label: 'Staking', icon: '\u{1F512}' },
+    { id: 'history', label: 'History', icon: '\u{1F4DC}' },
+    { id: 'revenue', label: 'Revenue', icon: '\u{1F4B8}' },
   ];
 
   const txIcon = (type: string) =>
-    type === 'subscription' ? 'ð' : type === 'nft_mint' ? 'ð' : type === 'staking' ? 'ð' : type === 'reward' ? 'ð' : type === 'founder_payout' ? 'ð¸' : 'ð';
+    type === 'subscription' ? '\u{1F6D2}' : type === 'nft_mint' ? '\u{1F48E}' : type === 'staking' ? '\u{1F512}' : type === 'reward' ? '\u{1F381}' : type === 'founder_payout' ? '\u{1F4B8}' : '\u{1F4DD}';
   const fmtAmount = (tx: Transaction) => {
     if (tx.amount_usd) return `$${tx.amount_usd.toFixed(2)}`;
     if (tx.amount_sol) return `${tx.amount_sol} SOL`;
-    return 'â';
+    return '\u2014';
   };
 
   return (
@@ -219,9 +219,9 @@ export function WalletTab({ user }: { user: User }) {
       {/* Wallet Sub-Tabs (Phase 4) */}
       <div className="flex gap-1 mb-6 bg-bg2 border border-border rounded-xl p-1">
         {([
-          { id: 'overview' as WalletView, label: 'Wallet', icon: '💰' },
-          { id: 'nfts' as WalletView, label: 'NFT Gallery', icon: '🖼️' },
-          { id: 'staking' as WalletView, label: 'Staking', icon: '⚡' },
+          { id: 'overview' as WalletView, label: 'Wallet', icon: '\u{1F4B0}' },
+          { id: 'nfts' as WalletView, label: 'NFT Gallery', icon: '\u{1F5BC}\uFE0F' },
+          { id: 'staking' as WalletView, label: 'Staking', icon: '\u26A1' },
         ]).map(t => (
           <button key={t.id} onClick={() => setWalletView(t.id)}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
@@ -239,9 +239,9 @@ export function WalletTab({ user }: { user: User }) {
       {walletView === 'overview' && (
       <div className="max-w-3xl mx-auto">
         {!wallet.connected ? (
-          /* ââ NOT CONNECTED âââââââââââââââââââââââââââââââââââ */
+          /* -- NOT CONNECTED ----------------------------------- */
           <div className="text-center py-12">
-            <div className="text-6xl mb-6">â½</div>
+            <div className="text-6xl mb-6"></div>
             <h1 className="font-display text-3xl text-white mb-2">Connect Your Wallet</h1>
             <p className="text-sm text-muted mb-8 max-w-md mx-auto">
               Link your Phantom wallet to manage $RIP tokens, mint NFTs, stake rewards, and view your creator portfolio.
@@ -251,9 +251,9 @@ export function WalletTab({ user }: { user: User }) {
               className="flex items-center justify-center gap-3 px-8 py-4 rounded-2xl text-sm font-bold transition-all mx-auto"
               style={{ background: 'linear-gradient(135deg, #9945FF, #14F195)' }}>
               {wallet.connecting ? (
-                <><span className="animate-spin">â³</span> Connecting...</>
+                <><span className="animate-spin"></span> Connecting...</>
               ) : (
-                <><span className="text-lg">â</span> Connect Phantom</>
+                <><span className="text-lg"></span> Connect Phantom</>
               )}
             </button>
 
@@ -284,20 +284,20 @@ export function WalletTab({ user }: { user: User }) {
             </div>
           </div>
         ) : (
-          /* ââ CONNECTED âââââââââââââââââââââââââââââââââââââââ */
+          /* -- CONNECTED --------------------------------------- */
           <div>
             {/* Wallet header */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
-                  style={{ background: 'linear-gradient(135deg, #9945FF, #14F195)' }}>â</div>
+                  style={{ background: 'linear-gradient(135deg, #9945FF, #14F195)' }}></div>
                 <div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-lime animate-pulse" />
                     <span className="text-xs text-lime uppercase font-bold">{wallet.walletName || 'Phantom'}</span>
                   </div>
                   <p className="text-xs text-muted font-mono">
-                    {wallet.publicKey ? `${wallet.publicKey.slice(0, 6)}...${wallet.publicKey.slice(-4)}` : 'â'}
+                    {wallet.publicKey ? `${wallet.publicKey.slice(0, 6)}...${wallet.publicKey.slice(-4)}` : '\u2014'}
                   </p>
                 </div>
               </div>
@@ -311,13 +311,13 @@ export function WalletTab({ user }: { user: User }) {
             <div className="bg-bg2 border border-border rounded-2xl p-6 mb-4 text-center">
               <p className="text-[9px] text-muted uppercase tracking-widest mb-1">SOL Balance</p>
               <h2 className="font-display text-4xl text-white">
-                {wallet.balance !== null ? `${wallet.balance.toFixed(4)} SOL` : 'â'}
+                {wallet.balance !== null ? `${wallet.balance.toFixed(4)} SOL` : '\u2014'}
               </h2>
               {wallet.publicKey && (
                 <a href={`https://solscan.io/account/${wallet.publicKey}`}
                   target="_blank" rel="noopener noreferrer"
                   className="text-[10px] text-cyan hover:underline mt-1 inline-block">
-                  View on Solscan â
+                  View on Solscan 
                 </a>
               )}
             </div>
@@ -335,7 +335,7 @@ export function WalletTab({ user }: { user: User }) {
               ))}
             </div>
 
-            {/* ââ PORTFOLIO ââ */}
+            {/* -- PORTFOLIO -- */}
             {view === 'portfolio' && (
               <div className="space-y-2">
                 {tokens.map(token => (
@@ -355,25 +355,25 @@ export function WalletTab({ user }: { user: User }) {
                 ))}
                 <div className="grid grid-cols-3 gap-2 mt-4">
                   <button className="bg-bg2 border border-border rounded-xl p-3 text-center hover:border-cyan transition">
-                    <div className="text-lg mb-1">ð¤</div><div className="text-[10px] text-muted">Send</div>
+                    <div className="text-lg mb-1"></div><div className="text-[10px] text-muted">Send</div>
                   </button>
                   <button className="bg-bg2 border border-border rounded-xl p-3 text-center hover:border-cyan transition">
-                    <div className="text-lg mb-1">ð¥</div><div className="text-[10px] text-muted">Receive</div>
+                    <div className="text-lg mb-1"></div><div className="text-[10px] text-muted">Receive</div>
                   </button>
                   <button onClick={() => setView('staking')}
                     className="bg-bg2 border border-border rounded-xl p-3 text-center hover:border-lime transition">
-                    <div className="text-lg mb-1">ð</div><div className="text-[10px] text-muted">Stake</div>
+                    <div className="text-lg mb-1"></div><div className="text-[10px] text-muted">Stake</div>
                   </button>
                 </div>
               </div>
             )}
 
-            {/* ââ NFTS ââ */}
+            {/* -- NFTS -- */}
             {view === 'nfts' && (
               <div>
                 {nfts.length === 0 ? (
                   <div className="text-center py-8">
-                    <div className="text-5xl mb-4 opacity-30">ð</div>
+                    <div className="text-5xl mb-4 opacity-30"></div>
                     <p className="text-sm text-muted mb-2">No NFTs minted yet</p>
                     <p className="text-xs text-muted2">Create content in the Studio, then publish as NFTs</p>
                   </div>
@@ -381,7 +381,7 @@ export function WalletTab({ user }: { user: User }) {
                   <div className="grid grid-cols-2 gap-3">
                     {nfts.map(nft => (
                       <div key={nft.id} className="bg-bg2 border border-border rounded-xl p-4">
-                        <div className="w-full aspect-square rounded-lg bg-purple/10 flex items-center justify-center text-4xl mb-3">ð</div>
+                        <div className="w-full aspect-square rounded-lg bg-purple/10 flex items-center justify-center text-4xl mb-3"></div>
                         <p className="text-sm font-bold text-white">Edition #{nft.edition_number || 1}</p>
                         <p className="text-[10px] text-muted font-mono">{nft.mint_address.slice(0, 8)}...{nft.mint_address.slice(-4)}</p>
                         <div className="flex items-center justify-between mt-2">
@@ -392,7 +392,7 @@ export function WalletTab({ user }: { user: User }) {
                         </div>
                         <a href={`https://solscan.io/token/${nft.mint_address}`} target="_blank" rel="noopener noreferrer"
                           className="text-[10px] text-cyan hover:underline mt-1 inline-block">
-                          View on Solscan â
+                          View on Solscan 
                         </a>
                       </div>
                     ))}
@@ -401,7 +401,7 @@ export function WalletTab({ user }: { user: User }) {
               </div>
             )}
 
-            {/* ââ STAKING ââ */}
+            {/* -- STAKING -- */}
             {view === 'staking' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -411,7 +411,7 @@ export function WalletTab({ user }: { user: User }) {
                   </div>
                   <div className="bg-bg2 border border-border rounded-xl p-4 text-center">
                     <p className="text-[9px] text-muted uppercase">Avg APY</p>
-                    <p className="font-display text-2xl text-gold">{avgApy > 0 ? `${avgApy.toFixed(1)}%` : 'â'}</p>
+                    <p className="font-display text-2xl text-gold">{avgApy > 0 ? `${avgApy.toFixed(1)}%` : '\u2014'}</p>
                   </div>
                   <div className="bg-bg2 border border-border rounded-xl p-4 text-center">
                     <p className="text-[9px] text-muted uppercase">Rewards</p>
@@ -452,19 +452,19 @@ export function WalletTab({ user }: { user: User }) {
                   </div>
                   <button onClick={handleStake} disabled={!stakeAmount || staking}
                     className="w-full py-3 rounded-xl text-sm font-bold text-black bg-lime hover:brightness-110 transition disabled:opacity-50">
-                    {staking ? 'Staking...' : 'ð Stake'}
+                    {staking ? 'Staking...' : '\u{1F512} Stake'}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* ââ HISTORY ââ */}
+            {/* -- HISTORY -- */}
             {view === 'history' && (
               <div className="space-y-2">
                 {loading && <p className="text-center text-xs text-muted py-4">Loading...</p>}
                 {!loading && transactions.length === 0 && (
                   <div className="text-center py-8">
-                    <div className="text-4xl mb-3 opacity-30">ð</div>
+                    <div className="text-4xl mb-3 opacity-30"></div>
                     <p className="text-sm text-muted">No transactions yet</p>
                   </div>
                 )}
@@ -479,7 +479,7 @@ export function WalletTab({ user }: { user: User }) {
                       {tx.solana_tx_sig && (
                         <a href={`https://solscan.io/tx/${tx.solana_tx_sig}`} target="_blank" rel="noopener noreferrer"
                           className="text-[10px] text-cyan hover:underline font-mono">
-                          {tx.solana_tx_sig.slice(0, 12)}... â
+                          {tx.solana_tx_sig.slice(0, 12)}... 
                         </a>
                       )}
                     </div>
@@ -489,7 +489,7 @@ export function WalletTab({ user }: { user: User }) {
               </div>
             )}
 
-            {/* ââ REVENUE ââ */}
+            {/* -- REVENUE -- */}
             {view === 'revenue' && (
               <div className="space-y-4">
                 <div className="bg-bg2 border border-border rounded-xl p-6">

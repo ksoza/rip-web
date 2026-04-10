@@ -1,12 +1,12 @@
 'use client';
 // components/studio/SceneGenPanel.tsx
-// Unified Scene Generation — video + audio generated together
+// Unified Scene Generation - video + audio generated together
 // Uses the /api/generate/scene endpoint (Veo 3.1 primary, Seedance 2 fallback)
 import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { Asset } from '@/lib/store';
 
-// ── Types ───────────────────────────────────────────────────────
+// -- Types -------------------------------------------------------
 interface ShowInfo {
   id: string;
   title: string;
@@ -46,11 +46,11 @@ interface SceneGenResult {
   error?: string;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────
+// -- Helpers -----------------------------------------------------
 let _lineId = 0;
 function newLineId() { return `dl_${Date.now().toString(36)}_${(++_lineId).toString(36)}`; }
 
-// ── Component ───────────────────────────────────────────────────
+// -- Component ---------------------------------------------------
 type Props = {
   user: User;
   loading: boolean;
@@ -61,13 +61,13 @@ type Props = {
 };
 
 export function SceneGenPanel({ user, loading, setLoading, error, setError, saveAsset }: Props) {
-  // ── Config fetched from API ─────────────────────────────────
+  // -- Config fetched from API ---------------------------------
   const [shows, setShows] = useState<ShowInfo[]>([]);
   const [artStyles, setArtStyles] = useState<ArtStyleInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [configLoaded, setConfigLoaded] = useState(false);
 
-  // ── User selections ─────────────────────────────────────────
+  // -- User selections -----------------------------------------
   const [selectedShow, setSelectedShow] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('source-faithful');
   const [selectedModel, setSelectedModel] = useState('veo');
@@ -76,11 +76,11 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
   const [selectedChars, setSelectedChars] = useState<string[]>([]);
   const [aspectRatio, setAspectRatio] = useState('16:9');
 
-  // ── Result ──────────────────────────────────────────────────
+  // -- Result --------------------------------------------------
   const [result, setResult] = useState<SceneGenResult | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  // ── Fetch config on mount ───────────────────────────────────
+  // -- Fetch config on mount -----------------------------------
   useEffect(() => {
     fetch('/api/generate/scene')
       .then(r => r.json())
@@ -94,23 +94,23 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
       .catch(() => setError('Failed to load scene config'));
   }, [setError]);
 
-  // ── Current show data ───────────────────────────────────────
+  // -- Current show data ---------------------------------------
   const currentShow = shows.find(s => s.title === selectedShow);
 
-  // ── When show changes, reset characters and dialogue ────────
+  // -- When show changes, reset characters and dialogue --------
   useEffect(() => {
     setSelectedChars([]);
     setDialogue([]);
   }, [selectedShow]);
 
-  // ── Toggle character selection ──────────────────────────────
+  // -- Toggle character selection ------------------------------
   const toggleChar = useCallback((name: string) => {
     setSelectedChars(prev =>
       prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
     );
   }, []);
 
-  // ── Dialogue management ─────────────────────────────────────
+  // -- Dialogue management -------------------------------------
   const addLine = useCallback(() => {
     const char = selectedChars[0] || currentShow?.characters[0]?.name || '';
     setDialogue(prev => [...prev, { id: newLineId(), character: char, line: '' }]);
@@ -124,7 +124,7 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
     setDialogue(prev => prev.filter(d => d.id !== id));
   }, []);
 
-  // ── Generate scene ──────────────────────────────────────────
+  // -- Generate scene ------------------------------------------
   async function handleGenerate() {
     if (!selectedShow) { setError('Select a show'); return; }
     if (!sceneDesc.trim() && dialogue.length === 0) {
@@ -168,20 +168,20 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
       const showLabel = currentShow?.title || selectedShow;
       saveAsset({
         type: 'video' as const,
-        name: `${showLabel} — ${sceneDesc.slice(0, 30) || 'Scene'}`,
+        name: `${showLabel} \u2014 ${sceneDesc.slice(0, 30) || 'Scene'}`,
         url: data.videoUrl,
         provider: data.model,
         prompt: data.prompt?.slice(0, 200),
       });
     } catch {
-      setError('Network error — check your connection');
+      setError('Network error \u2014 check your connection');
     } finally {
       setGenerating(false);
       setLoading(false);
     }
   }
 
-  // ── Skeleton while config loads ─────────────────────────────
+  // -- Skeleton while config loads -----------------------------
   if (!configLoaded) {
     return (
       <div className="space-y-4 animate-pulse">
@@ -194,18 +194,18 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
 
   return (
     <div className="space-y-4">
-      {/* ── Header Banner ──────────────────────────────────── */}
+      {/* -- Header Banner ------------------------------------ */}
       <div className="bg-gradient-to-r from-[#1a0a2e] to-[#0a1628] border border-[#2d1b69] rounded-xl p-4">
         <div className="flex items-center gap-3 mb-1">
-          <span className="text-2xl">🎬</span>
+          <span className="text-2xl"></span>
           <div>
             <h2 className="text-white font-display text-lg tracking-wider">SCENE GENERATOR</h2>
-            <p className="text-[10px] text-muted2">Video + audio generated together in one pass — characters speak in sync</p>
+            <p className="text-[10px] text-muted2">Video + audio generated together in one pass - characters speak in sync</p>
           </div>
         </div>
       </div>
 
-      {/* ── Show Selector ──────────────────────────────────── */}
+      {/* -- Show Selector ------------------------------------ */}
       <div className="bg-bg2 border border-border rounded-xl p-4">
         <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Select Show</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
@@ -219,13 +219,13 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
               <div className={`text-[11px] font-bold truncate ${selectedShow === s.title ? 'text-rip' : 'text-muted'}`}>
                 {s.title}
               </div>
-              <div className="text-[8px] text-muted2 mt-0.5">{s.category} · {s.characters.length} chars</div>
+              <div className="text-[8px] text-muted2 mt-0.5">{s.category}  {s.characters.length} chars</div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* ── Art Style ──────────────────────────────────────── */}
+      {/* -- Art Style ---------------------------------------- */}
       <div className="bg-bg2 border border-border rounded-xl p-4">
         <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Art Style</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
@@ -254,7 +254,7 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
         </div>
       </div>
 
-      {/* ── Characters ─────────────────────────────────────── */}
+      {/* -- Characters --------------------------------------- */}
       {currentShow && currentShow.characters.length > 0 && (
         <div className="bg-bg2 border border-border rounded-xl p-4">
           <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Characters in Scene</div>
@@ -279,7 +279,7 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
         </div>
       )}
 
-      {/* ── Scene Description ──────────────────────────────── */}
+      {/* -- Scene Description -------------------------------- */}
       <div className="bg-bg2 border border-border rounded-xl p-4">
         <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Scene Description</div>
         <textarea value={sceneDesc} onChange={e => setSceneDesc(e.target.value)} rows={3}
@@ -287,7 +287,7 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
           className="w-full bg-bg3 border border-border rounded-lg px-4 py-2.5 text-white text-sm outline-none focus:border-bord2 placeholder:text-muted2 resize-none leading-relaxed" />
       </div>
 
-      {/* ── Dialogue ───────────────────────────────────────── */}
+      {/* -- Dialogue ----------------------------------------- */}
       <div className="bg-bg2 border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="text-[9px] font-bold text-muted uppercase tracking-widest">Dialogue</div>
@@ -299,7 +299,7 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
 
         {dialogue.length === 0 ? (
           <div className="text-center py-6 text-muted2 text-xs">
-            Add dialogue lines — characters will speak them in the generated video
+            Add dialogue lines - characters will speak them in the generated video
           </div>
         ) : (
           <div className="space-y-2">
@@ -320,7 +320,7 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
                 </div>
                 <button onClick={() => removeLine(d.id)}
                   className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-muted2 hover:text-red-400 hover:bg-red-400/10 transition-colors text-xs">
-                  ✕
+                  
                 </button>
               </div>
             ))}
@@ -328,7 +328,7 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
         )}
       </div>
 
-      {/* ── Settings Row ───────────────────────────────────── */}
+      {/* -- Settings Row ------------------------------------- */}
       <div className="grid grid-cols-2 gap-4">
         {/* Aspect Ratio */}
         <div className="bg-bg2 border border-border rounded-xl p-4">
@@ -366,21 +366,21 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
         </div>
       </div>
 
-      {/* ── Error ──────────────────────────────────────────── */}
+      {/* -- Error -------------------------------------------- */}
       {error && (
         <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg px-4 py-3">{error}</p>
       )}
 
-      {/* ── Generate Button ────────────────────────────────── */}
+      {/* -- Generate Button ---------------------------------- */}
       <button onClick={handleGenerate} disabled={generating || (!sceneDesc.trim() && dialogue.length === 0)}
         className="w-full py-4 rounded-xl font-display text-xl tracking-widest text-white disabled:opacity-40 transition-all hover:brightness-110"
         style={{ background: 'linear-gradient(90deg, #a855f7, #00d4ff)' }}>
         {generating
-          ? '⏳  GENERATING SCENE... (video + audio together, ~1-3 min)'
-          : '🎬  GENERATE SCENE'}
+          ? '\u23F3  GENERATING SCENE... (video + audio together, ~1-3 min)'
+          : '\u{1F3AC}  GENERATE SCENE'}
       </button>
 
-      {/* ── Result ─────────────────────────────────────────── */}
+      {/* -- Result ------------------------------------------- */}
       {result?.success && result.videoUrl && (
         <div className="bg-bg3 border border-bord2 rounded-xl overflow-hidden animate-slide-up">
           <video src={result.videoUrl} controls autoPlay className="w-full" />
@@ -388,18 +388,18 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-purple-400/20 text-purple-400 uppercase">Scene</span>
               {result.audioSynced && (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-green-400/20 text-green-400 uppercase">🔊 Audio Synced</span>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-green-400/20 text-green-400 uppercase"> Audio Synced</span>
               )}
               <span className="text-[10px] text-muted">via {result.model === 'veo' ? 'Veo 3.1' : result.model === 'seedance-2' ? 'Seedance 2' : result.model}</span>
             </div>
             <div className="flex gap-2">
               <a href={result.videoUrl} download target="_blank" rel="noopener noreferrer"
                 className="flex-1 py-2 rounded-lg text-xs font-bold text-center text-cyan bg-cyan/10 border border-cyan/20 hover:bg-cyan/20 transition-all">
-                💾 Download
+                 Download
               </a>
               <button
                 className="flex-1 py-2 rounded-lg text-xs font-bold text-gold bg-gold/10 border border-gold/20 hover:bg-gold/20 transition-all">
-                🎞️ Add to Timeline
+                 Add to Timeline
               </button>
             </div>
           </div>

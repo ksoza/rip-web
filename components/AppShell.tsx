@@ -1,6 +1,6 @@
 'use client';
 // components/AppShell.tsx
-// Main app shell â hamburger navigation, 6 pages, legal agreement gate
+// Main app shell - hamburger navigation, 6 pages, legal agreement gate
 // Updated: wired ReferralBanner, RxTVFeed, RxMoviesFeed, PublishFlow, Phases 3-6
 import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
@@ -34,7 +34,7 @@ import type { MediaItem }  from './create/CreationWizard';
 // Legal
 import { UserContentAgreement } from './legal/UserContentAgreement';
 
-// ââ Types âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Types -------------------------------------------------------
 type Profile = {
   username:           string;
   tier:               string;
@@ -43,19 +43,19 @@ type Profile = {
   content_agreement:  boolean;
 };
 
-// ââ Auth-gated sign-in prompt âââââââââââââââââââââââââââââââââââ
+// -- Auth-gated sign-in prompt -----------------------------------
 function SignInPrompt({ pageName, onSignIn }: { pageName: string; onSignIn: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
       <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-rip/20 to-purple/20 border border-rip/30 flex items-center justify-center mb-6">
-        <span className="text-4xl">ð</span>
+        <span className="text-4xl"></span>
       </div>
       <h2 className="text-2xl font-bold text-white mb-3">
         Sign in to access {pageName}
       </h2>
       <p className="text-muted text-sm max-w-md mb-8">
         Create remixes, mint NFTs, manage your wallet, and unlock the full power of ReMixr.
-        Free to sign up â takes 5 seconds.
+        Free to sign up - takes 5 seconds.
       </p>
       <button
         onClick={onSignIn}
@@ -74,9 +74,9 @@ function SignInPrompt({ pageName, onSignIn }: { pageName: string; onSignIn: () =
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ---------------------------------------------------------------
 //  MAIN APP SHELL
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ---------------------------------------------------------------
 export function AppShell({ user }: { user: User | null }) {
   const [page, setPage]                       = useState<PageId>('remixr');
   const [profile, setProfile]                 = useState<Profile | null>(null);
@@ -98,7 +98,7 @@ export function AppShell({ user }: { user: User | null }) {
 
   const supabase = createSupabaseBrowser();
 
-  // ââ Google Sign In ââââââââââââââââââââââââââââââââââââââââââ
+  // -- Google Sign In ------------------------------------------
   async function handleSignIn() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -106,8 +106,8 @@ export function AppShell({ user }: { user: User | null }) {
     });
   }
 
-  // ââ Navigate to Studio from feeds âââââââââââââââââââââââââââ
-  // ── Open Publish Flow from Studio ───────────────────────────
+  // -- Navigate to Studio from feeds ---------------------------
+  // -- Open Publish Flow from Studio ---------------------------
   function handlePublish(data: {
     title?: string; description?: string; thumbnail?: string;
     mediaUrl?: string; show?: string; genre?: string;
@@ -122,7 +122,7 @@ export function AppShell({ user }: { user: User | null }) {
     setPage('studio');
   }
 
-  // ââ Load profile ââââââââââââââââââââââââââââââââââââââââââââ
+  // -- Load profile --------------------------------------------
   useEffect(() => {
     if (!user) {
       setProfileLoading(false);
@@ -145,7 +145,7 @@ export function AppShell({ user }: { user: User | null }) {
             content_agreement: data.content_agreement ?? false,
           });
         } else if (error?.code === 'PGRST116') {
-          // New user â create profile
+          // New user - create profile
           const defaultProfile: Profile = {
             username: user!.user_metadata?.name || user!.user_metadata?.full_name || user!.email?.split('@')[0] || 'user',
             tier: 'free',
@@ -183,7 +183,7 @@ export function AppShell({ user }: { user: User | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // ââ Handle media selection (with legal gate) ââââââââââââââââ
+  // -- Handle media selection (with legal gate) ----------------
   function handleSelectMedia(media: MediaItem) {
     if (!user) {
       handleSignIn();
@@ -201,7 +201,7 @@ export function AppShell({ user }: { user: User | null }) {
     setShowWizard(true);
   }
 
-  // ââ Handle agreement acceptance âââââââââââââââââââââââââââââ
+  // -- Handle agreement acceptance -----------------------------
   async function handleAcceptAgreement() {
     if (!user) return;
 
@@ -228,7 +228,7 @@ export function AppShell({ user }: { user: User | null }) {
     setPendingMedia(null);
   }
 
-  // ââ Open editor from wizard result ââââââââââââââââââââââââââ
+  // -- Open editor from wizard result --------------------------
   function handleOpenEditor(resultData: any) {
     setShowWizard(false);
     setStudioShowName(resultData.media.title);
@@ -236,7 +236,7 @@ export function AppShell({ user }: { user: User | null }) {
     setPage('studio');
   }
 
-  // ââ Render current page âââââââââââââââââââââââââââââââââââââ
+  // -- Render current page -------------------------------------
   function renderPage() {
     const pageConfig = PAGES.find(p => p.id === page);
 
@@ -298,13 +298,13 @@ export function AppShell({ user }: { user: User | null }) {
   }
 
   const genLeft = profile
-    ? (profile.generations_limit === -1 ? 'â' : Math.max(0, profile.generations_limit - profile.generations_used))
+    ? (profile.generations_limit === -1 ? '\u221E' : Math.max(0, profile.generations_limit - profile.generations_used))
     : 0;
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">
 
-      {/* ââ Legal Agreement Modal ââââââââââââââââââââââââââââââ */}
+      {/* -- Legal Agreement Modal ------------------------------ */}
       {showAgreement && (
         <UserContentAgreement
           onAccept={handleAcceptAgreement}
@@ -312,7 +312,7 @@ export function AppShell({ user }: { user: User | null }) {
         />
       )}
 
-      {/* ââ Creation Wizard Overlay ââââââââââââââââââââââââââââ */}
+      {/* -- Creation Wizard Overlay ---------------------------- */}
       {showWizard && wizardMedia && user && (
         <CreationWizard
           user={user}
@@ -322,7 +322,7 @@ export function AppShell({ user }: { user: User | null }) {
         />
       )}
 
-      {/* ââ Publish Flow Modal (Phase 3) âââââââââââââââââââââ */}
+      {/* -- Publish Flow Modal (Phase 3) --------------------- */}
       {showPublish && user && (
         <PublishFlow
           user={user}
@@ -331,7 +331,7 @@ export function AppShell({ user }: { user: User | null }) {
         />
       )}
 
-      {/* ââ Top Bar ââââââââââââââââââââââââââââââââââââââââââââ */}
+      {/* -- Top Bar -------------------------------------------- */}
       <header className="border-b border-border bg-bg/95 backdrop-blur sticky top-0 z-50 px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <HamburgerNav
@@ -362,7 +362,7 @@ export function AppShell({ user }: { user: User | null }) {
               <span className="text-xs text-muted hidden sm:block">
                 {profileLoading ? '...' : profile?.tier === 'free'
                   ? `${genLeft} free gen${genLeft !== 1 ? 's' : ''}`
-                  : `${profile?.tier} Â· unlimited`}
+                  : `${profile?.tier} \u00B7 unlimited`}
               </span>
               <div
                 className="w-7 h-7 rounded-full bg-gradient-to-br from-rip to-purple flex items-center justify-center text-white text-xs font-bold cursor-pointer"
@@ -377,20 +377,20 @@ export function AppShell({ user }: { user: User | null }) {
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold text-white transition-all hover:scale-105 active:scale-95"
               style={{ background: 'linear-gradient(135deg, #ff2d78, #a855f7)' }}
             >
-              <span>ð</span> Sign In
+              <span></span> Sign In
             </button>
           )}
         </div>
       </header>
 
-      {/* ââ Referral Banner (top middle, between header & content) */}
+      {/* -- Referral Banner (top middle, between header & content) */}
       <ReferralBanner
         user={user}
         onSignIn={handleSignIn}
         compact={page !== 'remixr'}
       />
 
-      {/* ââ Content ââââââââââââââââââââââââââââââââââââââââââââ */}
+      {/* -- Content -------------------------------------------- */}
       <main className="flex-1 overflow-y-auto">
         <div className={`mx-auto py-6 pb-8 ${page === 'studio' ? 'max-w-6xl px-4 sm:px-6' : 'max-w-5xl px-4 sm:px-6'}`}>
           {renderPage()}

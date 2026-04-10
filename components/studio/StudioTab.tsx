@@ -1,6 +1,6 @@
 'use client';
 // components/studio/StudioTab.tsx
-// Creative Studio V2 Ã¢ÂÂ Multi-mode creation suite
+// Creative Studio V2 - Multi-mode creation suite
 import { useState, useCallback, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useStudioStore, genId } from '@/lib/store';
@@ -12,55 +12,55 @@ import { SceneComposer } from './SceneComposer';
 import { SceneGenPanel } from './SceneGenPanel';
 import { EpisodeGenPanel } from './EpisodeGenPanel';
 
-// Ã¢ÂÂÃ¢ÂÂ Mode Definitions Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// -- Mode Definitions --------------------------------------------
 const MODES: { id: StudioMode; icon: string; label: string; desc: string; color: string }[] = [
-  { id: 'script',    icon: 'Ã¢ÂÂÃ¯Â¸Â', label: 'Script',    desc: 'Stories & dialogue',    color: '#00d4ff' },
-  { id: 'character', icon: 'Ã°ÂÂÂ¨', label: 'Character', desc: 'Design characters',     color: '#ff2d78' },
-  { id: 'scene',     icon: 'Ã°ÂÂÂ¼Ã¯Â¸Â', label: 'Scene',     desc: 'Generate images',       color: '#a855f7' },
-  { id: 'scenegen',  icon: 'Ã°ÂÂÂ¥', label: 'Scene Gen', desc: 'Video + audio together', color: '#6d28d9' },
-  { id: 'episode',   icon: 'ðº', label: 'Episode',   desc: 'Full episode pipeline', color: '#7c3aed' },
-  { id: 'video',     icon: 'Ã°ÂÂÂ¬', label: 'Video',     desc: 'AI video clips',        color: '#ffcc00' },
-  { id: 'audio',      icon: 'Ã°ÂÂÂ', label: 'Audio',      desc: 'Voice, music & SFX',    color: '#8aff00' },
-  { id: 'lipsync',   icon: 'Ã°ÂÂÂ', label: 'Lip Sync',  desc: 'Sync audio to face',    color: '#ff69b4' },
-  { id: 'controller', icon: 'Ã°ÂÂÂ®', label: 'Controller', desc: 'Poses & expressions',  color: '#ff8c00' },
-  { id: 'compose',   icon: 'Ã°ÂÂÂ¨', label: 'Compose',   desc: 'Layer scene editor',    color: '#00ffa3' },
-  { id: 'timeline',  icon: 'Ã°ÂÂÂÃ¯Â¸Â', label: 'Timeline',  desc: 'Edit & arrange',        color: '#ff6b35' },
+  { id: 'script',    icon: '\u270D\uFE0F', label: 'Script',    desc: 'Stories & dialogue',    color: '#00d4ff' },
+  { id: 'character', icon: '\u{1F3A8}', label: 'Character', desc: 'Design characters',     color: '#ff2d78' },
+  { id: 'scene',     icon: '\u{1F5BC}\uFE0F', label: 'Scene',     desc: 'Generate images',       color: '#a855f7' },
+  { id: 'scenegen',  icon: '\u{1F3A5}', label: 'Scene Gen', desc: 'Video + audio together', color: '#6d28d9' },
+  { id: 'episode',   icon: '\u{1F4FA}', label: 'Episode',   desc: 'Full episode pipeline', color: '#7c3aed' },
+  { id: 'video',     icon: '\u{1F3AC}', label: 'Video',     desc: 'AI video clips',        color: '#ffcc00' },
+  { id: 'audio',      icon: '\u{1F50A}', label: 'Audio',      desc: 'Voice, music & SFX',    color: '#8aff00' },
+  { id: 'lipsync',   icon: '\u{1F444}', label: 'Lip Sync',  desc: 'Sync audio to face',    color: '#ff69b4' },
+  { id: 'controller', icon: '\u{1F3AE}', label: 'Controller', desc: 'Poses & expressions',  color: '#ff8c00' },
+  { id: 'compose',   icon: '\u{1F3A8}', label: 'Compose',   desc: 'Layer scene editor',    color: '#00ffa3' },
+  { id: 'timeline',  icon: '\u{1F39E}\uFE0F', label: 'Timeline',  desc: 'Edit & arrange',        color: '#ff6b35' },
 ];
 
-// Ã¢ÂÂÃ¢ÂÂ Genre data Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// -- Genre data --------------------------------------------------
 const CATEGORIES = ['TV Show','Movie','Anime','Cartoon','News Show','New Show'];
 const GENRE_COLORS: Record<string,string> = {'TV Show':'#00d4ff','Movie':'#ff6b35','Anime':'#ff2d78','Cartoon':'#ffcc00','News Show':'#8aff00','New Show':'#a855f7'};
-const CREATION_TYPES = [{id:'episode',icon:'Ã°ÂÂÂº',label:'New Episode'},{id:'scene',icon:'Ã°ÂÂÂ¬',label:'New Scene'},{id:'ending',icon:'Ã°ÂÂÂ',label:'Alt Ending'},{id:'character',icon:'Ã°ÂÂ§Â¬',label:'Add Character'},{id:'crossover',icon:'Ã¢ÂÂ¡',label:'Crossover'},{id:'newscast',icon:'Ã°ÂÂÂ°',label:'News Remix'}];
+const CREATION_TYPES = [{id:'episode',icon:'\u{1F4FA}',label:'New Episode'},{id:'scene',icon:'\u{1F3AC}',label:'New Scene'},{id:'ending',icon:'\u{1F500}',label:'Alt Ending'},{id:'character',icon:'\u{1F9EC}',label:'Add Character'},{id:'crossover',icon:'\u26A1',label:'Crossover'},{id:'newscast',icon:'\u{1F4F0}',label:'News Remix'}];
 
-// Ã¢ÂÂÃ¢ÂÂ Image providers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// -- Image providers ---------------------------------------------
 const IMAGE_PROVIDERS = [
-  { id: 'dalle',    name: 'DALLÃÂ·E 3',  icon: 'Ã°ÂÂÂ¢', desc: 'OpenAI Ã¢ÂÂ Best for detailed art' },
-  { id: 'flux',     name: 'Flux Pro',   icon: 'Ã¢ÂÂ¡', desc: 'Black Forest Labs Ã¢ÂÂ Fast & sharp' },
-  { id: 'seedream', name: 'Seedream 3', icon: 'Ã°ÂÂÂµ', desc: 'ByteDance Ã¢ÂÂ Photorealistic' },
+  { id: 'dalle',    name: 'DALL\u00B7E 3',  icon: '\u{1F7E2}', desc: 'OpenAI \u2014 Best for detailed art' },
+  { id: 'flux',     name: 'Flux Pro',   icon: '\u26A1', desc: 'Black Forest Labs \u2014 Fast & sharp' },
+  { id: 'seedream', name: 'Seedream 3', icon: '\u{1F535}', desc: 'ByteDance \u2014 Photorealistic' },
 ];
 
-// Ã¢ÂÂÃ¢ÂÂ Video providers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// -- Video providers ---------------------------------------------
 const VIDEO_PROVIDERS = [
-  { id: 'luma',   name: 'Luma Dream Machine', icon: 'Ã°ÂÂÂ', desc: 'Best for cinematic scenes' },
-  { id: 'runway', name: 'Runway Gen-3',       icon: 'Ã¢ÂÂÃ¯Â¸Â', desc: 'Professional video AI' },
-  { id: 'kling',  name: 'Kling',              icon: 'Ã°ÂÂÂ¥', desc: 'Advanced motion control' },
+  { id: 'luma',   name: 'Luma Dream Machine', icon: '\u{1F319}', desc: 'Best for cinematic scenes' },
+  { id: 'runway', name: 'Runway Gen-3',       icon: '\u2708\uFE0F', desc: 'Professional video AI' },
+  { id: 'kling',  name: 'Kling',              icon: '\u{1F3A5}', desc: 'Advanced motion control' },
 ];
 
-// Ã¢ÂÂÃ¢ÂÂ Audio providers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// -- Audio providers ---------------------------------------------
 const AUDIO_PROVIDERS = [
-  { id: 'elevenlabs',     name: 'ElevenLabs Voice',  icon: 'Ã°ÂÂÂ£Ã¯Â¸Â', desc: 'Character voices & narration' },
-  { id: 'elevenlabs-sfx', name: 'ElevenLabs SFX',    icon: 'Ã°ÂÂÂ¥', desc: 'Sound effects' },
-  { id: 'musicgen',       name: 'MusicGen',           icon: 'Ã°ÂÂÂµ', desc: 'AI background music' },
-  { id: 'audiogen',       name: 'AudioGen',           icon: 'Ã°ÂÂÂ', desc: 'Ambient audio & effects' },
+  { id: 'elevenlabs',     name: 'ElevenLabs Voice',  icon: '\u{1F5E3}\uFE0F', desc: 'Character voices & narration' },
+  { id: 'elevenlabs-sfx', name: 'ElevenLabs SFX',    icon: '\u{1F4A5}', desc: 'Sound effects' },
+  { id: 'musicgen',       name: 'MusicGen',           icon: '\u{1F3B5}', desc: 'AI background music' },
+  { id: 'audiogen',       name: 'AudioGen',           icon: '\u{1F509}', desc: 'Ambient audio & effects' },
 ];
 
-// Ã¢ÂÂÃ¢ÂÂ Character Styles Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// -- Character Styles --------------------------------------------
 const CHAR_STYLES = ['anime','realistic','cartoon','pixel art','comic book','3D render','watercolor','cyberpunk'];
 
-// Ã¢ÂÂÃ¢ÂÂ Text AI providers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// -- Text AI providers -------------------------------------------
 const TEXT_PROVIDERS = [
-  { id: 'claude', name: 'Claude', icon: 'Ã°ÂÂÂ ', desc: 'Best for deep storytelling' },
-  { id: 'grok',   name: 'Grok',   icon: 'Ã°ÂÂÂµ', desc: 'Witty & unfiltered' },
+  { id: 'claude', name: 'Claude', icon: '\u{1F7E0}', desc: 'Best for deep storytelling' },
+  { id: 'grok',   name: 'Grok',   icon: '\u{1F535}', desc: 'Witty & unfiltered' },
 ];
 
 type PublishData = {
@@ -86,7 +86,7 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
   const [error, setError] = useState('');
   const genLeft = profile ? profile.generations_limit - profile.generations_used : 0;
 
-  // Ã¢ÂÂÃ¢ÂÂ Asset helper Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // -- Asset helper --------------------------------------------
   const saveAsset = useCallback((asset: Omit<Asset, 'id' | 'createdAt'>) => {
     const full: Asset = { ...asset, id: genId('asset'), createdAt: Date.now() };
     addAsset(full);
@@ -97,8 +97,8 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
     <div>
       {/* Studio Header */}
       <div className="mb-5">
-        <h1 className="font-display text-4xl tracking-widest text-white">Ã¢ÂÂ½ CREATIVE <span className="text-rip">STUDIO</span></h1>
-        <p className="text-muted text-sm mt-1">Multi-AI creation suite Ã¢ÂÂ script, design, animate, publish</p>
+        <h1 className="font-display text-4xl tracking-widest text-white"> CREATIVE <span className="text-rip">STUDIO</span></h1>
+        <p className="text-muted text-sm mt-1">Multi-AI creation suite - script, design, animate, publish</p>
       </div>
 
       {/* Mode Tabs */}
@@ -143,7 +143,7 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
           {mode === 'timeline'  && <TimelineEditor assets={assets} />}
         </div>
 
-        {/* Right Sidebar (1 col) Ã¢ÂÂ hidden in timeline mode */}
+        {/* Right Sidebar (1 col) - hidden in timeline mode */}
         {!['timeline', 'compose'].includes(mode) && (
           <div className="space-y-4">
             {/* Generations Counter */}
@@ -176,12 +176,12 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
                         <img src={a.url} alt="" className="w-8 h-8 rounded object-cover" />
                       ) : (
                         <div className="w-8 h-8 rounded bg-bg flex items-center justify-center text-xs">
-                          {a.type === 'text' ? 'Ã°ÂÂÂ' : a.type === 'video' ? 'Ã°ÂÂÂ¬' : a.type === 'voice' ? 'Ã°ÂÂÂ£Ã¯Â¸Â' : a.type === 'music' ? 'Ã°ÂÂÂµ' : 'Ã°ÂÂÂ¦'}
+                          {a.type === 'text' ? '\u{1F4DD}' : a.type === 'video' ? '\u{1F3AC}' : a.type === 'voice' ? '\u{1F5E3}\uFE0F' : a.type === 'music' ? '\u{1F3B5}' : '\u{1F4E6}'}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="text-xs text-white truncate">{a.name}</div>
-                        <div className="text-[9px] text-muted2">{a.type} ÃÂ· {a.provider}</div>
+                        <div className="text-[9px] text-muted2">{a.type}  {a.provider}</div>
                       </div>
                     </div>
                   ))}
@@ -215,9 +215,9 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
 
             {/* Upgrade CTA */}
             <div className="bg-gradient-to-b from-[#0d0408] to-[#080410] border border-[#2a0a1e] rounded-xl p-4">
-              <div className="text-[9px] font-bold text-rip uppercase tracking-widest mb-2">Ã°ÂÂÂ¥ Unlock All AI</div>
+              <div className="text-[9px] font-bold text-rip uppercase tracking-widest mb-2"> Unlock All AI</div>
               <div className="font-display text-3xl text-white mb-1">$10<span className="text-sm font-body text-muted">/mo</span></div>
-              <div className="text-[10px] text-muted2 mb-3 leading-relaxed">Unlimited gens ÃÂ· All AI models ÃÂ· Video ÃÂ· Timeline ÃÂ· NFT minting</div>
+              <div className="text-[10px] text-muted2 mb-3 leading-relaxed">Unlimited gens  All AI models  Video  Timeline  NFT minting</div>
               <button className="w-full py-2 rounded-lg font-bold text-xs text-white transition hover:brightness-110"
                 style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
                 Upgrade to Studio
@@ -230,9 +230,9 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
   );
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// SCRIPT PANEL Ã¢ÂÂ Story & dialogue writing (existing + enhanced)
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ---------------------------------------------------------------
+// SCRIPT PANEL - Story & dialogue writing (existing + enhanced)
+// ---------------------------------------------------------------
 function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, error, setError, saveAsset, genLeft, preselectedShow, preselectedCategory }: any) {
   const [cat, setCat]           = useState(preselectedCategory || 'TV Show');
   const [show, setShow]         = useState(preselectedShow || '');
@@ -271,18 +271,18 @@ function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, erro
       // Save to asset library
       saveAsset({
         type: 'text' as const,
-        name: data.title || `${show} Ã¢ÂÂ ${CREATION_TYPES.find(t => t.id === type)?.label}`,
+        name: data.title || `${show} \u2014 ${CREATION_TYPES.find(t => t.id === type)?.label}`,
         content: data.content,
         provider: textProvider,
         prompt: idea,
       });
-    } catch { setError('Network error Ã¢ÂÂ try again'); }
+    } catch { setError('Network error \u2014 try again'); }
     finally { setLoading(false); }
   }
 
   async function copyForSocial() {
     if (!result) return;
-    const text = `Ã°ÂÂÂ¬ ${result.title}\n${show} Ã¢ÂÂ Fan ${CREATION_TYPES.find(t=>t.id===type)?.label}\n\n${result.logline}\n\n${result.hashtags}\n\n${result.disclaimer}\n\nCreated with RiP Ã¢ÂÂ½ remixip.icu`;
+    const text = `\u{1F3AC} ${result.title}\n${show} \u2014 Fan ${CREATION_TYPES.find(t=>t.id===type)?.label}\n\n${result.logline}\n\n${result.hashtags}\n\n${result.disclaimer}\n\nCreated with RiP \u263D remixip.icu`;
     await navigator.clipboard.writeText(text);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
@@ -363,7 +363,7 @@ function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, erro
       <button onClick={generate} disabled={!canGen}
         className="w-full py-4 rounded-xl font-display text-2xl tracking-widest text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:brightness-110"
         style={{ background: canGen ? 'linear-gradient(90deg,#ff2d78,#a855f7)' : '' }}>
-        {loading ? 'Ã¢ÂÂ³  WRITING YOUR SCENE...' : 'Ã¢ÂÂ½  GENERATE MY REMIX'}
+        {loading ? '\u23F3  WRITING YOUR SCENE...' : '\u263D  GENERATE MY REMIX'}
       </button>
 
       {/* Result */}
@@ -384,10 +384,10 @@ function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, erro
             <button onClick={copyForSocial}
               className="flex-1 py-2.5 rounded-lg text-sm font-bold transition-all text-white"
               style={{ background: copied ? 'linear-gradient(90deg,#1a4a00,#2a7a00)' : 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
-              {copied ? 'Ã¢ÂÂ COPIED!' : 'Ã°ÂÂÂ COPY FOR SOCIAL'}
+              {copied ? '\u2713 COPIED!' : '\u{1F4CB} COPY FOR SOCIAL'}
             </button>
             <button className="flex-1 py-2.5 rounded-lg text-sm font-bold bg-bg2 border border-bord2 text-muted hover:border-lime hover:text-lime transition-all">
-              Ã°ÂÂÂ¡ POST TO FEED
+               POST TO FEED
             </button>
           </div>
         </div>
@@ -396,9 +396,9 @@ function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, erro
   );
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// CHARACTER PANEL Ã¢ÂÂ Design & generate characters
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ---------------------------------------------------------------
+// CHARACTER PANEL - Design & generate characters
+// ---------------------------------------------------------------
 function CharacterPanel({ user, loading, setLoading, error, setError, saveAsset, characters, addCharacter }: any) {
   const [name, setName]         = useState('');
   const [desc, setDesc]         = useState('');
@@ -442,7 +442,7 @@ function CharacterPanel({ user, loading, setLoading, error, setError, saveAsset,
         provider,
         prompt,
       });
-    } catch { setError('Network error Ã¢ÂÂ try again'); }
+    } catch { setError('Network error \u2014 try again'); }
     finally { setLoading(false); }
   }
 
@@ -538,12 +538,12 @@ function CharacterPanel({ user, loading, setLoading, error, setError, saveAsset,
         <button onClick={generateCharacter} disabled={!name.trim() || !desc.trim() || loading}
           className="py-3.5 rounded-xl font-display text-lg tracking-widest text-white disabled:opacity-40 transition-all hover:brightness-110"
           style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
-          {loading ? 'Ã¢ÂÂ³ GENERATING...' : 'Ã°ÂÂÂ¨ GENERATE CHARACTER'}
+          {loading ? '\u23F3 GENERATING...' : '\u{1F3A8} GENERATE CHARACTER'}
         </button>
         <button onClick={generateSprite} disabled={!name.trim() || !desc.trim() || loading}
           className="py-3.5 rounded-xl font-display text-lg tracking-widest text-white disabled:opacity-40 transition-all hover:brightness-110"
           style={{ background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }}>
-          {loading ? 'Ã¢ÂÂ³...' : 'Ã°ÂÂÂ SPRITE SHEET'}
+          {loading ? '\u23F3...' : '\u{1F3C3} SPRITE SHEET'}
         </button>
       </div>
 
@@ -588,9 +588,9 @@ function CharacterPanel({ user, loading, setLoading, error, setError, saveAsset,
   );
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// SCENE PANEL Ã¢ÂÂ Image generation with character references
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ---------------------------------------------------------------
+// SCENE PANEL - Image generation with character references
+// ---------------------------------------------------------------
 function ScenePanel({ user, loading, setLoading, error, setError, saveAsset, characters }: any) {
   const [prompt, setPrompt]     = useState('');
   const [provider, setProvider] = useState('dalle');
@@ -631,7 +631,7 @@ function ScenePanel({ user, loading, setLoading, error, setError, saveAsset, cha
         provider,
         prompt,
       });
-    } catch { setError('Network error Ã¢ÂÂ try again'); }
+    } catch { setError('Network error \u2014 try again'); }
     finally { setLoading(false); }
   }
 
@@ -707,7 +707,7 @@ function ScenePanel({ user, loading, setLoading, error, setError, saveAsset, cha
       <button onClick={generateScene} disabled={!prompt.trim() || loading}
         className="w-full py-4 rounded-xl font-display text-xl tracking-widest text-white disabled:opacity-40 transition-all hover:brightness-110"
         style={{ background: 'linear-gradient(90deg,#a855f7,#ff2d78)' }}>
-        {loading ? 'Ã¢ÂÂ³  GENERATING SCENE...' : 'Ã°ÂÂÂ¼Ã¯Â¸Â  GENERATE SCENE'}
+        {loading ? '\u23F3  GENERATING SCENE...' : '\u{1F5BC}\uFE0F  GENERATE SCENE'}
       </button>
 
       {result?.url && (
@@ -721,10 +721,10 @@ function ScenePanel({ user, loading, setLoading, error, setError, saveAsset, cha
             {result.revised_prompt && <p className="text-xs text-muted2 leading-relaxed">{result.revised_prompt}</p>}
             <div className="flex gap-2 mt-3">
               <button className="flex-1 py-2 rounded-lg text-xs font-bold text-white bg-rip/20 border border-rip/30 hover:bg-rip/30 transition-all">
-                Ã°ÂÂÂÃ¯Â¸Â Add to Timeline
+                 Add to Timeline
               </button>
               <button className="flex-1 py-2 rounded-lg text-xs font-bold text-muted border border-border hover:border-bord2 transition-all">
-                Ã°ÂÂÂ¾ Download
+                 Download
               </button>
             </div>
           </div>
@@ -734,9 +734,9 @@ function ScenePanel({ user, loading, setLoading, error, setError, saveAsset, cha
   );
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// VIDEO PANEL Ã¢ÂÂ AI video generation
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ---------------------------------------------------------------
+// VIDEO PANEL - AI video generation
+// ---------------------------------------------------------------
 function VideoPanel({ user, loading, setLoading, error, setError, saveAsset }: any) {
   const [prompt, setPrompt]       = useState('');
   const [provider, setProvider]   = useState('luma');
@@ -802,7 +802,7 @@ function VideoPanel({ user, loading, setLoading, error, setError, saveAsset }: a
 
       {/* Source Image (optional) */}
       <div className="bg-bg2 border border-border rounded-xl p-4">
-        <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Source Image (Image Ã¢ÂÂ Video)</div>
+        <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Source Image (Image  Video)</div>
         {imageAssets.length > 0 ? (
           <div className="flex gap-2 overflow-x-auto pb-2">
             <button onClick={() => setImageUrl('')}
@@ -845,7 +845,7 @@ function VideoPanel({ user, loading, setLoading, error, setError, saveAsset }: a
       <button onClick={generateVideo} disabled={!prompt.trim() || loading}
         className="w-full py-4 rounded-xl font-display text-xl tracking-widest text-white disabled:opacity-40 transition-all hover:brightness-110"
         style={{ background: 'linear-gradient(90deg,#ffcc00,#ff6b35)' }}>
-        {loading ? 'Ã¢ÂÂ³  GENERATING VIDEO... (this may take 1-3 min)' : 'Ã°ÂÂÂ¬  GENERATE VIDEO'}
+        {loading ? '\u23F3  GENERATING VIDEO... (this may take 1-3 min)' : '\u{1F3AC}  GENERATE VIDEO'}
       </button>
 
       {result?.url && (
@@ -858,7 +858,7 @@ function VideoPanel({ user, loading, setLoading, error, setError, saveAsset }: a
               <span className="text-[10px] text-muted2 ml-auto">{duration}s</span>
             </div>
             <button className="w-full py-2 rounded-lg text-xs font-bold text-gold bg-gold/10 border border-gold/20 hover:bg-gold/20 transition-all mt-2">
-              Ã°ÂÂÂÃ¯Â¸Â Add to Timeline
+               Add to Timeline
             </button>
           </div>
         </div>
@@ -867,9 +867,9 @@ function VideoPanel({ user, loading, setLoading, error, setError, saveAsset }: a
   );
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// AUDIO PANEL Ã¢ÂÂ Voice, SFX, Music
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ---------------------------------------------------------------
+// AUDIO PANEL - Voice, SFX, Music
+// ---------------------------------------------------------------
 function AudioPanel({ user, loading, setLoading, error, setError, saveAsset }: any) {
   const [audioMode, setAudioMode] = useState<'voice'|'sfx'|'music'>('voice');
   const [text, setText]           = useState('');
@@ -934,9 +934,9 @@ function AudioPanel({ user, loading, setLoading, error, setError, saveAsset }: a
         <div className="text-[9px] font-bold text-muted uppercase tracking-widest mb-3">Audio Type</div>
         <div className="grid grid-cols-3 gap-2">
           {([
-            { id: 'voice' as const, icon: 'Ã°ÂÂÂ£Ã¯Â¸Â', label: 'Voice', color: '#8aff00' },
-            { id: 'sfx' as const,   icon: 'Ã°ÂÂÂ¥', label: 'Sound FX', color: '#00d4ff' },
-            { id: 'music' as const, icon: 'Ã°ÂÂÂµ', label: 'Music', color: '#a855f7' },
+            { id: 'voice' as const, icon: '\u{1F5E3}\uFE0F', label: 'Voice', color: '#8aff00' },
+            { id: 'sfx' as const,   icon: '\u{1F4A5}', label: 'Sound FX', color: '#00d4ff' },
+            { id: 'music' as const, icon: '\u{1F3B5}', label: 'Music', color: '#a855f7' },
           ]).map(m => (
             <button key={m.id} onClick={() => setAudioMode(m.id)}
               className={`py-3 rounded-lg text-center transition-all ${
@@ -1009,7 +1009,7 @@ function AudioPanel({ user, loading, setLoading, error, setError, saveAsset }: a
         disabled={loading || (audioMode === 'voice' ? !text.trim() : !prompt.trim())}
         className="w-full py-4 rounded-xl font-display text-xl tracking-widest text-white disabled:opacity-40 transition-all hover:brightness-110"
         style={{ background: 'linear-gradient(90deg,#8aff00,#00d4ff)' }}>
-        {loading ? 'Ã¢ÂÂ³  GENERATING AUDIO...' : audioMode === 'voice' ? 'Ã°ÂÂÂ£Ã¯Â¸Â  GENERATE VOICE' : audioMode === 'sfx' ? 'Ã°ÂÂÂ¥  GENERATE SFX' : 'Ã°ÂÂÂµ  GENERATE MUSIC'}
+        {loading ? '\u23F3  GENERATING AUDIO...' : audioMode === 'voice' ? '\u{1F5E3}\uFE0F  GENERATE VOICE' : audioMode === 'sfx' ? '\u{1F4A5}  GENERATE SFX' : '\u{1F3B5}  GENERATE MUSIC'}
       </button>
 
       {result?.audioUrl && (
@@ -1020,7 +1020,7 @@ function AudioPanel({ user, loading, setLoading, error, setError, saveAsset }: a
           </div>
           <audio src={result.audioUrl} controls className="w-full mb-3" style={{ filter: 'hue-rotate(300deg)' }} />
           <button className="w-full py-2 rounded-lg text-xs font-bold text-lime bg-lime/10 border border-lime/20 hover:bg-lime/20 transition-all">
-            Ã°ÂÂÂÃ¯Â¸Â Add to Timeline
+             Add to Timeline
           </button>
         </div>
       )}

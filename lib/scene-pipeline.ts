@@ -1,11 +1,11 @@
 // lib/scene-pipeline.ts
-// Unified scene generation pipeline — video and audio generated together
+// Unified scene generation pipeline - video and audio generated together
 // Uses Veo 3.1 (primary) or Seedance 2 (fallback) for synchronized output
 
 import { falGenerate, FAL_VIDEO_MODELS, type FalModel } from './fal';
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
 
-// ── Audio-capable model detection ───────────────────────────────
+// -- Audio-capable model detection -------------------------------
 
 /** Models that generate video WITH synchronized audio in a single pass */
 const AUDIO_CAPABLE_MODELS = ['veo', 'seedance-2'] as const;
@@ -21,16 +21,16 @@ export function getAudioCapableModels(): FalModel[] {
     .filter(Boolean);
 }
 
-// ── Scene generation input/output types ─────────────────────────
+// -- Scene generation input/output types -------------------------
 
 export interface SceneInput {
   /** Show title (must match SHOW_PROFILES key) */
   show: string;
-  /** Art style — 'source-faithful' for 1:1 or any other style */
+  /** Art style - 'source-faithful' for 1:1 or any other style */
   artStyle: ArtStyleId;
   /** Scene description (setting, action, mood) */
   sceneDescription: string;
-  /** Dialogue lines — characters speaking in the scene */
+  /** Dialogue lines - characters speaking in the scene */
   dialogue: { character: string; line: string }[];
   /** Which characters appear (by name) */
   characters: string[];
@@ -63,7 +63,7 @@ export interface SceneResult {
   error?: string;
 }
 
-// ── Duration estimation ─────────────────────────────────────────
+// -- Duration estimation -----------------------------------------
 
 /** Estimate scene duration based on dialogue length (~3 words/sec speaking rate) */
 function estimateDuration(dialogue: { character: string; line: string }[]): number {
@@ -77,7 +77,7 @@ function estimateDuration(dialogue: { character: string; line: string }[]): numb
   return Math.min(16, Math.max(3, Math.ceil(speechDuration)));
 }
 
-// ── Model selection ─────────────────────────────────────────────
+// -- Model selection ---------------------------------------------
 
 /** Get the best model for the request, with fallback chain */
 function selectModel(preferred?: string): { key: string; model: FalModel } {
@@ -101,10 +101,10 @@ function selectModel(preferred?: string): { key: string; model: FalModel } {
   return { key, model };
 }
 
-// ── Main generation function ────────────────────────────────────
+// -- Main generation function ------------------------------------
 
 /**
- * Generate a complete scene — video with synchronized audio — in a single pass.
+ * Generate a complete scene - video with synchronized audio - in a single pass.
  * 
  * This is the unified pipeline:
  * 1. Builds a rich prompt from show profile + art style + dialogue + character voice descriptions
@@ -133,7 +133,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
   });
 
   try {
-    // Generate via fal.ai — audio-capable models return video with baked-in audio
+    // Generate via fal.ai - audio-capable models return video with baked-in audio
     const result = await falGenerate(selectedModel.id, {
       prompt,
       duration: String(duration),
@@ -177,7 +177,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
     return {
       success: true,
       videoUrl: result.video.url,
-      // Some models may return audio separately — capture it if present
+      // Some models may return audio separately - capture it if present
       audioUrl: (result as any).audio?.url,
       model: modelKey,
       audioSynced: audioCapable,

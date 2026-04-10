@@ -1,7 +1,7 @@
 'use client';
 // components/publish/PublishFlow.tsx
 // Multi-step publish & mint flow for RiP creations
-// Step 1: Details â Step 2: NFT Options â Step 3: Preview & Publish
+// Step 1: Details -> Step 2: NFT Options -> Step 3: Preview & Publish
 import { useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
@@ -11,7 +11,7 @@ import { mintNFT as executeMintNFT } from '@/lib/solana/metaplex-mint';
 import { useWallet } from '@/lib/solana/wallet-provider';
 import { SocialAutoPost } from './SocialAutoPost';
 
-// ââ Types âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// -- Types -------------------------------------------------------
 interface PublishFlowProps {
   user: User;
   onClose: () => void;
@@ -29,11 +29,11 @@ type Step = 'details' | 'nft' | 'preview';
 
 const GENRES = ['TV Show', 'Movie', 'Anime', 'Cartoon', 'News Show', 'Music Video', 'Short Film'];
 const MEDIA_TYPES: { id: NFTMediaType; label: string; icon: string }[] = [
-  { id: 'episode', label: 'Episode',    icon: 'ðº' },
-  { id: 'scene',   label: 'Scene',      icon: 'ð¬' },
-  { id: 'movie',   label: 'Full Movie', icon: 'ðï¸' },
-  { id: 'music',   label: 'Music',      icon: 'ðµ' },
-  { id: 'collection', label: 'Collection', icon: 'ð' },
+  { id: 'episode', label: 'Episode',    icon: '\u{1F4FA}' },
+  { id: 'scene',   label: 'Scene',      icon: '\u{1F3AC}' },
+  { id: 'movie',   label: 'Full Movie', icon: '\u{1F39E}\uFE0F' },
+  { id: 'music',   label: 'Music',      icon: '\u{1F3B5}' },
+  { id: 'collection', label: 'Collection', icon: '\u{1F4DA}' },
 ];
 
 export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
@@ -45,7 +45,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
   const [creationId, setCreationId] = useState<string | null>(null);
   const [mintResult, setMintResult] = useState<{ mintAddress?: string; explorerUrl?: string } | null>(null);
 
-  // ââ Form state ââââââââââââââââââââââââââââââââââââââââââââ
+  // -- Form state --------------------------------------------
   const [title, setTitle] = useState(initialData?.title || '');
   const [description, setDescription] = useState(initialData?.description || '');
   const [show, setShow] = useState(initialData?.show || '');
@@ -56,7 +56,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
   const [season, setSeason] = useState(1);
   const [episode, setEpisode] = useState(1);
 
-  // ââ NFT options âââââââââââââââââââââââââââââââââââââââââââ
+  // -- NFT options -------------------------------------------
   const [mintNFT, setMintNFT] = useState(true);
   const [chain, setChain] = useState<Chain>('solana');
   const [royaltyPresetIdx, setRoyaltyPresetIdx] = useState(0);
@@ -71,7 +71,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
 
   const chainInfo = CHAIN_CONFIG[chain];
 
-  // ââ Steps âââââââââââââââââââââââââââââââââââââââââââââââââ
+  // -- Steps -------------------------------------------------
   const steps: { id: Step; label: string; num: number }[] = [
     { id: 'details', label: 'Details',  num: 1 },
     { id: 'nft',     label: 'NFT Mint', num: 2 },
@@ -81,7 +81,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
   const canProceedDetails = title.trim() && description.trim() && show.trim() && genre;
   const canPublish = canProceedDetails;
 
-  // ââ Publish Handler (real Supabase insert) âââââââââââââââââ
+  // -- Publish Handler (real Supabase insert) -----------------
   const [publishError, setPublishError] = useState('');
 
   async function handlePublish() {
@@ -144,7 +144,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
             setMintResult({ mintAddress: result.mintAddress, explorerUrl: result.explorerUrl });
           } else {
             console.warn('NFT mint warning:', result.error);
-            // Don't fail the whole publish â creation is already saved
+            // Don't fail the whole publish - creation is already saved
           }
         } catch (mintErr) {
           console.warn('NFT mint error (publish succeeded):', mintErr);
@@ -164,12 +164,12 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
     }
   }
 
-  // ââ Published Success âââââââââââââââââââââââââââââââââââââ
+  // -- Published Success -------------------------------------
   if (published) {
     return (
       <div className="fixed inset-0 bg-black/80 backdrop-blur z-[100] flex items-center justify-center p-4">
         <div className="bg-bg2 border border-border rounded-2xl max-w-lg w-full p-8 text-center">
-          <div className="text-6xl mb-4">ð</div>
+          <div className="text-6xl mb-4"></div>
           <h2 className="font-display text-3xl text-white mb-2">Published!</h2>
           <p className="text-muted text-sm mb-6">
             Your creation is live on the Discover feed
@@ -206,7 +206,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                 {mintResult?.explorerUrl && (
                   <div className="mt-2">
                     <a href={mintResult.explorerUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-cyan hover:underline">View on Explorer â</a>
+                      className="text-xs text-cyan hover:underline">View on Explorer </a>
                   </div>
                 )}
               </div>
@@ -237,7 +237,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
               <button onClick={() => setShowSocial(true)}
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition hover:brightness-110"
                 style={{ background: 'linear-gradient(135deg,#00f2ea,#ff0050)' }}>
-                📱 Share to Socials
+                 Share to Socials
               </button>
               <button onClick={onClose}
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition hover:brightness-110"
@@ -257,10 +257,10 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
         {/* Header */}
         <div className="sticky top-0 bg-bg/95 backdrop-blur border-b border-border px-6 py-4 flex items-center justify-between z-10">
           <div>
-            <h2 className="font-display text-2xl text-white tracking-wide">â½ Publish</h2>
+            <h2 className="font-display text-2xl text-white tracking-wide"> Publish</h2>
             <p className="text-xs text-muted">Share your creation with the world</p>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-white text-xl transition">â</button>
+          <button onClick={onClose} className="text-muted hover:text-white text-xl transition"></button>
         </div>
 
         {/* Step Indicator */}
@@ -287,7 +287,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
 
         {/* Step Content */}
         <div className="p-6">
-          {/* ââ STEP 1: Details âââââââââââââââââââââââââââââââ */}
+          {/* -- STEP 1: Details ------------------------------- */}
           {step === 'details' && (
             <div className="space-y-4">
               {/* Title */}
@@ -388,12 +388,12 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                     : 'text-muted bg-bg3 border border-border cursor-not-allowed'
                 }`}
                 style={canProceedDetails ? { background: 'linear-gradient(90deg,#ff2d78,#a855f7)' } : {}}>
-                Continue to NFT Options â
+                Continue to NFT Options 
               </button>
             </div>
           )}
 
-          {/* ââ STEP 2: NFT Options ââââââââââââââââââââââââââ */}
+          {/* -- STEP 2: NFT Options -------------------------- */}
           {step === 'nft' && (
             <div className="space-y-5">
               {/* Mint toggle */}
@@ -435,12 +435,12 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                             <div className="text-[10px] text-muted">Mint fee: {info.mintFee}</div>
                             <div className="mt-2 space-y-1">
                               {info.features.slice(0, 2).map(f => (
-                                <div key={f} className="text-[9px] text-muted2">â {f}</div>
+                                <div key={f} className="text-[9px] text-muted2"> {f}</div>
                               ))}
                             </div>
                             {selected && (
                               <div className="absolute top-3 right-3 w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white"
-                                style={{ backgroundColor: info.color }}>â</div>
+                                style={{ backgroundColor: info.color }}></div>
                             )}
                           </button>
                         );
@@ -542,18 +542,18 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
               <div className="flex gap-3">
                 <button onClick={() => setStep('details')}
                   className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-bord2 transition-all">
-                  â Back
+                   Back
                 </button>
                 <button onClick={() => setStep('preview')}
                   className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition hover:brightness-110"
                   style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
-                  Preview & Publish â
+                  Preview & Publish 
                 </button>
               </div>
             </div>
           )}
 
-          {/* ââ STEP 3: Preview & Publish ââââââââââââââââââââ */}
+          {/* -- STEP 3: Preview & Publish -------------------- */}
           {step === 'preview' && (
             <div className="space-y-5">
               {/* Preview Card */}
@@ -563,7 +563,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                   {thumbnail ? (
                     <img src={thumbnail} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-5xl opacity-20">ð¬</span>
+                    <span className="text-5xl opacity-20"></span>
                   )}
                   <div className="absolute top-2 left-2 flex gap-1.5">
                     <span className="px-2 py-0.5 rounded-full text-[8px] font-bold text-black bg-cyan">{genre}</span>
@@ -578,7 +578,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                 </div>
 
                 <div className="p-4">
-                  <p className="text-[10px] text-muted2 italic mb-1">{show} {season && episode ? `Â· S${season}E${episode}` : ''}</p>
+                  <p className="text-[10px] text-muted2 italic mb-1">{show} {season && episode ? `\u00B7 S${season}E${episode}` : ''}</p>
                   <h3 className="font-display text-2xl text-white mb-2">{title || 'Untitled'}</h3>
                   <p className="text-xs text-muted leading-relaxed mb-3">{description || 'No description'}</p>
 
@@ -606,7 +606,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                         )}
                         {collectionName && (
                           <span className="text-muted">
-                            ð {collectionName}
+                             {collectionName}
                           </span>
                         )}
                       </div>
@@ -618,7 +618,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
               {/* Wallet Connection Warning */}
               {mintNFT && (
                 <div className="bg-[#1a1a08] border border-gold/30 rounded-xl p-4 flex items-start gap-3">
-                  <span className="text-lg">â ï¸</span>
+                  <span className="text-lg"></span>
                   <div>
                     <div className="text-sm font-bold text-gold mb-1">Wallet Required for NFT Minting</div>
                     <div className="text-xs text-muted">
@@ -632,7 +632,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
               {/* Error Message */}
               {publishError && (
                 <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-3 flex items-start gap-2">
-                  <span className="text-red-400 text-sm">â ï¸</span>
+                  <span className="text-red-400 text-sm"></span>
                   <div>
                     <div className="text-xs font-bold text-red-400">Publish Failed</div>
                     <div className="text-xs text-red-300/80 mt-0.5">{publishError}</div>
@@ -644,7 +644,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
               <div className="flex gap-3">
                 <button onClick={() => setStep('nft')}
                   className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-bord2 transition-all">
-                  â Back
+                   Back
                 </button>
                 <button onClick={handlePublish}
                   disabled={publishing || !canPublish}
@@ -652,11 +652,11 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                   style={{ background: publishing ? '#333' : 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
                   {publishing ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">â³</span>
+                      <span className="animate-spin"></span>
                       {mintNFT ? 'Minting & Publishing...' : 'Publishing...'}
                     </span>
                   ) : (
-                    `â½ ${mintNFT ? 'Mint & Publish' : 'Publish'}`
+                    `\u263D ${mintNFT ? 'Mint & Publish' : 'Publish'}`
                   )}
                 </button>
               </div>

@@ -1,5 +1,5 @@
 // app/api/generate/scene/route.ts
-// Unified scene generation endpoint — video + audio generated together
+// Unified scene generation endpoint - video + audio generated together
 // Uses Veo 3.1 (primary) or Seedance 2 (fallback) for synchronized output
 //
 // POST /api/generate/scene
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // ── Auth ──────────────────────────────────────────────────
+    // -- Auth --------------------------------------------------
     // Extract user from auth header or session
     const authHeader = req.headers.get('authorization');
     let userId: string | null = null;
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Validate input ───────────────────────────────────────
+    // -- Validate input ---------------------------------------
     const {
       show,
       artStyle = 'source-faithful',
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Generate scene ───────────────────────────────────────
+    // -- Generate scene ---------------------------------------
     const sceneInput: SceneInput = {
       show,
       artStyle: artStyle as ArtStyleId,
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET endpoint — returns available shows, styles, and models for the UI
+// GET endpoint - returns available shows, styles, and models for the UI
 export async function GET() {
   const shows = Object.values(SHOW_PROFILES)
     .filter(s => s.id !== 'custom')
