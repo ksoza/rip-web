@@ -1,13 +1,13 @@
 'use client';
 // components/studio/EpisodeGenPanel.tsx
-// Full episode generation UI — prompt → AI script → scene-by-scene video+audio
+// Full episode generation UI â prompt â AI script â scene-by-scene video+audio
 // Phase 1: Setup & write script  |  Phase 2: Generate all scenes via unified pipeline
 import { useState, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { Asset } from '@/lib/store';
 import { SHOW_PROFILES, ART_STYLES, type ArtStyleId } from '@/lib/shows';
 
-// ── Types ─────────────────────────────────────────────────────
+// ââ Types âââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 interface EpisodeGenPanelProps {
   user: User;
@@ -16,6 +16,7 @@ interface EpisodeGenPanelProps {
   error: string;
   setError: (e: string) => void;
   saveAsset: (a: Omit<Asset, 'id' | 'createdAt'>) => void;
+  onPublish?: (data: { title?: string; description?: string; thumbnail?: string; mediaUrl?: string; show?: string; genre?: string }) => void;
 }
 
 interface ScriptScene {
@@ -39,13 +40,13 @@ interface SceneVideo {
 
 type Phase = 'setup' | 'script' | 'production' | 'complete';
 
-// ── Constants ─────────────────────────────────────────────────
+// ââ Constants âââââââââââââââââââââââââââââââââââââââââââââââââ
 
 const FORMATS = [
-  { id: 'short',   label: 'Short',   desc: '~60 s · 3-4 scenes', icon: '⚡' },
-  { id: 'scene',   label: 'Scene',   desc: '~3 min · 4-5 scenes', icon: '🎬' },
-  { id: 'episode', label: 'Episode', desc: '~10 min · 6-8 scenes', icon: '📺' },
-  { id: 'trailer', label: 'Trailer', desc: '~90 s · 5-6 cuts',    icon: '🎞️' },
+  { id: 'short',   label: 'Short',   desc: '~60 s Â· 3-4 scenes', icon: 'â¡' },
+  { id: 'scene',   label: 'Scene',   desc: '~3 min Â· 4-5 scenes', icon: 'ð¬' },
+  { id: 'episode', label: 'Episode', desc: '~10 min Â· 6-8 scenes', icon: 'ðº' },
+  { id: 'trailer', label: 'Trailer', desc: '~90 s Â· 5-6 cuts',    icon: 'ðï¸' },
 ];
 
 const SHOW_LIST = Object.entries(SHOW_PROFILES)
@@ -54,13 +55,13 @@ const SHOW_LIST = Object.entries(SHOW_PROFILES)
 
 const SHOW_CATEGORIES = [...new Set(SHOW_LIST.map(s => s.category))];
 
-// ── Component ─────────────────────────────────────────────────
+// ââ Component âââââââââââââââââââââââââââââââââââââââââââââââââ
 
 export function EpisodeGenPanel({
-  user, loading, setLoading, error, setError, saveAsset,
+  user, loading, setLoading, error, setError, saveAsset, onPublish,
 }: EpisodeGenPanelProps) {
 
-  /* ── Setup state ───────────────────────────────────────── */
+  /* ââ Setup state âââââââââââââââââââââââââââââââââââââââââ */
   const [show, setShow]                 = useState('');
   const [artStyle, setArtStyle]         = useState<ArtStyleId>('source-faithful');
   const [selectedChars, setSelectedChars] = useState<string[]>([]);
@@ -68,19 +69,19 @@ export function EpisodeGenPanel({
   const [format, setFormat]             = useState('short');
   const [catFilter, setCatFilter]       = useState('');
 
-  /* ── Script state ──────────────────────────────────────── */
+  /* ââ Script state ââââââââââââââââââââââââââââââââââââââââ */
   const [phase, setPhase]               = useState<Phase>('setup');
   const [script, setScript]             = useState<{
     title: string; logline: string; scenes: ScriptScene[];
   } | null>(null);
   const [sceneInputs, setSceneInputs]   = useState<any[]>([]);
 
-  /* ── Production state ──────────────────────────────────── */
+  /* ââ Production state ââââââââââââââââââââââââââââââââââââ */
   const [sceneVideos, setSceneVideos]   = useState<SceneVideo[]>([]);
   const [currentGen, setCurrentGen]     = useState(-1);
   const abortRef                        = useRef<AbortController | null>(null);
 
-  /* ── Derived ───────────────────────────────────────────── */
+  /* ââ Derived âââââââââââââââââââââââââââââââââââââââââââââ */
   const showProfile    = show ? SHOW_PROFILES[show] : null;
   const characters     = showProfile?.characters || [];
   const filteredShows  = catFilter
@@ -91,7 +92,7 @@ export function EpisodeGenPanel({
   const totalScenes    = sceneVideos.length;
   const progressPct    = totalScenes ? Math.round((doneCount / totalScenes) * 100) : 0;
 
-  /* ── Helpers ───────────────────────────────────────────── */
+  /* ââ Helpers âââââââââââââââââââââââââââââââââââââââââââââ */
   function toggleChar(name: string) {
     setSelectedChars(p =>
       p.includes(name) ? p.filter(n => n !== name) : [...p, name],
@@ -110,7 +111,7 @@ export function EpisodeGenPanel({
     setError('');
   }
 
-  /* ── Phase 1: Generate Script ──────────────────────────── */
+  /* ââ Phase 1: Generate Script ââââââââââââââââââââââââââââ */
   const generateScript = useCallback(async () => {
     if (!show || !prompt.trim() || !selectedChars.length) {
       setError('Pick a show, select characters, and describe your episode');
@@ -140,7 +141,7 @@ export function EpisodeGenPanel({
     }
   }, [show, artStyle, selectedChars, prompt, format, setLoading, setError]);
 
-  /* ── Phase 2: Generate All Scenes ──────────────────────── */
+  /* ââ Phase 2: Generate All Scenes ââââââââââââââââââââââââ */
   const generateAllScenes = useCallback(async () => {
     if (!sceneInputs.length) return;
     setPhase('production');
@@ -181,7 +182,7 @@ export function EpisodeGenPanel({
           return next;
         });
 
-        saveAsset({ type: 'video', url: data.videoUrl, prompt: `${script?.title} — Scene ${i + 1}`, model: data.model });
+        saveAsset({ type: 'video', url: data.videoUrl, prompt: `${script?.title} â Scene ${i + 1}`, model: data.model });
       } catch (err: any) {
         if (err.name === 'AbortError') break;
         setSceneVideos(prev => {
@@ -197,7 +198,7 @@ export function EpisodeGenPanel({
     setPhase('complete');
   }, [sceneInputs, script, saveAsset, setLoading]);
 
-  /* ── Retry single scene ────────────────────────────────── */
+  /* ââ Retry single scene ââââââââââââââââââââââââââââââââââ */
   const retryScene = useCallback(async (idx: number) => {
     setSceneVideos(prev => {
       const next = [...prev];
@@ -227,35 +228,35 @@ export function EpisodeGenPanel({
     }
   }, [sceneInputs]);
 
-  /* ── Stop ──────────────────────────────────────────────── */
+  /* ââ Stop ââââââââââââââââââââââââââââââââââââââââââââââââ */
   const stopGeneration = () => { abortRef.current?.abort(); setLoading(false); };
 
-  // ═══════════════════════════════════════════════════════════
+  // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   // RENDER
-  // ═══════════════════════════════════════════════════════════
+  // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   return (
     <div className="space-y-6 max-w-4xl">
 
-      {/* ── Header ────────────────────────────────────────── */}
+      {/* ââ Header ââââââââââââââââââââââââââââââââââââââââââ */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-display text-2xl tracking-wider text-white">
             EPISODE<span className="text-violet-400"> GENERATOR</span>
           </h2>
           <p className="text-xs text-muted mt-1">
-            Prompt → AI Script → Scene-by-scene video + audio
+            Prompt â AI Script â Scene-by-scene video + audio
           </p>
         </div>
         {phase !== 'setup' && (
           <button onClick={resetAll}
             className="text-xs text-muted border border-border rounded-lg px-3 py-1.5 hover:border-violet-400 hover:text-violet-400 transition-colors">
-            ← Start Over
+            â Start Over
           </button>
         )}
       </div>
 
-      {/* ── Phase indicator ───────────────────────────────── */}
+      {/* ââ Phase indicator âââââââââââââââââââââââââââââââââ */}
       <div className="flex gap-2 flex-wrap">
         {(['setup', 'script', 'production', 'complete'] as Phase[]).map((p, i) => {
           const idx = ['setup','script','production','complete'].indexOf(phase);
@@ -268,7 +269,7 @@ export function EpisodeGenPanel({
                 : done ? 'bg-lime-500/20 border-lime-400 text-lime-400'
                 : 'bg-bg3 border-border text-muted'
               }`}>
-                {done ? '✓' : i + 1}
+                {done ? 'â' : i + 1}
               </div>
               <span className={`text-[10px] uppercase tracking-wider ${
                 active ? 'text-violet-400' : 'text-muted'
@@ -281,7 +282,7 @@ export function EpisodeGenPanel({
         })}
       </div>
 
-      {/* ═══ SETUP PHASE ═══════════════════════════════════ */}
+      {/* âââ SETUP PHASE âââââââââââââââââââââââââââââââââââ */}
       {(phase === 'setup' || (phase === 'script' && !script)) && (
         <>
           {/* Show selector */}
@@ -307,7 +308,7 @@ export function EpisodeGenPanel({
                       ? 'border-violet-400 bg-violet-400/10 ring-1 ring-violet-400/30'
                       : 'border-border bg-bg2 hover:border-bord2'
                   }`}>
-                  <div className="text-lg mb-0.5">{s.emoji || '🎬'}</div>
+                  <div className="text-lg mb-0.5">{s.emoji || 'ð¬'}</div>
                   <div className="text-[10px] font-bold text-white truncate">{s.title}</div>
                   <div className="text-[8px] text-muted">{s.category}</div>
                 </button>
@@ -352,7 +353,7 @@ export function EpisodeGenPanel({
                           : 'border-violet-400 text-violet-400 bg-violet-400/10'
                         : 'border-border text-muted hover:border-bord2'
                     }`}>
-                    {s.id === 'source-faithful' ? '🎯 ' : ''}{s.label}
+                    {s.id === 'source-faithful' ? 'ð¯ ' : ''}{s.label}
                   </button>
                 ))}
               </div>
@@ -394,14 +395,14 @@ export function EpisodeGenPanel({
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Writing Script…
+                Writing Scriptâ¦
               </span>
-            ) : '✍️ Generate Script'}
+            ) : 'âï¸ Generate Script'}
           </button>
         </>
       )}
 
-      {/* ═══ SCRIPT REVIEW PHASE ══════════════════════════= */}
+      {/* âââ SCRIPT REVIEW PHASE ââââââââââââââââââââââââââ= */}
       {script && phase === 'script' && (
         <div className="space-y-4">
           {/* Title card */}
@@ -438,9 +439,9 @@ export function EpisodeGenPanel({
                 )}
 
                 <div className="flex gap-3 mt-2 text-[8px] text-muted">
-                  <span>🎭 {scene.mood}</span>
-                  <span>📷 {scene.cameraNote}</span>
-                  <span>→ {scene.transition}</span>
+                  <span>ð­ {scene.mood}</span>
+                  <span>ð· {scene.cameraNote}</span>
+                  <span>â {scene.transition}</span>
                 </div>
               </div>
             ))}
@@ -450,17 +451,17 @@ export function EpisodeGenPanel({
           <div className="flex gap-3">
             <button onClick={() => { setScript(null); setPhase('setup'); }}
               className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-violet-400 hover:text-violet-400 transition-colors">
-              ← Edit Setup
+              â Edit Setup
             </button>
             <button onClick={generateAllScenes}
               className="flex-[2] py-3 rounded-xl font-display text-sm tracking-wider bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/20">
-              🎬 Generate All {totalScenes} Scenes
+              ð¬ Generate All {totalScenes} Scenes
             </button>
           </div>
         </div>
       )}
 
-      {/* ═══ PRODUCTION / COMPLETE PHASE ══════════════════= */}
+      {/* âââ PRODUCTION / COMPLETE PHASE ââââââââââââââââââ= */}
       {(phase === 'production' || phase === 'complete') && script && (
         <div className="space-y-4">
           {/* Progress bar */}
@@ -468,12 +469,12 @@ export function EpisodeGenPanel({
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-white">
                 {phase === 'complete'
-                  ? '✅ Episode Complete'
-                  : `⏳ Generating scene ${currentGen + 1} of ${totalScenes}…`}
+                  ? 'â Episode Complete'
+                  : `â³ Generating scene ${currentGen + 1} of ${totalScenes}â¦`}
               </span>
               <span className="text-xs text-violet-400">
                 {doneCount}/{totalScenes} done
-                {errorCount > 0 && ` · ${errorCount} failed`}
+                {errorCount > 0 && ` Â· ${errorCount} failed`}
               </span>
             </div>
             <div className="h-2 bg-bg3 rounded-full overflow-hidden">
@@ -503,12 +504,12 @@ export function EpisodeGenPanel({
                     : sv?.status === 'error'      ? 'bg-red-500/20 text-red-400'
                     : 'bg-bg3 text-muted'
                     }`}>
-                      {sv?.status === 'done' ? '✓' : sv?.status === 'generating' ? '◌' : sv?.status === 'error' ? '✗' : scene.sceneNum}
+                      {sv?.status === 'done' ? 'â' : sv?.status === 'generating' ? 'â' : sv?.status === 'error' ? 'â' : scene.sceneNum}
                     </div>
                     <div className="text-xs font-bold text-white flex-1">{scene.heading}</div>
                     {sv?.status === 'done' && sv.audioSynced && (
                       <div className="text-[8px] bg-lime-400/10 text-lime-400 border border-lime-400/30 rounded-full px-2 py-0.5">
-                        🔊 Audio Synced
+                        ð Audio Synced
                       </div>
                     )}
                   </div>
@@ -528,7 +529,7 @@ export function EpisodeGenPanel({
                     <div className="h-32 bg-bg3 rounded-lg border border-violet-400/20 flex items-center justify-center mt-2">
                       <div className="flex items-center gap-2 text-xs text-violet-400">
                         <span className="w-4 h-4 border-2 border-violet-400/30 border-t-violet-400 rounded-full animate-spin" />
-                        Generating video + audio…
+                        Generating video + audioâ¦
                       </div>
                     </div>
                   )}
@@ -553,7 +554,7 @@ export function EpisodeGenPanel({
             {phase === 'production' && (
               <button onClick={stopGeneration}
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-red-400 border border-red-400/30 hover:bg-red-400/10 transition-colors">
-                ⏹ Stop
+                â¹ Stop
               </button>
             )}
             {phase === 'complete' && (
@@ -565,8 +566,27 @@ export function EpisodeGenPanel({
                 {errorCount > 0 && (
                   <button onClick={() => sceneVideos.forEach((sv, i) => { if (sv.status === 'error') retryScene(i); })}
                     className="flex-1 py-3 rounded-xl text-sm font-bold text-violet-400 border border-violet-400/30 hover:bg-violet-400/10 transition-colors">
-                    🔄 Retry {errorCount} Failed
+                    ð Retry {errorCount} Failed
                   </button>
+
+                {onPublish && doneCount > 0 && (
+                  <button onClick={() => {
+                    const firstDone = sceneVideos.find(s => s.status === 'done');
+                    const showProfile = show ? SHOW_PROFILES[show] : null;
+                    onPublish({
+                      title: script?.title,
+                      description: script?.logline,
+                      thumbnail: firstDone?.videoUrl,
+                      mediaUrl: firstDone?.videoUrl,
+                      show: showProfile?.title || show,
+                      genre: showProfile?.category || 'TV Show',
+                    });
+                  }}
+                    className="flex-[2] py-3 rounded-xl font-display text-sm tracking-wider text-white shadow-lg shadow-rip/20 transition hover:brightness-110"
+                    style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
+                    🚀 Publish to Feeds
+                  </button>
+                )}
                 )}
               </>
             )}
@@ -574,7 +594,7 @@ export function EpisodeGenPanel({
         </div>
       )}
 
-      {/* ── Error banner ──────────────────────────────────── */}
+      {/* ââ Error banner ââââââââââââââââââââââââââââââââââââ */}
       {error && (
         <div className="bg-red-500/5 border border-red-400/20 rounded-xl px-4 py-3 text-xs text-red-400">
           {error}
