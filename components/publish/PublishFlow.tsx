@@ -223,7 +223,7 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
                 thumbnail,
                 videoUrl: initialData?.mediaUrl,
                 genre,
-                showTitle: showTitle,
+                showTitle: show,
               }}
               onComplete={() => { setShowSocial(false); }}
               onSkip={() => { setShowSocial(false); }}
