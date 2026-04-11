@@ -113,6 +113,8 @@ export function PublishFlow({ user, onClose, initialData }: PublishFlowProps) {
           hashtags:   tagList,
           tools_used: ['RiP Studio'],
           is_public:  true,
+          thumbnail:  thumbnail || null,
+          video_url:  initialData?.mediaUrl || null,
         })
         .select()
         .single();
