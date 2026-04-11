@@ -25,7 +25,7 @@ export interface ArtStyle {
 }
 
 export const ART_STYLES: ArtStyle[] = [
-  { id: 'source-faithful', label: 'Source Faithful', emoji: '\u{1F3AF}', prompt: '', description: '1:1 recreation matching the original show\'s art style' },
+  { id: 'source-faithful', label: 'Original', emoji: '\u{1F3AF}', prompt: '', description: '1:1 recreation matching the original show\'s art style' },
   { id: 'cinematic',      label: 'Cinematic',      emoji: '\u{1F3AC}', prompt: 'cinematic film still, professional cinematography, dramatic lighting, shallow depth of field, anamorphic lens, color graded', description: 'Film-quality cinematic look' },
   { id: 'anime',          label: 'Anime',          emoji: '\u{1F338}', prompt: 'anime style, Studio Ghibli inspired, vibrant colors, detailed cel shading, Japanese animation', description: 'Japanese anime style' },
   { id: 'comic',          label: 'Comic Book',     emoji: '\u{1F4A5}', prompt: 'comic book art style, bold outlines, halftone dots, vibrant panels, dynamic composition', description: 'Bold comic book panels' },
