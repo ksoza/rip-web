@@ -61,7 +61,7 @@ interface PayoutSummary {
   paid_sol: number;
 }
 
-type WalletView = 'portfolio' | 'nfts' | 'staking' | 'history' | 'revenue';
+type WalletView = 'overview' | 'portfolio' | 'nfts' | 'staking' | 'history' | 'revenue';
 
 // -- Revenue Split Config ----------------------------------------
 const REVENUE_SPLIT = [
@@ -83,7 +83,6 @@ export function WalletTab({ user }: { user: User }) {
   const [stakingPositions, setStakingPositions] = useState<StakingPosition[]>([]);
   const [nfts, setNfts] = useState<NFT[]>([]);
   const [payoutSummary, setPayoutSummary] = useState<PayoutSummary | null>(null);
-  type WalletView = 'overview' | 'nfts' | 'staking';
   const [walletView, setWalletView] = useState<WalletView>('overview');
 
   const [loading, setLoading] = useState(false);
@@ -219,11 +218,11 @@ export function WalletTab({ user }: { user: User }) {
       {/* Wallet Sub-Tabs (Phase 4) */}
       <div className="flex gap-1 mb-6 bg-bg2 border border-border rounded-xl p-1">
         {([
-          { id: 'overview' as WalletView, label: 'Wallet', icon: '\u{1F4B0}' },
-          { id: 'nfts' as WalletView, label: 'NFT Gallery', icon: '\u{1F5BC}\uFE0F' },
-          { id: 'staking' as WalletView, label: 'Staking', icon: '\u26A1' },
+          { id: 'overview', label: 'Wallet', icon: '\u{1F4B0}' },
+          { id: 'nfts', label: 'NFT Gallery', icon: '\u{1F5BC}\uFE0F' },
+          { id: 'staking', label: 'Staking', icon: '\u26A1' },
         ]).map(t => (
-          <button key={t.id} onClick={() => setWalletView(t.id)}
+          <button key={t.id} onClick={() => setWalletView(t.id as WalletView)}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
               walletView === t.id
                 ? 'bg-gradient-to-r from-rip/20 to-purple/20 text-white border border-rip/30'

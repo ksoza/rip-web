@@ -53,6 +53,7 @@ export interface ShowProfile {
   id: string;
   title: string;
   category: 'TV Show' | 'Movie' | 'Anime' | 'Cartoon' | 'News Show';
+  emoji?: string;
   visualStyle: string;
   audioTone: string;
   characters: ShowCharacter[];

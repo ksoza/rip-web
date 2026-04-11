@@ -182,7 +182,7 @@ export function EpisodeGenPanel({
           return next;
         });
 
-        saveAsset({ type: 'video', url: data.videoUrl, prompt: `${script?.title} \u2014 Scene ${i + 1}`, model: data.model });
+        saveAsset({ type: 'video', name: `${script?.title || 'Episode'} \u2014 Scene ${i + 1}`, url: data.videoUrl, prompt: `${script?.title} \u2014 Scene ${i + 1}`, provider: data.model });
       } catch (err: any) {
         if (err.name === 'AbortError') break;
         setSceneVideos(prev => {

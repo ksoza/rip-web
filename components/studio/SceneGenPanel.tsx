@@ -58,6 +58,7 @@ type Props = {
   error: string;
   setError: (v: string) => void;
   saveAsset: (asset: Omit<Asset, 'id' | 'createdAt'>) => Asset;
+  onPublish?: (data: any) => void;
 };
 
 export function SceneGenPanel({ user, loading, setLoading, error, setError, saveAsset }: Props) {
