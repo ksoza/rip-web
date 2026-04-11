@@ -319,6 +319,7 @@ export function AppShell({ user }: { user: User | null }) {
           selectedMedia={wizardMedia}
           onClose={() => setShowWizard(false)}
           onOpenEditor={handleOpenEditor}
+          onPublish={handlePublish}
         />
       )}
 

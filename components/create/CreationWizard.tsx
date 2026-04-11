@@ -62,6 +62,7 @@ interface Props {
   selectedMedia: MediaItem;
   onClose: () => void;
   onOpenEditor: (resultData: ResultData) => void;
+  onPublish?: (data: { title?: string; description?: string; thumbnail?: string; mediaUrl?: string; show?: string; genre?: string }) => void;
 }
 
 interface ResultData {
@@ -204,7 +205,7 @@ const VIDEO_MODELS = [
 //  MAIN WIZARD COMPONENT
 // {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
 
-export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: Props) {
+export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onPublish }: Props) {
   const [step, setStep] = useState<WizardStep>('character');
 
   // {'\u2500'}{'\u2500'} Character selection {'\u2500'}{'\u2500'}
@@ -1928,7 +1929,19 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
               </div>
 
               {/* Publish to RemixIP */}
-              <button className="w-full py-4 rounded-xl font-display text-xl tracking-wide text-white transition-all hover:brightness-110 mb-3"
+              <button onClick={() => {
+                if (onPublish && resultData) {
+                  onPublish({
+                    title: resultData.title,
+                    description: prompt,
+                    thumbnail: sceneImages[scenes[0]?.id] || Object.values(sceneImages)[0],
+                    mediaUrl: sceneVideos[scenes[0]?.id] || Object.values(sceneVideos)[0],
+                    show: resultData.media.title,
+                    genre: resultData.media.category,
+                  });
+                }
+              }}
+                className="w-full py-4 rounded-xl font-display text-xl tracking-wide text-white transition-all hover:brightness-110 mb-3"
                 style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7,#00d4ff)' }}>
                 {'\u263D'} Publish to RemixIP
               </button>
