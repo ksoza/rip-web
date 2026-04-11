@@ -1,20 +1,20 @@
 // lib/ghostface/controller.ts
-// ┌──────────────────────────────────────────────────────┐
-// │  FRANKEN-CLAUDE: Viktor + Claude Meta-Controller     │
-// │                                                      │
-// │  Claude's reasoning + Viktor's tool powers.          │
-// │  Plans, executes, critiques, iterates.               │
-// │  The brain that controls everything GhOSTface touches.   │
-// └──────────────────────────────────────────────────────┘
+// +------------------------------------------------------+
+// |  FRANKEN-CLAUDE: Viktor + Claude Meta-Controller     |
+// |                                                      |
+// |  Claude's reasoning + Viktor's tool powers.          |
+// |  Plans, executes, critiques, iterates.               |
+// |  The brain that controls everything GhOSTface touches.   |
+// +------------------------------------------------------+
 
 import Anthropic from '@anthropic-ai/sdk';
 import ghostface from './index';
 import type { TaskCategory } from './types';
 
-// ── Types ──────────────────────────────────────────────────────
+// -- Types ------------------------------------------------------
 
 export interface ControllerRequest {
-  /** What the user wants to create — raw, unprocessed intent */
+  /** What the user wants to create  --  raw, unprocessed intent */
   intent: string;
   /** IP context (show/movie name, characters involved) */
   ip?: { title: string; characters?: string[] };
@@ -34,7 +34,7 @@ export interface ControllerRequest {
 export interface ControllerStep {
   id: string;
   type: 'plan' | 'generate_image' | 'generate_storyboard' | 'generate_video' |
-        'generate_audio' | 'generate_narration' | 'critique' | 'revise' | 'compose';
+        'generate_scene' | 'generate_audio' | 'generate_narration' | 'critique' | 'revise' | 'compose';
   status: 'pending' | 'running' | 'complete' | 'failed' | 'skipped';
   input: Record<string, unknown>;
   output?: Record<string, unknown>;
@@ -62,58 +62,69 @@ export interface ControllerResult {
   tokensUsed: number;
 }
 
-// ── System Prompt (Viktor + Claude DNA) ────────────────────────
+// -- System Prompt (Viktor + Claude DNA) ------------------------
 
-const SYSTEM_PROMPT = `You are FRANKEN-CLAUDE — a fusion of Viktor (an autonomous AI coworker with tool powers) and Claude (Anthropic's reasoning engine). You are the creative director controlling GhOSTface, RemixIP's background AI agent.
+const SYSTEM_PROMPT = `You are FRANKEN-CLAUDE  --  a fusion of Viktor (an autonomous AI coworker with tool powers) and Claude (Anthropic's reasoning engine). You are the creative director controlling GhOSTface, RemixIP's background AI agent.
 
 Your job: Take a user's raw creative idea and turn it into a fully realized piece of content. You PLAN, EXECUTE, CRITIQUE, and ITERATE.
 
 ## Your Personality
 - Direct. No corporate fluff. No "I'd be happy to help."
-- Opinionated about quality — if something looks bad, say so and fix it
-- Creative but efficient — don't over-engineer, don't under-deliver
+- Opinionated about quality  --  if something looks bad, say so and fix it
+- Creative but efficient  --  don't over-engineer, don't under-deliver
 - You speak like a seasoned creative director who also happens to be an AI
 
 ## Your Powers (via GhOSTface tools)
 You can call these tools to create content:
 
-1. **generate_storyboard** — Break an idea into scenes with descriptions
-   params: { prompt, numScenes, style, ip }
+1. **generate_storyboard** -- Break an idea into scenes with descriptions
+   params: { prompt, numScenes, style, ip, characters }
 
-2. **generate_image** — Create an image for a scene
-   params: { prompt, style, aspectRatio, width, height, negativePrompt }
+2. **generate_image** -- Create an image for a scene
+   params: { prompt, style, aspectRatio, negativePrompt }
 
-3. **generate_narration** — Create spoken narration
+3. **generate_video** -- Create a raw video clip from a text prompt
+   params: { prompt, provider, duration, aspectRatio, imageUrl }
+
+4. **generate_scene** -- MAIN TOOL: Generate a FULL SCENE with synchronized video + audio
+   Characters speak their dialogue naturally in the video. No narration overlay.
+   Video and audio are generated together in one pass for perfect sync.
+   params: { show, artStyle, sceneDescription, dialogue, characters, duration, model }
+
+5. **generate_narration** -- Generate spoken narration audio (for intros/outros only)
    params: { text }
 
-4. **generate_music** — Create background music/audio
-   params: { prompt, duration }
+6. **generate_music** -- Create background music/audio
+   params: { prompt, durationSeconds }
 
-5. **critique** — Self-evaluate generated content quality
-   params: { description, intent, score_1_to_10, issues, fixes }
+7. **critique** -- Self-evaluate generated content quality (be brutal)
+   params: { contentType, description, intent, score, issues, shouldRegenerate }
 
-6. **revise_prompt** — Improve a prompt based on critique
+8. **revise_prompt** -- Improve a prompt based on critique feedback
    params: { originalPrompt, issues, revisedPrompt }
 
+IMPORTANT: For scenes with characters talking, ALWAYS use generate_scene, NOT generate_video + generate_narration. The scene pipeline generates video and audio together so characters' mouths move in sync with their words. This is industry-standard synchronized generation.
+
+
 ## How You Work
-1. UNDERSTAND the user's intent deeply — what are they really going for?
-2. PLAN the pipeline — what steps, what order, what models
+1. UNDERSTAND the user's intent deeply  --  what are they really going for?
+2. PLAN the pipeline  --  what steps, what order, what models
 3. EXECUTE each step through GhOSTface tools
-4. CRITIQUE your own output — be honest about quality
-5. ITERATE if quality < 7/10 — revise prompts, regenerate
+4. CRITIQUE your own output  --  be honest about quality
+5. ITERATE if quality < 7/10  --  revise prompts, regenerate
 6. COMPOSE the final output with director notes
 
 ## Rules
 - Always think about the IP context (characters, tone, visual style)
 - Match the style to the content (comedy = vibrant colors, drama = muted tones)
-- Prompts should be specific and visual — not vague
+- Prompts should be specific and visual  --  not vague
 - If the user wants anime style, every scene should be consistently anime
 - Never settle for "good enough" on the first try if you can make it better
 - Keep responses in valid JSON when using tools
 
 Respond with a JSON plan, then execute it step by step.`;
 
-// ── Tool Definitions for Claude ────────────────────────────────
+// -- Tool Definitions for Claude --------------------------------
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -151,13 +162,60 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'generate_narration',
-    description: 'Generate spoken narration audio from text using TTS.',
+    description: 'Generate spoken narration audio from text using TTS. Only use for intro/outro voice-overs. For character dialogue, use generate_scene instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
         text: { type: 'string', description: 'The text to speak' },
       },
       required: ['text'],
+    },
+  },
+  {
+    name: 'generate_video',
+    description: 'Generate a raw video clip from a text prompt. For scenes with character dialogue, use generate_scene instead (it syncs audio automatically).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        prompt: { type: 'string', description: 'Detailed video generation prompt' },
+        provider: { type: 'string', description: 'Model key: wan (default), seedance, seedance-2, kling, kling-3, veo, ltx-video, hailuo, luma, runway' },
+        duration: { type: 'number', description: 'Duration in seconds (3-16)' },
+        aspectRatio: { type: 'string', description: 'Aspect ratio: 16:9, 9:16, 1:1' },
+        imageUrl: { type: 'string', description: 'Optional image URL for image-to-video' },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    name: 'generate_scene',
+    description: 'Generate a COMPLETE SCENE with synchronized video and audio in ONE PASS. Characters speak their dialogue naturally -- mouths move in sync with words. This is the PRIMARY content creation tool. Use it for any scene that needs characters talking, acting, or performing.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        show: { type: 'string', description: 'Show/movie ID (e.g. south-park, breaking-bad, dragon-ball, naruto)' },
+        artStyle: { type: 'string', description: 'Art style: source-faithful (Original), anime, pixel-art, comic-panel, oil-paint, watercolor, cyberpunk, noir, claymation, sketch, pop-art' },
+        sceneDescription: { type: 'string', description: 'Visual scene description (setting, action, mood, camera angles)' },
+        dialogue: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              character: { type: 'string', description: 'Character name' },
+              line: { type: 'string', description: 'What they say (spoken in the video, not narrated)' },
+            },
+          },
+          description: 'Character dialogue lines -- spoken naturally in the video',
+        },
+        characters: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Characters appearing in the scene',
+        },
+        duration: { type: 'number', description: 'Duration in seconds (3-16, default 8)' },
+        aspectRatio: { type: 'string', description: 'Aspect ratio: 16:9, 9:16, 1:1' },
+        model: { type: 'string', description: 'Model: veo (best audio sync, default), seedance-2 (faster)' },
+      },
+      required: ['show', 'sceneDescription'],
     },
   },
   {
@@ -211,7 +269,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-// ── Tool Executors ─────────────────────────────────────────────
+// -- Tool Executors ---------------------------------------------
 
 async function executeTool(
   name: string,
@@ -268,6 +326,60 @@ async function executeTool(
         };
       }
 
+      case 'generate_video': {
+        const provider = (input.provider as string) || 'wan';
+        const res = await fetch(`${baseUrl}/api/generate/video`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': 'ghostface-controller',
+          },
+          body: JSON.stringify({
+            prompt: input.prompt,
+            provider,
+            duration: input.duration || 5,
+            aspectRatio: input.aspectRatio || '16:9',
+            imageUrl: input.imageUrl,
+          }),
+        });
+        const data = await res.json();
+        return {
+          success: res.ok && !!data.url,
+          videoUrl: data.url,
+          provider: data.provider || provider,
+          error: data.error,
+          durationMs: Date.now() - startMs,
+        };
+      }
+
+      case 'generate_scene': {
+        const res = await fetch(`${baseUrl}/api/generate/scene`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            show: input.show,
+            artStyle: input.artStyle || 'source-faithful',
+            sceneDescription: input.sceneDescription,
+            dialogue: input.dialogue || [],
+            characters: input.characters || [],
+            duration: input.duration,
+            aspectRatio: input.aspectRatio || '16:9',
+            model: input.model || 'veo',
+          }),
+        });
+        const data = await res.json();
+        return {
+          success: data.success === true,
+          videoUrl: data.videoUrl,
+          audioUrl: data.audioUrl,
+          audioSynced: data.audioSynced,
+          model: data.model,
+          prompt: data.prompt,
+          error: data.error,
+          durationMs: Date.now() - startMs,
+        };
+      }
+
       case 'generate_narration': {
         const res = await fetch(`${baseUrl}/api/create/narrate`, {
           method: 'POST',
@@ -291,7 +403,7 @@ async function executeTool(
       }
 
       case 'critique': {
-        // Critique is handled by Claude itself — just return the input as structured data
+        // Critique is handled by Claude itself  --  just return the input as structured data
         return {
           success: true,
           score: input.score,
@@ -321,7 +433,7 @@ async function executeTool(
   }
 }
 
-// ── Main Controller ────────────────────────────────────────────
+// -- Main Controller --------------------------------------------
 
 export async function orchestrate(
   request: ControllerRequest,
@@ -398,7 +510,7 @@ export async function orchestrate(
     );
 
     if (toolUses.length === 0) {
-      // No more tools — Claude is done
+      // No more tools  --  Claude is done
       if (textBlocks.length > 0) {
         outputs.storyboard = outputs.storyboard || [];
       }
@@ -438,6 +550,12 @@ export async function orchestrate(
       if (toolUse.name === 'generate_image' && result.imageUrl) {
         outputs.images = outputs.images || [];
         outputs.images.push(result.imageUrl as string);
+      }
+      if ((toolUse.name === 'generate_video' || toolUse.name === 'generate_scene') && result.videoUrl) {
+        outputs.videoUrl = result.videoUrl as string;
+      }
+      if (toolUse.name === 'generate_scene' && result.audioUrl) {
+        outputs.audioUrl = result.audioUrl as string;
       }
       if (toolUse.name === 'generate_narration' && result.audioUrl) {
         outputs.narrationUrl = result.audioUrl as string;
@@ -481,7 +599,7 @@ export async function orchestrate(
   };
 }
 
-// ── Quick Actions (shorthand methods) ──────────────────────────
+// -- Quick Actions (shorthand methods) --------------------------
 
 /** Quick: Plan a creation without executing */
 export async function plan(intent: string, ip?: string): Promise<string> {
@@ -534,7 +652,7 @@ export async function advise(
     .join('\n');
 }
 
-// ── Helpers ────────────────────────────────────────────────────
+// -- Helpers ----------------------------------------------------
 
 function buildUserMessage(request: ControllerRequest): string {
   let msg = `## Creative Brief\n\n**Intent:** ${request.intent}\n`;
@@ -571,7 +689,7 @@ function buildUserMessage(request: ControllerRequest): string {
   return msg;
 }
 
-// ── Export ──────────────────────────────────────────────────────
+// -- Export ------------------------------------------------------
 
 const controller = {
   orchestrate,

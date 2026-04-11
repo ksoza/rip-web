@@ -1,11 +1,11 @@
 // lib/ghostface/index.ts
-// ┌─────────────────────────────────────────────────┐
-// │  GhOSTface — Background AI Agent                │
-// │  Generative Heuristic Orchestration System — Transformative Face Engine │
-// │                                                  │
-// │  Not a page. Not a UI. An invisible brain that   │
-// │  routes, enhances, and optimizes every AI call.  │
-// └─────────────────────────────────────────────────┘
+// ---------------------------------------------------
+// -  GhOSTface - Background AI Agent                -
+// -  Generative Heuristic Orchestration System - Transformative Face Engine -
+// -                                                  -
+// -  Not a page. Not a UI. An invisible brain that   -
+// -  routes, enhances, and optimizes every AI call.  -
+// ---------------------------------------------------
 
 import { registry } from './registry';
 import { route, autoSelect, rankModels } from './router';
@@ -18,7 +18,7 @@ import type { TaskCategory, RouteRequest, RouteResult, ModelCapability } from '.
 // Re-export types
 export type { TaskCategory, RouteRequest, RouteResult, ModelCapability };
 
-// ── Initialization ──────────────────────────────────────────────
+// -- Initialization ----------------------------------------------
 let initialized = false;
 
 async function ensureInit(): Promise<void> {
@@ -28,10 +28,10 @@ async function ensureInit(): Promise<void> {
   initialized = true;
 }
 
-// ── Main API ────────────────────────────────────────────────────
+// -- Main API ----------------------------------------------------
 
 /**
- * Generate content — the main entry point
+ * Generate content - the main entry point
  *
  * GhOSTface picks the best model, enhances the prompt, handles retries/fallbacks,
  * and records the result for future optimization.
@@ -189,7 +189,7 @@ function status(): {
   };
 }
 
-// ── Export as a single object ──────────────────────────────────
+// -- Export as a single object ----------------------------------
 
 const ghostface = {
   // Core
