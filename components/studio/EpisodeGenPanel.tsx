@@ -568,6 +568,7 @@ export function EpisodeGenPanel({
                     className="flex-1 py-3 rounded-xl text-sm font-bold text-violet-400 border border-violet-400/30 hover:bg-violet-400/10 transition-colors">
                      Retry {errorCount} Failed
                   </button>
+                )}
 
                 {onPublish && doneCount > 0 && (
                   <button onClick={() => {
@@ -586,7 +587,6 @@ export function EpisodeGenPanel({
                     style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
                      Publish to Feeds
                   </button>
-                )}
                 )}
               </>
             )}

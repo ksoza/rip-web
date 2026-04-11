@@ -530,8 +530,8 @@ export function WalletTab({ user }: { user: User }) {
             )}
           </div>
         )}
-            )}
-    </div>
+      </div>
+    )}
     </div>
   );
 }
