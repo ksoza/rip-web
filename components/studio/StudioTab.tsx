@@ -218,7 +218,7 @@ export function StudioTab({ user, profile, onProfileUpdate, preselectedShow, pre
               <div className="text-[9px] font-bold text-rip uppercase tracking-widest mb-2"> Unlock All AI</div>
               <div className="font-display text-3xl text-white mb-1">$10<span className="text-sm font-body text-muted">/mo</span></div>
               <div className="text-[10px] text-muted2 mb-3 leading-relaxed">Unlimited gens  All AI models  Video  Timeline  NFT minting</div>
-              <button className="w-full py-2 rounded-lg font-bold text-xs text-white transition hover:brightness-110"
+              <button onClick={() => window.open('/pricing', '_blank')} className="w-full py-2 rounded-lg font-bold text-xs text-white transition hover:brightness-110"
                 style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
                 Upgrade to Studio
               </button>
@@ -386,7 +386,12 @@ function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, erro
               style={{ background: copied ? 'linear-gradient(90deg,#1a4a00,#2a7a00)' : 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
               {copied ? '\u2713 COPIED!' : '\u{1F4CB} COPY FOR SOCIAL'}
             </button>
-            <button className="flex-1 py-2.5 rounded-lg text-sm font-bold bg-bg2 border border-bord2 text-muted hover:border-lime hover:text-lime transition-all">
+            <button onClick={() => {
+                if (result) {
+                  saveAsset({ type: 'script', label: result.title || 'Script', url: '', metadata: { show, content: result.content, logline: result.logline, hashtags: result.hashtags } });
+                  setError('Script saved to assets! Use Publish flow to post to feed.');
+                }
+              }} className="flex-1 py-2.5 rounded-lg text-sm font-bold bg-bg2 border border-bord2 text-muted hover:border-lime hover:text-lime transition-all">
                POST TO FEED
             </button>
           </div>
@@ -720,10 +725,20 @@ function ScenePanel({ user, loading, setLoading, error, setError, saveAsset, cha
             </div>
             {result.revised_prompt && <p className="text-xs text-muted2 leading-relaxed">{result.revised_prompt}</p>}
             <div className="flex gap-2 mt-3">
-              <button className="flex-1 py-2 rounded-lg text-xs font-bold text-white bg-rip/20 border border-rip/30 hover:bg-rip/30 transition-all">
+              <button onClick={() => {
+                  if (result?.url) saveAsset({ type: 'image', label: prompt.slice(0, 40) || 'Scene', url: result.url });
+                }} className="flex-1 py-2 rounded-lg text-xs font-bold text-white bg-rip/20 border border-rip/30 hover:bg-rip/30 transition-all">
                  Add to Timeline
               </button>
-              <button className="flex-1 py-2 rounded-lg text-xs font-bold text-muted border border-border hover:border-bord2 transition-all">
+              <button onClick={() => {
+                  if (result?.url) {
+                    const a = document.createElement('a');
+                    a.href = result.url;
+                    a.download = `scene-${Date.now()}.png`;
+                    a.target = '_blank';
+                    a.click();
+                  }
+                }} className="flex-1 py-2 rounded-lg text-xs font-bold text-muted border border-border hover:border-bord2 transition-all">
                  Download
               </button>
             </div>
@@ -857,7 +872,9 @@ function VideoPanel({ user, loading, setLoading, error, setError, saveAsset }: a
               <span className="text-[10px] text-muted">via {VIDEO_PROVIDERS.find(p => p.id === provider)?.name}</span>
               <span className="text-[10px] text-muted2 ml-auto">{duration}s</span>
             </div>
-            <button className="w-full py-2 rounded-lg text-xs font-bold text-gold bg-gold/10 border border-gold/20 hover:bg-gold/20 transition-all mt-2">
+            <button onClick={() => {
+                if (result?.url) saveAsset({ type: 'video', label: prompt.slice(0, 40) || 'Video Clip', url: result.url });
+              }} className="w-full py-2 rounded-lg text-xs font-bold text-gold bg-gold/10 border border-gold/20 hover:bg-gold/20 transition-all mt-2">
                Add to Timeline
             </button>
           </div>
@@ -1019,7 +1036,9 @@ function AudioPanel({ user, loading, setLoading, error, setError, saveAsset }: a
             <span className="text-[10px] text-muted">via {result.provider}</span>
           </div>
           <audio src={result.audioUrl} controls className="w-full mb-3" style={{ filter: 'hue-rotate(300deg)' }} />
-          <button className="w-full py-2 rounded-lg text-xs font-bold text-lime bg-lime/10 border border-lime/20 hover:bg-lime/20 transition-all">
+          <button onClick={() => {
+              if (result?.audioUrl) saveAsset({ type: 'audio', label: (text || prompt).slice(0, 40) || 'Audio', url: result.audioUrl });
+            }} className="w-full py-2 rounded-lg text-xs font-bold text-lime bg-lime/10 border border-lime/20 hover:bg-lime/20 transition-all">
              Add to Timeline
           </button>
         </div>
