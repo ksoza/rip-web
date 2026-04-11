@@ -576,39 +576,10 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
   }
 
   // {'\u2500'}{'\u2500'} Generate character dialogue audio for all scenes {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
+  // generateNarration removed \u2014 audio is now synced in video via /api/generate/scene
   async function generateNarration() {
-    setNarrationLoading(true);
-
-    await runParallelBatches(
-      scenes,
-      async (scene) => {
-        // Find matching script scene for dialogue data
-        const scriptScene = scriptScenes.find(ss => ss.sceneNum === scene.sceneNum);
-        const dialogue = scriptScene?.dialogue?.filter(d => d.line?.trim());
-
-        // Build request body {'\u2014'} dialogue mode (character voices) or fallback to description
-        const bodyPayload = dialogue && dialogue.length > 0
-          ? { dialogue: dialogue.map(d => ({ character: d.character, line: d.line })), sceneId: scene.id }
-          : { text: scene.description, sceneId: scene.id };
-
-        const res = await fetch('/api/create/narrate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyPayload),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.audio) {
-            setSceneNarration(prev => ({ ...prev, [scene.id]: data.audio }));
-            return data.audio;
-          }
-        }
-        return null;
-      },
-      { concurrency: 2 }
-    );
-
-    setNarrationLoading(false);
+    // No-op: audio is generated with video in the unified pipeline
+    console.log('[info] generateNarration called but audio is now part of video generation');
   }
 
   // {'\u2500'}{'\u2500'} Animate a single scene (submit + poll if pending) {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
@@ -1899,7 +1870,18 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                   <div className="text-[10px] text-muted">CapCut-style editor</div>
                 </button>
 
-                <button className="p-4 bg-bg2 border border-border rounded-xl hover:border-purple transition-all group text-left">
+                <button onClick={() => {
+                  if (onPublish && resultData) {
+                    onPublish({
+                      title: resultData.title,
+                      description: prompt,
+                      thumbnail: sceneImages[scenes[0]?.id] || Object.values(sceneImages)[0],
+                      mediaUrl: sceneVideos[scenes[0]?.id] || Object.values(sceneVideos)[0],
+                      show: resultData.media.title,
+                      genre: resultData.media.category,
+                    });
+                  }
+                }} className="p-4 bg-bg2 border border-border rounded-xl hover:border-purple transition-all group text-left">
                   <span className="text-2xl mb-2 block group-hover:scale-110 transition-transform">{'\u{1F48E}'}</span>
                   <div className="text-sm font-bold text-white">Mint NFT</div>
                   <div className="text-[10px] text-muted">Solo or Collection</div>
