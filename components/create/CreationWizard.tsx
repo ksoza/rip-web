@@ -264,7 +264,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   const [genError, setGenError] = useState('');
 
   // {'\u2500'}{'\u2500'} Art & aspect config {'\u2500'}{'\u2500'}
-  const [artStyle, setArtStyle]           = useState('cinematic');
+  const [artStyle, setArtStyle]           = useState('source-faithful');
   const [aspectRatio, setAspectRatio]     = useState('16:9');
   const [negativePrompt, setNegativePrompt] = useState('blurry, low quality, distorted, watermark, text, ugly, deformed');
   const [showAdvanced, setShowAdvanced]   = useState(false);
@@ -510,7 +510,9 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
   // {'\u2500'}{'\u2500'} Build enhanced prompt with style + aspect info {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
   function buildImagePrompt(sceneVisual: string): string {
     const style = STYLES.find(s => s.id === artStyle);
-    return `${sceneVisual}, ${style?.prompt || 'cinematic lighting, high detail, professional quality'}`;
+    // Original: just the show's visual. Others: show visual + art style effect
+    if (!style?.prompt) return sceneVisual;
+    return `${sceneVisual}, ${style.prompt}`;
   }
 
   // {'\u2500'}{'\u2500'} Generate a single scene image {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
@@ -1146,7 +1148,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                   {'\u{1F4DD}'} <span className="text-purple font-bold">Claude Sonnet</span> {'\u2192'}
                   {'\u270D'}{'\uFE0F'} <span className="text-orange-400 font-bold">Script</span> {'\u2192'}
                   {'\u{1F3A8}'} <span className="text-lime font-bold">{IMAGE_MODELS.find(m => m.id === imageModel)?.name || imageModel}</span> {'\u2192'}
-                  {'\u{1F3AC}'} <span className="text-rip font-bold">{STYLES.find(s => s.id === artStyle)?.label || 'Cinematic'}</span>
+                  {'\u{1F3AC}'} <span className="text-rip font-bold">{STYLES.find(s => s.id === artStyle)?.label || 'Original'}</span>
                 </div>
               </div>
 
@@ -1348,7 +1350,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
               {/* Config summary */}
               <div className="flex flex-wrap gap-2 mb-6">
                 <span className="px-2.5 py-1 rounded-full bg-rip/10 border border-rip/30 text-rip text-[10px] font-bold">
-                  {'\u{1F3A8}'} {STYLES.find(s => s.id === artStyle)?.label || 'Cinematic'}
+                  {'\u{1F3A8}'} {STYLES.find(s => s.id === artStyle)?.label || 'Original'}
                 </span>
                 <span className="px-2.5 py-1 rounded-full bg-cyan/10 border border-cyan/30 text-cyan text-[10px] font-bold">
                   {'\u{1F4D0}'} {aspectRatio}
