@@ -612,71 +612,50 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
 
   // {'\u2500'}{'\u2500'} Animate a single scene (submit + poll if pending) {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
   async function animateScene(scene: any, idx: number, totalScenes: number): Promise<string | null> {
-    setVideoStage(`\u{1F3AC} Animating Scene ${idx + 1}/${totalScenes}: ${scene.description.slice(0, 40)}...`);
+    setVideoStage(`\u{1F3AC} Scene ${idx + 1}/${totalScenes}: ${scene.description.slice(0, 40)}...`);
 
     try {
-      const res = await fetch('/api/create/animate', {
+      // Get dialogue from script scene data
+      const scriptScene = scriptScenes.find(ss => ss.sceneNum === scene.sceneNum);
+      const dialogue = (scriptScene?.dialogue || []).filter(d => d.line?.trim());
+      const charNames = [...new Set(dialogue.map(d => d.character))];
+
+      // Unified pipeline: video + audio generated together in one pass
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 300000);
+
+      const res = await fetch('/api/generate/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageUrl: sceneImageUrls[scene.id] || undefined,
-          imageBase64: !sceneImageUrls[scene.id] ? sceneImages[scene.id] : undefined,
-          prompt: scene.visual,
-          model: videoModel,
-          sceneId: scene.id,
-          duration: '5',
+          show: isCustomIP ? (customIPName || 'custom') : selectedMedia.title,
+          artStyle,
+          sceneDescription: scene.visual || scene.description,
+          dialogue: dialogue.map(d => ({ character: d.character, line: d.line })),
+          characters: charNames,
+          duration: scene.duration ? parseInt(scene.duration) : undefined,
           aspectRatio,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeout);
       const data = await res.json();
-      console.log(`[animate] Scene ${idx + 1} POST response (HTTP ${res.status}):`, JSON.stringify(data).slice(0, 300));
+      console.log('[scene-gen] Scene', idx + 1, 'response:', JSON.stringify(data).slice(0, 300));
 
-      // Direct success
-      if (data.videoUrl) {
+      if (data.success && data.videoUrl) {
         setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
         return data.videoUrl;
       }
 
-      // Pending {'\u2014'} poll until done (up to 5 min for Wan t2v)
-      if (data.pending && data.taskId) {
-        setVideoStage(`\u{1F3AC} Scene ${idx + 1}: generating video (${data.model})...`);
-        const deadline = Date.now() + 300_000; // 5 min {'\u2014'} Wan t2v needs 60-180s
-        while (Date.now() < deadline) {
-          await new Promise(r => setTimeout(r, 5000));
-          try {
-            const pollRes = await fetch(`/api/create/animate?taskId=${data.taskId}&provider=${data.provider}`);
-            const pollData = await pollRes.json();
-            if (pollData.done && pollData.videoUrl) {
-              setSceneVideos(prev => ({ ...prev, [scene.id]: pollData.videoUrl }));
-              return pollData.videoUrl;
-            }
-            if (pollData.done && pollData.error) {
-              setVideoError(prev => prev ? prev + ' | ' + pollData.error : pollData.error);
-              return null;
-            }
-            if (pollData.progress) {
-              setVideoStage(`\u{1F3AC} Scene ${idx + 1}: ${pollData.progress}% (${data.model})`);
-            }
-          } catch {}
-        }
-        setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: timed out` : `Scene ${idx + 1}: timed out`);
-        return null;
-      }
-
-      // Error response
-      if (data.error) {
-        setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: ${data.error}` : `Scene ${idx + 1}: ${data.error}`);
-        return null;
-      }
-
-      // Unexpected response {'\u2014'} show it so we can debug
-      const debugMsg = `Scene ${idx + 1}: unexpected response (HTTP ${res.status}): ${JSON.stringify(data).slice(0, 150)}`;
-      console.error('[animate]', debugMsg);
-      setVideoError(prev => prev ? prev + ' | ' + debugMsg : debugMsg);
+      const errMsg = data.error || 'Scene generation failed (no video)';
+      setVideoError(prev => prev ? prev + ' | Scene ' + (idx + 1) + ': ' + errMsg : 'Scene ' + (idx + 1) + ': ' + errMsg);
       return null;
     } catch (err: any) {
-      setVideoError(prev => prev ? prev + ` | Scene ${idx + 1}: ${err.message}` : `Scene ${idx + 1}: ${err.message}`);
+      const errMsg = err.name === 'AbortError'
+        ? 'Scene ' + (idx + 1) + ': timed out (5 min)'
+        : 'Scene ' + (idx + 1) + ': ' + err.message;
+      setVideoError(prev => prev ? prev + ' | ' + errMsg : errMsg);
       return null;
     }
   }
@@ -1768,9 +1747,9 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-xs font-bold text-muted uppercase tracking-widest">{'\u{1F3AC}'} Generated Scenes</h4>
                     <div className="flex gap-2">
-                      <button onClick={generateNarration} disabled={narrationLoading}
-                        className="px-3 py-1.5 rounded-lg bg-purple/10 border border-purple/30 text-purple text-[10px] font-bold hover:bg-purple/20 transition-all disabled:opacity-50">
-                        {narrationLoading ? '\u{1F5E3}\uFE0F Generating...' : '\u{1F5E3}\uFE0F Voice Dialogue'}
+                      <button onClick={generateVideos} disabled={videoGenerating || Object.keys(sceneImages).length === 0}
+                        className="px-3 py-1.5 rounded-lg bg-cyan/10 border border-cyan/30 text-cyan text-[10px] font-bold hover:bg-cyan/20 transition-all disabled:opacity-50">
+                        {videoGenerating ? '\u{1F3AC} Generating...' : Object.keys(sceneVideos).length > 0 ? '\u2705 Videos Ready' : '\u{1F3AC} Generate Videos'}
                       </button>
                       <button onClick={downloadAllImages} disabled={downloadingAll}
                         className="px-3 py-1.5 rounded-lg bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold hover:bg-lime/20 transition-all disabled:opacity-50">
@@ -1846,7 +1825,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                     <span className="text-lg">{'\u{1F3A5}'}</span>
                     <div>
                       <div className="text-[9px] text-cyan uppercase tracking-widest font-bold">Bring to Life {'\u2014'} Video Generation</div>
-                      <p className="text-[10px] text-muted">Animate your storyboard images into video clips</p>
+                      <p className="text-[10px] text-muted">Generate video with synced character audio in one pass</p>
                     </div>
                   </div>
                   <button onClick={() => setShowVideoGen(!showVideoGen)}
@@ -1896,7 +1875,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor }: P
                       ) : Object.keys(sceneVideos).length > 0 ? (
                         `\u2705 ${Object.keys(sceneVideos).length} Videos Generated \u2014 Regenerate?`
                       ) : (
-                        '\u{1F3AC} Generate Video Clips'
+                        '\u{1F3AC} Generate Video + Audio'
                       )}
                     </button>
                   </div>
