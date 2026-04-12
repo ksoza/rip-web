@@ -4,6 +4,7 @@
 
 import { falGenerate, FAL_VIDEO_MODELS, type FalModel } from './fal';
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
+import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
 
 // -- Audio-capable model detection -------------------------------
 
@@ -61,6 +62,8 @@ export interface SceneResult {
   requestId?: string;
   /** Error message if failed */
   error?: string;
+  /** RAG context injected from RAGflow (if available) */
+  ragContext?: string;
 }
 
 // -- Duration estimation -----------------------------------------
@@ -123,12 +126,31 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
   // Estimate duration from dialogue if not specified
   const duration = input.duration || estimateDuration(dialogue);
   
+  // Enrich scene description with RAG knowledge (if RAGflow is configured)
+  let enrichedDescription = sceneDescription;
+  let ragContext = '';
+  if (isRagflowAvailable()) {
+    try {
+      const rag = await enrichScenePrompt(
+        show.toLowerCase().replace(/\s+/g, '-'),
+        show,
+        sceneDescription,
+        characters
+      );
+      enrichedDescription = rag.enrichedPrompt;
+      ragContext = rag.ragContext;
+    } catch (err) {
+      // RAGflow is optional -- log and continue without it
+      console.warn('[scene-pipeline] RAGflow enrichment failed, using base prompt:', err);
+    }
+  }
+
   // Build the full prompt with show style, character visuals, dialogue, and audio cues
   const prompt = buildScenePrompt({
     showTitle: show,
     artStyle,
     dialogue,
-    sceneDescription,
+    sceneDescription: enrichedDescription,
     characters,
   });
 
@@ -161,6 +183,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
             audioSynced: true,
             prompt,
             requestId: fallback.request_id,
+            ragContext: ragContext || undefined,
           };
         }
       }
@@ -183,6 +206,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
       audioSynced: audioCapable,
       prompt,
       requestId: result.request_id,
+      ragContext: ragContext || undefined,
     };
     
   } catch (err) {
@@ -208,6 +232,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
             audioSynced: true,
             prompt,
             requestId: fallback.request_id,
+            ragContext: ragContext || undefined,
           };
         }
       } catch (fallbackErr) {
