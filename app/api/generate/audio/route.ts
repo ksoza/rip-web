@@ -1,21 +1,86 @@
 // app/api/generate/audio/route.ts
-// Voice generation (ElevenLabs), sound effects (AudioGen), music (MusicGen)
+// Voice generation (VoxCPM, ElevenLabs), sound effects (AudioGen), music (MusicGen)
+// VoxCPM is the primary voice provider (self-hosted, zero API cost)
 // nexos.ai TTS available as an alternative voice provider
 import { NextRequest, NextResponse } from 'next/server';
 import { isNexosConfigured, nexosTTS } from '@/lib/nexos';
+import { generateSpeech, isVoxCPMAvailable, type VoxCPMConfig } from '@/lib/voxcpm';
+import { SHOW_PROFILES } from '@/lib/shows';
 import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
     const userId = req.headers.get('x-user-id')!;
-    const { text, prompt, provider = 'elevenlabs', voiceId, model, duration = 10 } = await req.json();
+    const {
+      text, prompt, provider = 'auto', voiceId, model, duration = 10,
+      // VoxCPM-specific params
+      show, character, voiceDesc, referenceAudioUrl, referenceTranscript,
+    } = await req.json();
 
     if ((!text && !prompt)) {
       return NextResponse.json({ error: 'Missing text/prompt' }, { status: 400 });
     }
 
-    switch (provider) {
-      // ── ElevenLabs Voice/TTS ─────────────────────────────────
+    // Auto-select: VoxCPM if available, else ElevenLabs, else nexos
+    let resolvedProvider = provider;
+    if (provider === 'auto') {
+      if (isVoxCPMAvailable()) {
+        resolvedProvider = 'voxcpm';
+      } else if (process.env.ELEVENLABS_API_KEY) {
+        resolvedProvider = 'elevenlabs';
+      } else if (isNexosConfigured()) {
+        resolvedProvider = 'nexos-tts';
+      } else {
+        return NextResponse.json({ error: 'No voice provider configured' }, { status: 503 });
+      }
+    }
+
+    switch (resolvedProvider) {
+      // -- VoxCPM (primary - self-hosted, zero cost) ----------------
+      case 'voxcpm': {
+        if (!isVoxCPMAvailable()) {
+          return NextResponse.json({ error: 'VoxCPM not configured. Set VOXCPM_API_URL or HUGGINGFACE_API_KEY.' }, { status: 503 });
+        }
+
+        // Resolve voice description from show profile if available
+        let resolvedVoiceDesc = voiceDesc;
+        if (!resolvedVoiceDesc && show && character) {
+          const profile = SHOW_PROFILES[show];
+          if (profile) {
+            const char = profile.characters.find(
+              (c) => c.name.toLowerCase() === (character as string).toLowerCase()
+            );
+            if (char) resolvedVoiceDesc = char.voiceDesc;
+          }
+        }
+
+        const config: VoxCPMConfig = {
+          voiceDesc: resolvedVoiceDesc,
+          referenceAudioUrl,
+          referenceTranscript,
+          temperature: 0.3,
+        };
+
+        const result = await generateSpeech(text || prompt, config);
+
+        if (!result.success) {
+          return NextResponse.json({ error: result.error, backend: result.backend }, { status: 500 });
+        }
+
+        await logGeneration({
+          userId, creationType: 'audio', model: `voxcpm-${result.backend}`,
+          prompt: (text || prompt).slice(0, 500),
+          result: { duration: result.duration, character, show, backend: result.backend },
+          success: true,
+        }).catch(() => {});
+
+        return NextResponse.json({
+          type: 'voice', provider: 'voxcpm', backend: result.backend,
+          url: result.audioUrl, duration: result.duration, sampleRate: result.sampleRate,
+        });
+      }
+
+      // -- ElevenLabs Voice/TTS ------------------------------------
       case 'elevenlabs': {
         const key = process.env.ELEVENLABS_API_KEY;
         if (!key) return NextResponse.json({ error: 'ELEVENLABS_API_KEY not configured' }, { status: 503 });
@@ -46,7 +111,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ type: 'voice', provider, url: dataUrl, duration: estDuration });
       }
 
-      // ── Sound Effects (Replicate / AudioGen) ─────────────────
+      // -- Sound Effects (Replicate / AudioGen) --------------------
       case 'sfx':
       case 'audiogen': {
         const token = process.env.REPLICATE_API_TOKEN;
@@ -80,7 +145,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ type: 'sfx', provider: 'audiogen', url: sfxUrl, duration });
       }
 
-      // ── Music (Replicate / MusicGen) ─────────────────────────
+      // -- Music (Replicate / MusicGen) ----------------------------
       case 'music':
       case 'musicgen': {
         const token = process.env.REPLICATE_API_TOKEN;
@@ -117,7 +182,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ type: 'music', provider: 'musicgen', url: musicUrl, duration });
       }
 
-      // ── nexos.ai TTS (OpenAI-compatible) ─────────────────────
+      // -- nexos.ai TTS (OpenAI-compatible) -------------------------
       case 'nexos-tts': {
         if (!isNexosConfigured()) {
           return NextResponse.json({ error: 'NEXOS_API_KEY not configured' }, { status: 503 });
@@ -137,7 +202,7 @@ export async function POST(req: NextRequest) {
       }
 
       default:
-        return NextResponse.json({ error: `Unknown audio provider: ${provider}` }, { status: 400 });
+        return NextResponse.json({ error: `Unknown audio provider: ${resolvedProvider}` }, { status: 400 });
     }
 
   } catch (err: any) {
