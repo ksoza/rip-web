@@ -388,7 +388,7 @@ function ScriptPanel({ user, profile, onProfileUpdate, loading, setLoading, erro
             </button>
             <button onClick={() => {
                 if (result) {
-                  saveAsset({ type: 'script', label: result.title || 'Script', url: '', metadata: { show, content: result.content, logline: result.logline, hashtags: result.hashtags } });
+                  saveAsset({ type: 'script', name: result.title || 'Script', url: '', content: result.content, prompt: result.logline });
                   setError('Script saved to assets! Use Publish flow to post to feed.');
                 }
               }} className="flex-1 py-2.5 rounded-lg text-sm font-bold bg-bg2 border border-bord2 text-muted hover:border-lime hover:text-lime transition-all">
@@ -726,7 +726,7 @@ function ScenePanel({ user, loading, setLoading, error, setError, saveAsset, cha
             {result.revised_prompt && <p className="text-xs text-muted2 leading-relaxed">{result.revised_prompt}</p>}
             <div className="flex gap-2 mt-3">
               <button onClick={() => {
-                  if (result?.url) saveAsset({ type: 'image', label: prompt.slice(0, 40) || 'Scene', url: result.url });
+                  if (result?.url) saveAsset({ type: 'image', name: prompt.slice(0, 40) || 'Scene', url: result.url });
                 }} className="flex-1 py-2 rounded-lg text-xs font-bold text-white bg-rip/20 border border-rip/30 hover:bg-rip/30 transition-all">
                  Add to Timeline
               </button>
@@ -873,7 +873,7 @@ function VideoPanel({ user, loading, setLoading, error, setError, saveAsset }: a
               <span className="text-[10px] text-muted2 ml-auto">{duration}s</span>
             </div>
             <button onClick={() => {
-                if (result?.url) saveAsset({ type: 'video', label: prompt.slice(0, 40) || 'Video Clip', url: result.url });
+                if (result?.url) saveAsset({ type: 'video', name: prompt.slice(0, 40) || 'Video Clip', url: result.url });
               }} className="w-full py-2 rounded-lg text-xs font-bold text-gold bg-gold/10 border border-gold/20 hover:bg-gold/20 transition-all mt-2">
                Add to Timeline
             </button>
@@ -1037,7 +1037,7 @@ function AudioPanel({ user, loading, setLoading, error, setError, saveAsset }: a
           </div>
           <audio src={result.audioUrl} controls className="w-full mb-3" style={{ filter: 'hue-rotate(300deg)' }} />
           <button onClick={() => {
-              if (result?.audioUrl) saveAsset({ type: 'audio', label: (text || prompt).slice(0, 40) || 'Audio', url: result.audioUrl });
+              if (result?.audioUrl) saveAsset({ type: 'audio', name: (text || prompt).slice(0, 40) || 'Audio', url: result.audioUrl });
             }} className="w-full py-2 rounded-lg text-xs font-bold text-lime bg-lime/10 border border-lime/20 hover:bg-lime/20 transition-all">
              Add to Timeline
           </button>

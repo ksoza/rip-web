@@ -341,7 +341,7 @@ export function CharacterController({ user, loading, setLoading, error, setError
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
                         <button onClick={() => {
                           if (g.imageUrl) {
-                            saveAsset({ type: 'image', label: `${selectedChar?.name || 'Character'} Face - ${g.expression}`, url: g.imageUrl });
+                            saveAsset({ type: 'image', name: `${selectedChar?.name || 'Character'} Face - ${g.expression}`, url: g.imageUrl });
                           }
                         }} className="px-2 py-1 rounded bg-rip text-[9px] font-bold text-white">Use as Face</button>
                       </div>
