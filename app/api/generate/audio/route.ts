@@ -1,12 +1,22 @@
 // app/api/generate/audio/route.ts
-// Voice generation (VoxCPM, ElevenLabs), sound effects (AudioGen), music (MusicGen)
-// VoxCPM is the primary voice provider (self-hosted, zero API cost)
-// nexos.ai TTS available as an alternative voice provider
+// Voice generation with $0-first fallback chain:
+//   1. Self-hosted XTTS-v2 (voice cloning, $0) or Kokoro (fast TTS, $0)
+//   2. VoxCPM (self-hosted, $0)
+//   3. ElevenLabs (paid)
+//   4. nexos.ai TTS (paid)
+// Plus: SFX (AudioGen) and Music (MusicGen) via Replicate
 import { NextRequest, NextResponse } from 'next/server';
 import { isNexosConfigured, nexosTTS } from '@/lib/nexos';
 import { generateSpeech, isVoxCPMAvailable, type VoxCPMConfig } from '@/lib/voxcpm';
 import { SHOW_PROFILES } from '@/lib/shows';
 import { logGeneration } from '@/lib/db';
+import {
+  isSelfHostedConfigured,
+  checkSelfHostedHealth,
+  selfHostedCloneVoice,
+  selfHostedTTS,
+  selfHostedDownloadUrl,
+} from '@/lib/self-hosted';
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,24 +31,125 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing text/prompt' }, { status: 400 });
     }
 
-    // Auto-select: VoxCPM if available, else ElevenLabs, else nexos
+    // Auto-select: Self-hosted ($0) -> VoxCPM ($0) -> ElevenLabs ($) -> nexos ($)
     let resolvedProvider = provider;
     if (provider === 'auto') {
-      if (isVoxCPMAvailable()) {
-        resolvedProvider = 'voxcpm';
-      } else if (process.env.ELEVENLABS_API_KEY) {
-        resolvedProvider = 'elevenlabs';
-      } else if (isNexosConfigured()) {
-        resolvedProvider = 'nexos-tts';
-      } else {
-        return NextResponse.json({ error: 'No voice provider configured' }, { status: 503 });
+      // Check self-hosted GPU first (XTTS-v2 for cloning, Kokoro for fast TTS)
+      if (isSelfHostedConfigured()) {
+        const health = await checkSelfHostedHealth();
+        if (health && health.status === 'ok') {
+          // Use XTTS-v2 if we have a reference audio or character voice to clone
+          if (referenceAudioUrl && health.models.voice_clone) {
+            resolvedProvider = 'self-hosted-xtts';
+          } else if (health.models.tts_fast) {
+            resolvedProvider = 'self-hosted-kokoro';
+          } else if (health.models.voice_clone) {
+            resolvedProvider = 'self-hosted-xtts';
+          }
+        }
+      }
+      // Fall through to other providers if self-hosted not available
+      if (resolvedProvider === 'auto') {
+        if (isVoxCPMAvailable()) {
+          resolvedProvider = 'voxcpm';
+        } else if (process.env.ELEVENLABS_API_KEY) {
+          resolvedProvider = 'elevenlabs';
+        } else if (isNexosConfigured()) {
+          resolvedProvider = 'nexos-tts';
+        } else if (isSelfHostedConfigured()) {
+          // Last resort: try self-hosted even without health check
+          resolvedProvider = 'self-hosted-kokoro';
+        } else {
+          return NextResponse.json({ error: 'No voice provider configured' }, { status: 503 });
+        }
       }
     }
 
     switch (resolvedProvider) {
+      // -- Self-hosted XTTS-v2 (voice cloning, $0) ----------------
+      case 'self-hosted-xtts': {
+        if (!isSelfHostedConfigured()) {
+          return NextResponse.json({ error: 'Self-hosted GPU not configured. Set SELF_HOSTED_GPU_URL.' }, { status: 503 });
+        }
+
+        // Resolve reference audio from show profile if not provided
+        let refAudioUrl = referenceAudioUrl;
+        // Future: could auto-lookup character voice samples from a library
+
+        try {
+          const result = await selfHostedCloneVoice({
+            text: text || prompt,
+            language: 'en',
+            reference_audio_url: refAudioUrl,
+          });
+
+          if (!result.success) {
+            return NextResponse.json({ error: result.error || 'XTTS-v2 failed', provider: 'self-hosted-xtts' }, { status: 500 });
+          }
+
+          const audioUrl = result.download_url ? selfHostedDownloadUrl(result.download_url) : undefined;
+
+          await logGeneration({
+            userId, creationType: 'audio', model: 'xtts-v2-self-hosted',
+            prompt: (text || prompt).slice(0, 500),
+            result: { duration: result.duration_seconds, character, show, cloned: result.cloned },
+            success: true,
+          }).catch(() => {});
+
+          return NextResponse.json({
+            type: 'voice', provider: 'self-hosted-xtts',
+            url: audioUrl, cloned: result.cloned,
+            duration: result.duration_seconds, cost: 0,
+          });
+        } catch (err) {
+          console.warn('[audio] Self-hosted XTTS-v2 failed, falling back:', err);
+          // Fall through to VoxCPM/ElevenLabs
+        }
+        // Intentional fall-through if self-hosted fails
+      }
+
+      // -- Self-hosted Kokoro TTS (fast, CPU, $0) -----------------
+      case 'self-hosted-kokoro': {
+        if (!isSelfHostedConfigured()) {
+          return NextResponse.json({ error: 'Self-hosted GPU not configured. Set SELF_HOSTED_GPU_URL.' }, { status: 503 });
+        }
+
+        try {
+          const result = await selfHostedTTS(text || prompt);
+
+          if (!result.success) {
+            return NextResponse.json({ error: result.error || 'Kokoro TTS failed', provider: 'self-hosted-kokoro' }, { status: 500 });
+          }
+
+          const audioUrl = result.download_url ? selfHostedDownloadUrl(result.download_url) : undefined;
+
+          await logGeneration({
+            userId, creationType: 'audio', model: result.model || 'kokoro-82m',
+            prompt: (text || prompt).slice(0, 500),
+            result: { duration: result.duration_seconds },
+            success: true,
+          }).catch(() => {});
+
+          return NextResponse.json({
+            type: 'voice', provider: 'self-hosted-kokoro',
+            url: audioUrl, duration: result.duration_seconds, cost: 0,
+          });
+        } catch (err) {
+          console.warn('[audio] Self-hosted Kokoro failed, falling back:', err);
+          // Fall through to VoxCPM
+        }
+        // Intentional fall-through
+      }
+
       // -- VoxCPM (primary - self-hosted, zero cost) ----------------
       case 'voxcpm': {
         if (!isVoxCPMAvailable()) {
+          // Skip to ElevenLabs if VoxCPM not configured
+          if (process.env.ELEVENLABS_API_KEY) {
+            resolvedProvider = 'elevenlabs';
+            // Re-enter switch via ElevenLabs case below
+            break;
+          }
           return NextResponse.json({ error: 'VoxCPM not configured. Set VOXCPM_API_URL or HUGGINGFACE_API_KEY.' }, { status: 503 });
         }
 
@@ -76,11 +187,11 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           type: 'voice', provider: 'voxcpm', backend: result.backend,
-          url: result.audioUrl, duration: result.duration, sampleRate: result.sampleRate,
+          url: result.audioUrl, duration: result.duration, sampleRate: result.sampleRate, cost: 0,
         });
       }
 
-      // -- ElevenLabs Voice/TTS ------------------------------------
+      // -- ElevenLabs Voice/TTS (paid) ----------------------------
       case 'elevenlabs': {
         const key = process.env.ELEVENLABS_API_KEY;
         if (!key) return NextResponse.json({ error: 'ELEVENLABS_API_KEY not configured' }, { status: 503 });
@@ -204,6 +315,9 @@ export async function POST(req: NextRequest) {
       default:
         return NextResponse.json({ error: `Unknown audio provider: ${resolvedProvider}` }, { status: 400 });
     }
+
+    // If we fell through (e.g. from self-hosted to elevenlabs), handle the redirect
+    return NextResponse.json({ error: 'No provider could handle this request' }, { status: 503 });
 
   } catch (err: any) {
     console.error('Audio generation error:', err);

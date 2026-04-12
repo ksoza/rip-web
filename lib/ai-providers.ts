@@ -1,5 +1,6 @@
 // lib/ai-providers.ts
 // Unified AI provider abstraction layer
+// Organized by cost: $0 FREE providers first, then PAID
 // Each provider's API key comes from environment variables
 
 export type Provider = {
@@ -10,9 +11,74 @@ export type Provider = {
   baseUrl?: string;
   description: string;
   models?: string[];
+  cost: 'free' | 'paid';
 };
 
 export const AI_PROVIDERS: Provider[] = [
+  // ================================================================
+  // FREE TIER ($0 COST)
+  // ================================================================
+
+  // -- SELF-HOSTED VIDEO (Colab/Kaggle, $0) -----------------------
+  {
+    id: 'self-hosted-video',
+    name: 'Wan 2.1 (Self-Hosted)',
+    category: 'video',
+    envKey: 'SELF_HOSTED_GPU_URL',
+    description: 'Free video generation via Colab/Kaggle GPU. Wan 2.1 1.3B, LTX-Video. $0 cost.',
+    models: ['wan-2.1-1.3b', 'ltx-video'],
+    cost: 'free',
+  },
+
+  // -- SELF-HOSTED VOICE CLONING (XTTS-v2, $0) -------------------
+  {
+    id: 'self-hosted-xtts',
+    name: 'XTTS-v2 (Self-Hosted)',
+    category: 'voice',
+    envKey: 'SELF_HOSTED_GPU_URL',
+    description: 'Free voice cloning from 6s audio sample. 17 languages. Coqui XTTS-v2. $0 cost.',
+    models: ['xtts-v2'],
+    cost: 'free',
+  },
+
+  // -- SELF-HOSTED FAST TTS (Kokoro, $0) --------------------------
+  {
+    id: 'self-hosted-kokoro',
+    name: 'Kokoro TTS (Self-Hosted)',
+    category: 'voice',
+    envKey: 'SELF_HOSTED_GPU_URL',
+    description: 'Fast CPU-only TTS. 82M params, natural speech. $0 cost.',
+    models: ['kokoro-82m'],
+    cost: 'free',
+  },
+
+  // -- VOXCPM (Self-Hosted, $0) -----------------------------------
+  {
+    id: 'voxcpm',
+    name: 'VoxCPM (Self-Hosted)',
+    category: 'voice',
+    envKey: 'VOXCPM_API_URL',
+    description: 'Self-hosted TTS: Voice Design + Voice Cloning. 2B params, 30 langs, zero API cost.',
+    models: ['voxcpm-2'],
+    cost: 'free',
+  },
+
+  // -- POLLINATIONS (FREE image API) ------------------------------
+  {
+    id: 'pollinations',
+    name: 'Pollinations AI',
+    category: 'image',
+    envKey: '',
+    baseUrl: 'https://image.pollinations.ai',
+    description: 'Free image generation. No API key, no limits, no signup. FLUX, SDXL, and more.',
+    models: ['flux', 'flux-realism', 'flux-anime', 'flux-3d', 'turbo'],
+    cost: 'free',
+  },
+
+  // ================================================================
+  // PAID TIER (Better quality, faster)
+  // ================================================================
+
   // -- NEXOS.AI GATEWAY (200+ models via single key) --------------
   {
     id: 'nexos',
@@ -32,6 +98,7 @@ export const AI_PROVIDERS: Provider[] = [
       'grok-4',
       'grok-4-mini',
     ],
+    cost: 'paid',
   },
 
   // -- TEXT / STORY ------------------------------------------------
@@ -42,6 +109,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'ANTHROPIC_API_KEY',
     description: 'Story writing, scripts, dialogue, character development',
     models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
+    cost: 'paid',
   },
   {
     id: 'grok',
@@ -51,6 +119,7 @@ export const AI_PROVIDERS: Provider[] = [
     baseUrl: 'https://api.x.ai/v1',
     description: 'Witty, unfiltered story generation and dialogue',
     models: ['grok-3', 'grok-3-mini'],
+    cost: 'paid',
   },
 
   // -- IMAGE / CHARACTER ------------------------------------------
@@ -62,6 +131,7 @@ export const AI_PROVIDERS: Provider[] = [
     baseUrl: 'https://api.openai.com/v1',
     description: 'High-quality character art and scene illustrations',
     models: ['dall-e-3'],
+    cost: 'paid',
   },
   {
     id: 'seedream',
@@ -70,6 +140,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'Photorealistic image generation with strong prompt following',
     models: ['bytedance/seedream-3'],
+    cost: 'paid',
   },
   {
     id: 'flux',
@@ -78,6 +149,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'Fast, high-quality image generation',
     models: ['black-forest-labs/flux-1.1-pro'],
+    cost: 'paid',
   },
 
   // -- SPRITE / CHARACTER SHEET -----------------------------------
@@ -87,10 +159,20 @@ export const AI_PROVIDERS: Provider[] = [
     category: 'sprite',
     envKey: 'REPLICATE_API_TOKEN',
     description: 'Crisp character sprites with multiple directions/poses',
-    models: ['black-forest-labs/flux-1.1-pro'], // Using Flux with sprite-specific prompts
+    models: ['black-forest-labs/flux-1.1-pro'],
+    cost: 'paid',
   },
 
-  // -- VIDEO ------------------------------------------------------
+  // -- VIDEO (PAID) -----------------------------------------------
+  {
+    id: 'fal-video',
+    name: 'fal.ai Video (Veo 3.1 / Seedance 2)',
+    category: 'video',
+    envKey: 'FAL_KEY',
+    description: 'Industry-best video+audio sync. Veo 3.1, Seedance 2, Kling, Wan via fal.ai.',
+    models: ['veo-3.1', 'seedance-2', 'kling-v3', 'wan-2.1', 'minimax-hailuo'],
+    cost: 'paid',
+  },
   {
     id: 'luma',
     name: 'Luma Dream Machine',
@@ -99,6 +181,7 @@ export const AI_PROVIDERS: Provider[] = [
     baseUrl: 'https://api.lumalabs.ai',
     description: 'AI video generation from text or images',
     models: ['dream-machine'],
+    cost: 'paid',
   },
   {
     id: 'runway',
@@ -108,6 +191,7 @@ export const AI_PROVIDERS: Provider[] = [
     baseUrl: 'https://api.dev.runwayml.com/v1',
     description: 'Professional-grade AI video generation and editing',
     models: ['gen-3-alpha', 'gen-3-alpha-turbo'],
+    cost: 'paid',
   },
   {
     id: 'kling',
@@ -116,17 +200,10 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'Advanced video generation with motion control',
     models: ['kwaivgi/kling-v1'],
+    cost: 'paid',
   },
 
-  // -- VOICE / TTS ------------------------------------------------
-  {
-    id: 'voxcpm',
-    name: 'VoxCPM (Self-Hosted)',
-    category: 'voice',
-    envKey: 'VOXCPM_API_URL',
-    description: 'Self-hosted TTS: Voice Design + Voice Cloning. 2B params, 30 langs, zero API cost.',
-    models: ['voxcpm-2'],
-  },
+  // -- VOICE (PAID) -----------------------------------------------
   {
     id: 'elevenlabs',
     name: 'ElevenLabs',
@@ -135,6 +212,7 @@ export const AI_PROVIDERS: Provider[] = [
     baseUrl: 'https://api.elevenlabs.io/v1',
     description: 'Character voices, narration, voice cloning',
     models: ['eleven_multilingual_v2', 'eleven_turbo_v2_5'],
+    cost: 'paid',
   },
 
   // -- LIPSYNC ----------------------------------------------------
@@ -145,6 +223,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'Sync character lip movements to any audio',
     models: ['devxpy/cog-wav2lip'],
+    cost: 'paid',
   },
 
   // -- MOTION / POSE CONTROL -------------------------------------
@@ -155,6 +234,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'Stick-figure pose control for precise character animation',
     models: ['jagilley/controlnet-pose'],
+    cost: 'paid',
   },
 
   // -- FACE SWAP --------------------------------------------------
@@ -165,6 +245,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'Swap faces across scenes for character consistency',
     models: ['lucataco/faceswap'],
+    cost: 'paid',
   },
 
   // -- SOUND EFFECTS ----------------------------------------------
@@ -175,6 +256,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'AI-generated sound effects and ambient audio',
     models: ['meta/audiogen'],
+    cost: 'paid',
   },
 
   // -- MUSIC ------------------------------------------------------
@@ -185,6 +267,7 @@ export const AI_PROVIDERS: Provider[] = [
     envKey: 'REPLICATE_API_TOKEN',
     description: 'AI-generated background music and scores',
     models: ['meta/musicgen'],
+    cost: 'paid',
   },
 ];
 
@@ -197,15 +280,29 @@ export function getProvidersByCategory(category: string): Provider[] {
   return AI_PROVIDERS.filter(p => p.category === category);
 }
 
+export function getFreeProviders(): Provider[] {
+  return AI_PROVIDERS.filter(p => p.cost === 'free');
+}
+
+export function getPaidProviders(): Provider[] {
+  return AI_PROVIDERS.filter(p => p.cost === 'paid');
+}
+
 export function isProviderConfigured(id: string): boolean {
   const provider = getProvider(id);
   if (!provider) return false;
+  // Pollinations needs no API key
+  if (provider.id === 'pollinations') return true;
   const key = process.env[provider.envKey];
   return !!key && key.length > 5;
 }
 
 export function getConfiguredProviders(): Provider[] {
   return AI_PROVIDERS.filter(p => isProviderConfigured(p.id));
+}
+
+export function getConfiguredFreeProviders(): Provider[] {
+  return AI_PROVIDERS.filter(p => p.cost === 'free' && isProviderConfigured(p.id));
 }
 
 // -- Provider API clients -----------------------------------------
@@ -394,41 +491,6 @@ export async function callNexos(
   return data.choices[0]?.message?.content || '';
 }
 
-// -- Voice provider preference helper -----------------------------
-// Returns the best available voice: VoxCPM -> ElevenLabs -> nexos
-export function getPreferredVoiceProvider(): Provider | undefined {
-  const voxcpm = getProvider('voxcpm');
-  if (voxcpm && isProviderConfigured('voxcpm')) return voxcpm;
-
-  const elevenlabs = getProvider('elevenlabs');
-  if (elevenlabs && isProviderConfigured('elevenlabs')) return elevenlabs;
-
-  const nexos = getProvider('nexos');
-  if (nexos && isProviderConfigured('nexos')) return nexos;
-
-  return undefined;
-}
-
-// -- Provider preference helper -----------------------------------
-// Returns the best available text provider: nexos.ai first, then direct providers
-export function getPreferredTextProvider(): Provider | undefined {
-  const nexos = getProvider('nexos');
-  if (nexos && isProviderConfigured('nexos')) return nexos;
-
-  const anthropic = getProvider('anthropic');
-  if (anthropic && isProviderConfigured('anthropic')) return anthropic;
-
-  const grok = getProvider('grok');
-  if (grok && isProviderConfigured('grok')) return grok;
-
-  return undefined;
-}
-
-// Check if nexos.ai is configured and should be used as the default gateway
-export function shouldUseNexos(): boolean {
-  return isProviderConfigured('nexos');
-}
-
 // Runway ML helper
 export async function callRunway(prompt: string, options: { model?: string; duration?: number; image_url?: string } = {}): Promise<any> {
   const key = process.env.RUNWAY_API_KEY;
@@ -478,4 +540,72 @@ export async function callRunway(prompt: string, options: { model?: string; dura
   }
 
   return result;
+}
+
+// -- Voice provider preference helper -----------------------------
+// Returns the best available voice: Self-hosted -> VoxCPM -> ElevenLabs -> nexos
+export function getPreferredVoiceProvider(): Provider | undefined {
+  // $0 first: self-hosted XTTS-v2
+  const xtts = getProvider('self-hosted-xtts');
+  if (xtts && isProviderConfigured('self-hosted-xtts')) return xtts;
+
+  // $0: self-hosted Kokoro
+  const kokoro = getProvider('self-hosted-kokoro');
+  if (kokoro && isProviderConfigured('self-hosted-kokoro')) return kokoro;
+
+  // $0: VoxCPM
+  const voxcpm = getProvider('voxcpm');
+  if (voxcpm && isProviderConfigured('voxcpm')) return voxcpm;
+
+  // Paid: ElevenLabs
+  const elevenlabs = getProvider('elevenlabs');
+  if (elevenlabs && isProviderConfigured('elevenlabs')) return elevenlabs;
+
+  // Paid: nexos
+  const nexos = getProvider('nexos');
+  if (nexos && isProviderConfigured('nexos')) return nexos;
+
+  return undefined;
+}
+
+// -- Video provider preference helper -----------------------------
+// Returns the best available video: Self-hosted -> fal.ai -> Luma -> Runway
+export function getPreferredVideoProvider(): Provider | undefined {
+  // $0 first: self-hosted Wan 2.1
+  const selfHosted = getProvider('self-hosted-video');
+  if (selfHosted && isProviderConfigured('self-hosted-video')) return selfHosted;
+
+  // Paid: fal.ai (Veo, Seedance, etc)
+  const fal = getProvider('fal-video');
+  if (fal && isProviderConfigured('fal-video')) return fal;
+
+  // Paid: Luma
+  const luma = getProvider('luma');
+  if (luma && isProviderConfigured('luma')) return luma;
+
+  // Paid: Runway
+  const runway = getProvider('runway');
+  if (runway && isProviderConfigured('runway')) return runway;
+
+  return undefined;
+}
+
+// -- Provider preference helper -----------------------------------
+// Returns the best available text provider: nexos.ai first, then direct providers
+export function getPreferredTextProvider(): Provider | undefined {
+  const nexos = getProvider('nexos');
+  if (nexos && isProviderConfigured('nexos')) return nexos;
+
+  const anthropic = getProvider('anthropic');
+  if (anthropic && isProviderConfigured('anthropic')) return anthropic;
+
+  const grok = getProvider('grok');
+  if (grok && isProviderConfigured('grok')) return grok;
+
+  return undefined;
+}
+
+// Check if nexos.ai is configured and should be used as the default gateway
+export function shouldUseNexos(): boolean {
+  return isProviderConfigured('nexos');
 }
