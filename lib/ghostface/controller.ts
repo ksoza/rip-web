@@ -381,14 +381,27 @@ async function executeTool(
       }
 
       case 'generate_narration': {
-        const res = await fetch(`${baseUrl}/api/create/narrate`, {
+        // VoxCPM primary -> ElevenLabs fallback -> nexos fallback (auto-select)
+        const ttsBody: Record<string, unknown> = {
+          text: input.text,
+          provider: 'auto',
+        };
+        if (input.character) ttsBody.character = input.character;
+        if (input.show) ttsBody.show = input.show;
+        if (input.voiceDesc) ttsBody.voiceDesc = input.voiceDesc;
+        if (input.referenceAudioUrl) ttsBody.referenceAudioUrl = input.referenceAudioUrl;
+
+        const res = await fetch(`${baseUrl}/api/generate/audio`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: input.text }),
+          body: JSON.stringify(ttsBody),
         });
-        if (!res.ok) return { success: false, error: 'TTS failed', durationMs: Date.now() - startMs };
+        if (!res.ok) {
+          const errText = await res.text();
+          return { success: false, error: `TTS failed: ${errText}`, durationMs: Date.now() - startMs };
+        }
         const data = await res.json();
-        return { success: true, audioUrl: data.audioUrl, durationMs: Date.now() - startMs };
+        return { success: true, audioUrl: data.url, provider: data.provider, durationMs: Date.now() - startMs };
       }
 
       case 'generate_music': {

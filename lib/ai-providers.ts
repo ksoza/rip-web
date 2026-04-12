@@ -13,14 +13,14 @@ export type Provider = {
 };
 
 export const AI_PROVIDERS: Provider[] = [
-  // ── NEXOS.AI GATEWAY (200+ models via single key) ──────────────
+  // -- NEXOS.AI GATEWAY (200+ models via single key) --------------
   {
     id: 'nexos',
     name: 'nexos.ai Gateway',
     category: 'text',
     envKey: 'NEXOS_API_KEY',
     baseUrl: 'https://api.nexos.ai/v1',
-    description: 'AI gateway — 200+ models via single API key. Claude, GPT-4.1, Gemini 3, Grok 4 and more.',
+    description: 'AI gateway -- 200+ models via single API key. Claude, GPT-4.1, Gemini 3, Grok 4 and more.',
     models: [
       'claude-sonnet-4.5',
       'claude-opus-4.6',
@@ -34,7 +34,7 @@ export const AI_PROVIDERS: Provider[] = [
     ],
   },
 
-  // ── TEXT / STORY ────────────────────────────────────────────────
+  // -- TEXT / STORY ------------------------------------------------
   {
     id: 'anthropic',
     name: 'Claude (Anthropic)',
@@ -53,10 +53,10 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['grok-3', 'grok-3-mini'],
   },
 
-  // ── IMAGE / CHARACTER ──────────────────────────────────────────
+  // -- IMAGE / CHARACTER ------------------------------------------
   {
     id: 'dalle',
-    name: 'DALL·E 3 (OpenAI)',
+    name: 'DALL-E 3 (OpenAI)',
     category: 'image',
     envKey: 'OPENAI_API_KEY',
     baseUrl: 'https://api.openai.com/v1',
@@ -80,7 +80,7 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['black-forest-labs/flux-1.1-pro'],
   },
 
-  // ── SPRITE / CHARACTER SHEET ───────────────────────────────────
+  // -- SPRITE / CHARACTER SHEET -----------------------------------
   {
     id: 'sprite',
     name: 'AI Sprite Creator',
@@ -90,7 +90,7 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['black-forest-labs/flux-1.1-pro'], // Using Flux with sprite-specific prompts
   },
 
-  // ── VIDEO ──────────────────────────────────────────────────────
+  // -- VIDEO ------------------------------------------------------
   {
     id: 'luma',
     name: 'Luma Dream Machine',
@@ -118,7 +118,15 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['kwaivgi/kling-v1'],
   },
 
-  // ── VOICE / TTS ────────────────────────────────────────────────
+  // -- VOICE / TTS ------------------------------------------------
+  {
+    id: 'voxcpm',
+    name: 'VoxCPM (Self-Hosted)',
+    category: 'voice',
+    envKey: 'VOXCPM_API_URL',
+    description: 'Self-hosted TTS: Voice Design + Voice Cloning. 2B params, 30 langs, zero API cost.',
+    models: ['voxcpm-2'],
+  },
   {
     id: 'elevenlabs',
     name: 'ElevenLabs',
@@ -129,7 +137,7 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['eleven_multilingual_v2', 'eleven_turbo_v2_5'],
   },
 
-  // ── LIPSYNC ────────────────────────────────────────────────────
+  // -- LIPSYNC ----------------------------------------------------
   {
     id: 'lipsync',
     name: 'Lip Sync (Wav2Lip)',
@@ -139,7 +147,7 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['devxpy/cog-wav2lip'],
   },
 
-  // ── MOTION / POSE CONTROL ─────────────────────────────────────
+  // -- MOTION / POSE CONTROL -------------------------------------
   {
     id: 'motion',
     name: 'Motion Control (TAP / ControlNet)',
@@ -149,7 +157,7 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['jagilley/controlnet-pose'],
   },
 
-  // ── FACE SWAP ──────────────────────────────────────────────────
+  // -- FACE SWAP --------------------------------------------------
   {
     id: 'faceswap',
     name: 'Face Swap (InsightFace)',
@@ -159,7 +167,7 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['lucataco/faceswap'],
   },
 
-  // ── SOUND EFFECTS ──────────────────────────────────────────────
+  // -- SOUND EFFECTS ----------------------------------------------
   {
     id: 'audiogen',
     name: 'AudioGen (Meta)',
@@ -169,7 +177,7 @@ export const AI_PROVIDERS: Provider[] = [
     models: ['meta/audiogen'],
   },
 
-  // ── MUSIC ──────────────────────────────────────────────────────
+  // -- MUSIC ------------------------------------------------------
   {
     id: 'musicgen',
     name: 'MusicGen (Meta)',
@@ -180,7 +188,7 @@ export const AI_PROVIDERS: Provider[] = [
   },
 ];
 
-// ── Helper functions ─────────────────────────────────────────────
+// -- Helper functions ---------------------------------------------
 export function getProvider(id: string): Provider | undefined {
   return AI_PROVIDERS.find(p => p.id === id);
 }
@@ -200,7 +208,7 @@ export function getConfiguredProviders(): Provider[] {
   return AI_PROVIDERS.filter(p => isProviderConfigured(p.id));
 }
 
-// ── Provider API clients ─────────────────────────────────────────
+// -- Provider API clients -----------------------------------------
 
 // Replicate API helper (used by many providers)
 export async function runReplicate(model: string, input: Record<string, any>): Promise<any> {
@@ -244,7 +252,7 @@ export async function runReplicate(model: string, input: Record<string, any>): P
   return result.output;
 }
 
-// OpenAI API helper (DALL·E)
+// OpenAI API helper (DALL-E)
 export async function callOpenAI(endpoint: string, body: Record<string, any>): Promise<any> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error('OPENAI_API_KEY not configured');
@@ -386,7 +394,22 @@ export async function callNexos(
   return data.choices[0]?.message?.content || '';
 }
 
-// ── Provider preference helper ───────────────────────────────────
+// -- Voice provider preference helper -----------------------------
+// Returns the best available voice: VoxCPM -> ElevenLabs -> nexos
+export function getPreferredVoiceProvider(): Provider | undefined {
+  const voxcpm = getProvider('voxcpm');
+  if (voxcpm && isProviderConfigured('voxcpm')) return voxcpm;
+
+  const elevenlabs = getProvider('elevenlabs');
+  if (elevenlabs && isProviderConfigured('elevenlabs')) return elevenlabs;
+
+  const nexos = getProvider('nexos');
+  if (nexos && isProviderConfigured('nexos')) return nexos;
+
+  return undefined;
+}
+
+// -- Provider preference helper -----------------------------------
 // Returns the best available text provider: nexos.ai first, then direct providers
 export function getPreferredTextProvider(): Provider | undefined {
   const nexos = getProvider('nexos');
