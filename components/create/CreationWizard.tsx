@@ -1,13 +1,16 @@
 'use client';
 // components/create/CreationWizard.tsx
-// Full guided creation pipeline: Pick IP {'\u2192'} Character {'\u2192'} Prompt {'\u2192'} Script {'\u2192'} Storyboard {'\u2192'} Generate {'\u2192'} Result
-// Phase 2: Enhanced pipeline with AI script generation, fal.ai images, and video generation
-import { useState, useEffect, useRef, useCallback } from 'react';
+// Wireframe-aligned pipeline (engine step CUT -- free options auto-selected):
+//   Config -> Script -> Storyboard -> Images -> Video -> Result
+// Characters auto-detected from prompt + show profile. Optional "Personal Character" field.
+import { useState, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { SHOW_PROFILES, ART_STYLES, resolveArtStylePrompt } from '@/lib/shows';
+import type { ArtStyleId } from '@/lib/shows';
 
-// {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
+// ===================================================================
 //  TYPES
-// {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
+// ===================================================================
 
 export interface MediaItem {
   id: string;
@@ -17,16 +20,6 @@ export interface MediaItem {
   genre: string;
   emoji: string;
   gradient: string;
-}
-
-interface CharacterOption {
-  id: string;
-  name: string;
-  role: string;
-  emoji: string;
-  isCustom?: boolean;
-  imageUrl?: string | null;
-  tmdbId?: number;
 }
 
 interface ScriptDialogue {
@@ -55,7 +48,14 @@ interface StoryboardScene {
   emoji: string;
 }
 
-type WizardStep = 'character' | 'prompt' | 'script' | 'storyboard' | 'generating' | 'review-images' | 'review-videos' | 'result';
+type WizardStep =
+  | 'config'          // Step 1: Prompt + Personal Character + Tone + Art Style + Format
+  | 'script'          // Step 2: Generate & review script
+  | 'storyboard'      // Step 3: Approve storyboard
+  | 'generating'      // Step 4a: Image generation (progress)
+  | 'review-images'   // Step 4b: Review generated images
+  | 'review-videos'   // Step 5: Generate & review videos
+  | 'result';         // Step 6: Publish or Edit in RIP Studio
 
 interface Props {
   user: User;
@@ -68,8 +68,8 @@ interface Props {
 interface ResultData {
   title: string;
   media: MediaItem;
-  character: CharacterOption;
   prompt: string;
+  personalCharacter: string;
   tone: string;
   format: string;
   scenes: StoryboardScene[];
@@ -78,63 +78,7 @@ interface ResultData {
   thumbnailUrl?: string;
 }
 
-// {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-//  CHARACTER DATABASES (per show/movie)
-// {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-
-const CHARACTER_DB: Record<string, CharacterOption[]> = {
-  // {'\u2500'}{'\u2500'} TV Shows: Drama / Crime {'\u2500'}{'\u2500'}
-  'Breaking Bad':     [{ id: 'bb1', name: 'Walter White', role: 'Chemistry Teacher / Heisenberg', emoji: '\u{1F9EA}' }, { id: 'bb2', name: 'Jesse Pinkman', role: 'Partner in Crime', emoji: '\u{1F392}' }, { id: 'bb3', name: 'Gus Fring', role: 'The Chicken Man', emoji: '\u{1F357}' }, { id: 'bb4', name: 'Saul Goodman', role: 'Criminal Lawyer', emoji: '\u2696\uFE0F' }, { id: 'bb5', name: 'Mike Ehrmantraut', role: 'The Fixer', emoji: '\u{1F52B}' }],
-  'Game of Thrones':  [{ id: 'gt1', name: 'Daenerys Targaryen', role: 'Mother of Dragons', emoji: '\u{1F409}' }, { id: 'gt2', name: 'Jon Snow', role: 'King in the North', emoji: '\u{1F43A}' }, { id: 'gt3', name: 'Tyrion Lannister', role: 'The Imp', emoji: '\u{1F377}' }, { id: 'gt4', name: 'Arya Stark', role: 'No One', emoji: '\u{1F5E1}\uFE0F' }, { id: 'gt5', name: 'Cersei Lannister', role: 'The Queen', emoji: '\u{1F451}' }],
-  'The Sopranos':     [{ id: 'sp1', name: 'Tony Soprano', role: 'Mob Boss', emoji: '\u{1F90C}' }, { id: 'sp2', name: 'Carmela Soprano', role: 'The Wife', emoji: '\u{1F48D}' }, { id: 'sp3', name: 'Christopher Moltisanti', role: 'The Prot\u00E9g\u00E9', emoji: '\u{1F3AC}' }, { id: 'sp4', name: 'Dr. Melfi', role: 'The Therapist', emoji: '\u{1F4CB}' }],
-  'The Wire':         [{ id: 'tw1', name: 'Jimmy McNulty', role: 'Rogue Detective', emoji: '\u{1F50D}' }, { id: 'tw2', name: 'Omar Little', role: 'The Robin Hood', emoji: '\u{1F3AF}' }, { id: 'tw3', name: 'Avon Barksdale', role: 'Drug Kingpin', emoji: '\u{1F451}' }, { id: 'tw4', name: 'Stringer Bell', role: 'The Businessman', emoji: '\u{1F4CA}' }],
-  'Peaky Blinders':   [{ id: 'pb1', name: 'Thomas Shelby', role: 'Boss of the Peaky Blinders', emoji: '\u{1F3A9}' }, { id: 'pb2', name: 'Arthur Shelby', role: 'The Enforcer', emoji: '\u{1F44A}' }, { id: 'pb3', name: 'Polly Gray', role: 'The Matriarch', emoji: '\u{1F52E}' }, { id: 'pb4', name: 'Alfie Solomons', role: 'Jewish Gang Leader', emoji: '\u{1F94A}' }],
-  'Better Call Saul': [{ id: 'bc1', name: 'Jimmy McGill / Saul', role: 'Slippin\' Jimmy', emoji: '\u2696\uFE0F' }, { id: 'bc2', name: 'Kim Wexler', role: 'The Partner', emoji: '\u{1F4D1}' }, { id: 'bc3', name: 'Nacho Varga', role: 'Double Agent', emoji: '\u{1F3AD}' }, { id: 'bc4', name: 'Lalo Salamanca', role: 'Charismatic Villain', emoji: '\u{1F608}' }],
-  'Ozark':            [{ id: 'oz1', name: 'Marty Byrde', role: 'Money Launderer', emoji: '\u{1F4B0}' }, { id: 'oz2', name: 'Wendy Byrde', role: 'The Ambitious Wife', emoji: '\u{1F3DB}\uFE0F' }, { id: 'oz3', name: 'Ruth Langmore', role: 'The Local', emoji: '\u{1F525}' }],
-  'Succession':       [{ id: 'su1', name: 'Logan Roy', role: 'The Patriarch', emoji: '\u{1F981}' }, { id: 'su2', name: 'Kendall Roy', role: 'The Heir', emoji: '\u{1F48A}' }, { id: 'su3', name: 'Shiv Roy', role: 'The Daughter', emoji: '\u{1F469}\u200D\u{1F4BC}' }, { id: 'su4', name: 'Roman Roy', role: 'The Youngest', emoji: '\u{1F921}' }],
-  // {'\u2500'}{'\u2500'} TV Shows: Sci-Fi / Fantasy / Horror {'\u2500'}{'\u2500'}
-  'Stranger Things':  [{ id: 'st1', name: 'Eleven', role: 'Psychokinetic Hero', emoji: '\u{1F9C7}' }, { id: 'st2', name: 'Dustin Henderson', role: 'The Brains', emoji: '\u{1F9E2}' }, { id: 'st3', name: 'Steve Harrington', role: 'Babysitter King', emoji: '\u{1F987}' }, { id: 'st4', name: 'Vecna', role: 'The Villain', emoji: '\u{1F570}\uFE0F' }, { id: 'st5', name: 'Hopper', role: 'The Chief', emoji: '\u{1F694}' }],
-  'The Last of Us':   [{ id: 'tl1', name: 'Joel Miller', role: 'Smuggler / Protector', emoji: '\u{1F528}' }, { id: 'tl2', name: 'Ellie Williams', role: 'The Immune One', emoji: '\u{1F344}' }, { id: 'tl3', name: 'Tess', role: 'Joel\'s Partner', emoji: '\u{1F4AA}' }],
-  'The Mandalorian':  [{ id: 'mn1', name: 'Din Djarin', role: 'The Mandalorian', emoji: '\u2694\uFE0F' }, { id: 'mn2', name: 'Grogu', role: 'The Child', emoji: '\u{1F49A}' }, { id: 'mn3', name: 'Bo-Katan', role: 'Mandalore Royalty', emoji: '\u{1F478}' }, { id: 'mn4', name: 'Moff Gideon', role: 'Imperial Villain', emoji: '\u{1F9B9}' }],
-  'Wednesday':        [{ id: 'wd1', name: 'Wednesday Addams', role: 'Nevermore Detective', emoji: '\u{1F5A4}' }, { id: 'wd2', name: 'Enid Sinclair', role: 'Bubbly Werewolf', emoji: '\u{1F43A}' }, { id: 'wd3', name: 'Thing', role: 'Helpful Hand', emoji: '\u{1FAF3}' }, { id: 'wd4', name: 'Tyler Galpin', role: 'Barista with Secrets', emoji: '\u2615' }],
-  'The Walking Dead': [{ id: 'wk1', name: 'Rick Grimes', role: 'The Leader', emoji: '\u{1F920}' }, { id: 'wk2', name: 'Daryl Dixon', role: 'The Tracker', emoji: '\u{1F3F9}' }, { id: 'wk3', name: 'Negan', role: 'The Villain', emoji: '\u{1F3CF}' }, { id: 'wk4', name: 'Michonne', role: 'The Samurai', emoji: '\u2694\uFE0F' }],
-  'Black Mirror':     [{ id: 'bm1', name: 'Custom Character', role: 'Choose your own', emoji: '\u{1F4F1}', isCustom: true }],
-  'Westworld':        [{ id: 'ww1', name: 'Dolores Abernathy', role: 'The Awakened Host', emoji: '\u{1F916}' }, { id: 'ww2', name: 'Maeve Millay', role: 'The Madam', emoji: '\u{1F3AD}' }, { id: 'ww3', name: 'Bernard Lowe', role: 'The Creator', emoji: '\u{1F9E0}' }, { id: 'ww4', name: 'Man in Black', role: 'The Player', emoji: '\u{1F5A4}' }],
-  'The Witcher':      [{ id: 'wt1', name: 'Geralt of Rivia', role: 'The Witcher', emoji: '\u2694\uFE0F' }, { id: 'wt2', name: 'Yennefer', role: 'Sorceress of Vengerberg', emoji: '\u{1F52E}' }, { id: 'wt3', name: 'Ciri', role: 'The Lion Cub', emoji: '\u{1F981}' }, { id: 'wt4', name: 'Jaskier', role: 'The Bard', emoji: '\u{1F3B6}' }],
-  'House of the Dragon': [{ id: 'hd1', name: 'Rhaenyra Targaryen', role: 'The Heir', emoji: '\u{1F409}' }, { id: 'hd2', name: 'Daemon Targaryen', role: 'The Rogue Prince', emoji: '\u2694\uFE0F' }, { id: 'hd3', name: 'Alicent Hightower', role: 'The Queen', emoji: '\u{1F451}' }],
-  // {'\u2500'}{'\u2500'} TV Shows: Comedy {'\u2500'}{'\u2500'}
-  'The Office':       [{ id: 'of1', name: 'Michael Scott', role: 'World\'s Best Boss', emoji: '\u{1F3C6}' }, { id: 'of2', name: 'Dwight Schrute', role: 'Assistant (to the) Regional Manager', emoji: '\u{1F96C}' }, { id: 'of3', name: 'Jim Halpert', role: 'The Prankster', emoji: '\u{1F60F}' }, { id: 'of4', name: 'Kevin Malone', role: 'Accountant / Chili Expert', emoji: '\u{1F372}' }],
-  'Friends':          [{ id: 'fr1', name: 'Ross Geller', role: 'The Paleontologist', emoji: '\u{1F995}' }, { id: 'fr2', name: 'Rachel Green', role: 'The Fashionista', emoji: '\u{1F457}' }, { id: 'fr3', name: 'Joey Tribbiani', role: 'The Actor', emoji: '\u{1F355}' }, { id: 'fr4', name: 'Chandler Bing', role: 'The Funny One', emoji: '\u{1F602}' }],
-  'Seinfeld':         [{ id: 'se1', name: 'Jerry Seinfeld', role: 'The Comedian', emoji: '\u{1F3A4}' }, { id: 'se2', name: 'George Costanza', role: 'The Neurotic', emoji: '\u{1F624}' }, { id: 'se3', name: 'Elaine Benes', role: 'The No-Nonsense', emoji: '\u{1F485}' }, { id: 'se4', name: 'Cosmo Kramer', role: 'The Wild Card', emoji: '\u{1F92A}' }],
-  "It's Always Sunny": [{ id: 'as1', name: 'Dennis Reynolds', role: 'The Golden God', emoji: '\u{1F60E}' }, { id: 'as2', name: 'Charlie Kelly', role: 'The Wild Card', emoji: '\u{1F400}' }, { id: 'as3', name: 'Frank Reynolds', role: 'The Dirty One', emoji: '\u{1F4B0}' }, { id: 'as4', name: 'Sweet Dee', role: 'The Bird', emoji: '\u{1F985}' }],
-  'Parks and Recreation': [{ id: 'pr1', name: 'Leslie Knope', role: 'Deputy Director', emoji: '\u{1F4CB}' }, { id: 'pr2', name: 'Ron Swanson', role: 'Woodworking Libertarian', emoji: '\u{1F969}' }, { id: 'pr3', name: 'Andy Dwyer', role: 'Shoe-Shiner / Rockstar', emoji: '\u{1F3B8}' }],
-  // {'\u2500'}{'\u2500'} TV Shows: Animated {'\u2500'}{'\u2500'}
-  'The Simpsons':     [{ id: 'sm1', name: 'Homer Simpson', role: 'Nuclear Safety Inspector', emoji: '\u{1F369}' }, { id: 'sm2', name: 'Bart Simpson', role: 'The Troublemaker', emoji: '\u{1F4DB}' }, { id: 'sm3', name: 'Marge Simpson', role: 'The Mom', emoji: '\u{1F499}' }],
-  'South Park':       [{ id: 'sp1', name: 'Eric Cartman', role: 'The Manipulator', emoji: '\u{1F621}' }, { id: 'sp2', name: 'Kenny McCormick', role: 'The Immortal', emoji: '\u{1F9E1}' }, { id: 'sp3', name: 'Randy Marsh', role: 'The Dad', emoji: '\u{1F377}' }],
-  'Rick and Morty':   [{ id: 'rm1', name: 'Rick Sanchez', role: 'Genius Scientist', emoji: '\u{1F9EA}' }, { id: 'rm2', name: 'Morty Smith', role: 'Reluctant Sidekick', emoji: '\u{1F630}' }, { id: 'rm3', name: 'Mr. Meeseeks', role: 'Existence is Pain', emoji: '\u{1F535}' }],
-  'Family Guy':       [{ id: 'fg1', name: 'Peter Griffin', role: 'Family Man', emoji: '\u{1F37A}' }, { id: 'fg2', name: 'Stewie Griffin', role: 'Evil Baby Genius', emoji: '\u{1F9E0}' }, { id: 'fg3', name: 'Brian Griffin', role: 'The Dog / Writer', emoji: '\u{1F415}' }],
-  // {'\u2500'}{'\u2500'} Anime {'\u2500'}{'\u2500'}
-  'Naruto':            [{ id: 'na1', name: 'Naruto Uzumaki', role: 'Future Hokage', emoji: '\u{1F365}' }, { id: 'na2', name: 'Sasuke Uchiha', role: 'The Avenger', emoji: '\u26A1' }, { id: 'na3', name: 'Kakashi Hatake', role: 'Copy Ninja', emoji: '\u{1F4D6}' }],
-  'One Piece':         [{ id: 'op1', name: 'Monkey D. Luffy', role: 'Future Pirate King', emoji: '\u{1F3F4}\u200D\u2620\uFE0F' }, { id: 'op2', name: 'Roronoa Zoro', role: 'Three-Sword Style', emoji: '\u2694\uFE0F' }, { id: 'op3', name: 'Nami', role: 'Navigator', emoji: '\u{1F5FA}\uFE0F' }],
-  'Attack on Titan':   [{ id: 'at1', name: 'Eren Yeager', role: 'The Attack Titan', emoji: '\u{1F4A2}' }, { id: 'at2', name: 'Mikasa Ackerman', role: 'The Protector', emoji: '\u{1F5E1}\uFE0F' }, { id: 'at3', name: 'Levi Ackerman', role: 'Humanity\'s Strongest', emoji: '\u2694\uFE0F' }],
-  'Demon Slayer':      [{ id: 'ds1', name: 'Tanjiro Kamado', role: 'Water Breathing Slayer', emoji: '\u{1F4A7}' }, { id: 'ds2', name: 'Nezuko Kamado', role: 'The Demon Sister', emoji: '\u{1F38B}' }, { id: 'ds3', name: 'Zenitsu Agatsuma', role: 'Thunder Breathing', emoji: '\u26A1' }],
-  'Death Note':        [{ id: 'dn1', name: 'Light Yagami', role: 'Kira', emoji: '\u{1F4D3}' }, { id: 'dn2', name: 'L Lawliet', role: 'World\'s Greatest Detective', emoji: '\u{1F36C}' }, { id: 'dn3', name: 'Ryuk', role: 'The Shinigami', emoji: '\u{1F34E}' }],
-  'Dragon Ball Z':     [{ id: 'db1', name: 'Goku', role: 'Super Saiyan', emoji: '\u{1F7E1}' }, { id: 'db2', name: 'Vegeta', role: 'Prince of All Saiyans', emoji: '\u{1F451}' }, { id: 'db3', name: 'Frieza', role: 'Emperor of the Universe', emoji: '\u{1F47F}' }],
-  'My Hero Academia':  [{ id: 'mh1', name: 'Izuku Midoriya', role: 'One For All', emoji: '\u{1F49A}' }, { id: 'mh2', name: 'Katsuki Bakugo', role: 'Explosion Hero', emoji: '\u{1F4A5}' }, { id: 'mh3', name: 'All Might', role: 'Symbol of Peace', emoji: '\u{1F4AA}' }],
-  // {'\u2500'}{'\u2500'} Movies {'\u2500'}{'\u2500'}
-  'The Dark Knight':   [{ id: 'dk1', name: 'Batman / Bruce Wayne', role: 'The Dark Knight', emoji: '\u{1F987}' }, { id: 'dk2', name: 'Joker', role: 'Agent of Chaos', emoji: '\u{1F0CF}' }, { id: 'dk3', name: 'Harvey Dent', role: 'Two-Face', emoji: '\u{1FA99}' }],
-  'Avengers: Endgame': [{ id: 'ae1', name: 'Tony Stark', role: 'Iron Man', emoji: '\u{1F916}' }, { id: 'ae2', name: 'Steve Rogers', role: 'Captain America', emoji: '\u{1F6E1}\uFE0F' }, { id: 'ae3', name: 'Thor', role: 'God of Thunder', emoji: '\u26A1' }, { id: 'ae4', name: 'Thanos', role: 'The Mad Titan', emoji: '\u{1F49C}' }],
-  'Spider-Verse':      [{ id: 'sv1', name: 'Miles Morales', role: 'Spider-Man', emoji: '\u{1F577}\uFE0F' }, { id: 'sv2', name: 'Gwen Stacy', role: 'Spider-Gwen', emoji: '\u{1FA70}' }, { id: 'sv3', name: 'Miguel O\'Hara', role: 'Spider-Man 2099', emoji: '\u{1F534}' }],
-  'The Matrix':        [{ id: 'mx1', name: 'Neo', role: 'The One', emoji: '\u{1F48A}' }, { id: 'mx2', name: 'Morpheus', role: 'The Guide', emoji: '\u{1F576}\uFE0F' }, { id: 'mx3', name: 'Agent Smith', role: 'The System', emoji: '\u{1F935}' }],
-  'Pulp Fiction':      [{ id: 'pf1', name: 'Vincent Vega', role: 'Hitman', emoji: '\u{1F488}' }, { id: 'pf2', name: 'Jules Winnfield', role: 'The Philosophical Hitman', emoji: '\u{1F354}' }, { id: 'pf3', name: 'Mia Wallace', role: 'The Boss\'s Wife', emoji: '\u{1F483}' }],
-  'The Godfather':     [{ id: 'gf1', name: 'Vito Corleone', role: 'The Godfather', emoji: '\u{1F339}' }, { id: 'gf2', name: 'Michael Corleone', role: 'The Heir', emoji: '\u{1F52B}' }, { id: 'gf3', name: 'Sonny Corleone', role: 'The Hotheaded Son', emoji: '\u{1F4A2}' }],
-  'John Wick':         [{ id: 'jw1', name: 'John Wick', role: 'Baba Yaga', emoji: '\u{1F436}' }, { id: 'jw2', name: 'Winston', role: 'Continental Manager', emoji: '\u{1F3A9}' }, { id: 'jw3', name: 'Bowery King', role: 'Underground Leader', emoji: '\u{1F54A}\uFE0F' }],
-  'Inception':         [{ id: 'ic1', name: 'Dom Cobb', role: 'The Extractor', emoji: '\u{1F3A1}' }, { id: 'ic2', name: 'Arthur', role: 'The Point Man', emoji: '\u{1F3AF}' }, { id: 'ic3', name: 'Mal', role: 'The Shade', emoji: '\u{1F480}' }],
-  'Interstellar':      [{ id: 'is1', name: 'Cooper', role: 'The Pilot', emoji: '\u{1F680}' }, { id: 'is2', name: 'Dr. Brand', role: 'The Scientist', emoji: '\u{1F52C}' }, { id: 'is3', name: 'TARS', role: 'The Robot', emoji: '\u{1F916}' }],
-  'Star Wars':         [{ id: 'sw1', name: 'Luke Skywalker', role: 'Jedi Knight', emoji: '\u2694\uFE0F' }, { id: 'sw2', name: 'Darth Vader', role: 'The Dark Lord', emoji: '\u{1F5A4}' }, { id: 'sw3', name: 'Han Solo', role: 'The Smuggler', emoji: '\u{1F52B}' }, { id: 'sw4', name: 'Princess Leia', role: 'Rebel Leader', emoji: '\u{1F478}' }],
-};
-
-// {'\u2500'}{'\u2500'} Tone & Format Presets {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
+// -- Tone & Format Presets ----------------------------------------
 const TONES = [
   { id: 'dramatic',   label: 'Dramatic',     emoji: '\u{1F3AD}' },
   { id: 'comedic',    label: 'Comedic',      emoji: '\u{1F602}' },
@@ -156,84 +100,49 @@ const FORMATS = [
   { id: 'trailer',   label: 'Trailer',         desc: 'Hype / teaser', emoji: '\u{1F39E}\uFE0F' },
 ];
 
-// {'\u2500'}{'\u2500'} Art Style Presets {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-const STYLES = [
-  { id: 'source-faithful', label: 'Original', emoji: '\u{1F3AF}', prompt: '' },
-  { id: 'cinematic',   label: 'Cinematic',     emoji: '\u{1F3AC}', prompt: 'cinematic film still, professional cinematography, dramatic lighting, shallow depth of field, anamorphic lens, color graded' },
-  { id: 'anime',       label: 'Anime',         emoji: '\u{1F338}', prompt: 'anime style, Studio Ghibli inspired, vibrant colors, detailed cel shading, Japanese animation' },
-  { id: 'comic',       label: 'Comic Book',    emoji: '\u{1F4A5}', prompt: 'comic book art style, bold outlines, halftone dots, vibrant panels, dynamic composition, speech bubble aesthetic' },
-  { id: 'photorealistic', label: 'Photorealistic', emoji: '\u{1F4F7}', prompt: 'photorealistic, ultra HD, 8k, raw photo, hyperrealistic detail, natural lighting' },
-  { id: 'watercolor',  label: 'Watercolor',    emoji: '\u{1F3A8}', prompt: 'watercolor painting, soft edges, flowing colors, artistic brush strokes, paper texture' },
-  { id: 'noir',        label: 'Film Noir',     emoji: '\u{1F311}', prompt: 'film noir style, high contrast black and white, dramatic shadows, venetian blinds lighting, 1940s aesthetic' },
-  { id: '3d_render',   label: '3D Render',     emoji: '\u{1F9CA}', prompt: '3D rendered, Pixar quality, subsurface scattering, global illumination, octane render' },
-  { id: 'retro',       label: 'Retro/VHS',     emoji: '\u{1F4FC}', prompt: 'retro VHS aesthetic, scan lines, chromatic aberration, 80s color palette, CRT screen effect' },
-  { id: 'pixel',       label: 'Pixel Art',     emoji: '\u{1F47E}', prompt: '16-bit pixel art style, retro game aesthetic, clean pixel work, limited color palette' },
-  { id: 'oil_paint',   label: 'Oil Painting',  emoji: '\u{1F5BC}\uFE0F', prompt: 'oil painting masterpiece, rich impasto texture, museum quality, classical fine art composition' },
-];
-
-// {'\u2500'}{'\u2500'} Aspect Ratios {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
+// -- Aspect Ratios ------------------------------------------------
 const ASPECT_RATIOS = [
-  { id: '16:9',  label: '16:9',  desc: 'YouTube / Widescreen',  emoji: '\u{1F5A5}\uFE0F', width: 1024, height: 576 },
+  { id: '16:9',  label: '16:9',  desc: 'YouTube / Widescreen',    emoji: '\u{1F5A5}\uFE0F', width: 1024, height: 576 },
   { id: '9:16',  label: '9:16',  desc: 'TikTok / Reels / Shorts', emoji: '\u{1F4F1}', width: 576, height: 1024 },
-  { id: '1:1',   label: '1:1',   desc: 'Instagram / Twitter',   emoji: '\u2B1B', width: 1024, height: 1024 },
-  { id: '4:3',   label: '4:3',   desc: 'Classic TV',            emoji: '\u{1F4FA}', width: 1024, height: 768 },
-  { id: '21:9',  label: '21:9',  desc: 'Ultra-Wide / Cinema',   emoji: '\u{1F39E}\uFE0F', width: 1024, height: 440 },
+  { id: '1:1',   label: '1:1',   desc: 'Instagram / Twitter',     emoji: '\u2B1B', width: 1024, height: 1024 },
+  { id: '4:3',   label: '4:3',   desc: 'Classic TV',              emoji: '\u{1F4FA}', width: 1024, height: 768 },
+  { id: '21:9',  label: '21:9',  desc: 'Ultra-Wide / Cinema',     emoji: '\u{1F39E}\uFE0F', width: 1024, height: 440 },
 ];
 
-// {'\u2500'}{'\u2500'} fal.ai Image Models {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-const IMAGE_MODELS = [
-  { id: 'flux-schnell', name: 'Flux Schnell',   desc: 'Fast & free',       emoji: '\u26A1', tier: 'free' },
-  { id: 'sdxl',         name: 'Stable Diffusion XL', desc: 'Classic SDXL', emoji: '\u{1F5BC}\uFE0F', tier: 'free' },
-  { id: 'flux-dev',     name: 'Flux 2 Dev',     desc: 'High quality',      emoji: '\u{1F3A8}', tier: 'starter' },
-  { id: 'ideogram',     name: 'Ideogram 3.0',   desc: 'Best text rendering', emoji: '\u270F\uFE0F', tier: 'starter' },
-  { id: 'flux-pro',     name: 'Flux 2 Pro',     desc: 'Best photorealism', emoji: '\u{1F4F8}', tier: 'creator' },
-  { id: 'recraft',      name: 'Recraft V3',     desc: 'Professional design', emoji: '\u{1F3AF}', tier: 'creator' },
+// -- Auto-selected FREE engines (no engine step) ------------------
+const AUTO_IMAGE_MODEL = 'pollinations';  // $0, no key needed
+const AUTO_VIDEO_MODEL = 'self-hosted';   // $0, Colab/Kaggle Wan 2.1
+
+// -- Social share platforms ----------------------------------------
+const SOCIAL_PLATFORMS = [
+  { id: 'x',         name: 'X (Twitter)', icon: '\u{1D54F}',     color: '#000' },
+  { id: 'facebook',  name: 'Facebook',    icon: 'f',             color: '#1877F2' },
+  { id: 'instagram', name: 'Instagram',   icon: '\u{1F4F7}',     color: '#E4405F' },
+  { id: 'threads',   name: 'Threads',     icon: '\u{1F9F5}',     color: '#000' },
+  { id: 'tiktok',    name: 'TikTok',      icon: '\u{1F3B5}',     color: '#000' },
+  { id: 'youtube',   name: 'YouTube',     icon: '\u25B6\uFE0F',  color: '#FF0000' },
+  { id: 'reddit',    name: 'Reddit',      icon: '\u{1F916}',     color: '#FF5700' },
 ];
 
-// {'\u2500'}{'\u2500'} Video Models {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-const VIDEO_MODELS = [
-  { id: 'wan',      name: 'Wan 2.6',         desc: 'Affordable quality', emoji: '\u{1F3AC}', tier: 'starter' },
-  { id: 'ltx-video', name: 'LTX Video 2.0',  desc: 'Fast & cheap',      emoji: '\u26A1', tier: 'starter' },
-  { id: 'seedance', name: 'Seedance 1.5 Pro', desc: 'Best motion',      emoji: '\u{1F483}', tier: 'creator' },
-  { id: 'kling',    name: 'Kling 2.6 Pro',   desc: 'Professional',      emoji: '\u{1F3A5}', tier: 'creator' },
-  { id: 'hailuo',   name: 'Hailuo 2.3',      desc: 'Realistic motion',  emoji: '\u{1F30A}', tier: 'creator' },
-  { id: 'seedance-2', name: 'Seedance 2',     desc: 'Cinematic + audio', emoji: '\u{1F3AD}', tier: 'creator' },
-  { id: 'kling-3',  name: 'Kling 3.0 Pro',   desc: 'Top-tier cinematic', emoji: '\u{1F3C6}', tier: 'creator' },
-];
-
-// {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
+// ===================================================================
 //  MAIN WIZARD COMPONENT
-// {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
+// ===================================================================
 
 export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onPublish }: Props) {
-  const [step, setStep] = useState<WizardStep>('character');
+  const [step, setStep] = useState<WizardStep>('config');
 
-  // {'\u2500'}{'\u2500'} Character selection {'\u2500'}{'\u2500'}
-  const [selectedCharacter, setSelectedCharacter] = useState<CharacterOption | null>(null);
-  const [customCharName, setCustomCharName]       = useState('');
-  const [customCharRole, setCustomCharRole]       = useState('');
-  const [showCustomForm, setShowCustomForm]       = useState(false);
+  // -- Config state (Step 1) --
+  const [prompt, setPrompt]                       = useState('');
+  const [personalCharacter, setPersonalCharacter] = useState('');
+  const [tone, setTone]                           = useState('dramatic');
+  const [format, setFormat]                       = useState('short');
+  const [artStyle, setArtStyle]                   = useState<ArtStyleId>('source-faithful');
+  const [aspectRatio, setAspectRatio]             = useState('16:9');
+  const [crossover, setCrossover]                 = useState('');
+  const [negativePrompt, setNegativePrompt]       = useState('blurry, low quality, distorted, watermark, text, ugly, deformed');
+  const [showAdvanced, setShowAdvanced]           = useState(false);
 
-  // {'\u2500'}{'\u2500'} Custom IP / Mashup mode {'\u2500'}{'\u2500'}
-  const [isCustomIP, setIsCustomIP]   = useState(selectedMedia.category === 'Custom');
-  const [isMashup, setIsMashup]       = useState(false);
-  const [customIPName, setCustomIPName]   = useState('');
-  const [customIPGenre, setCustomIPGenre] = useState('');
-  const [customIPDesc, setCustomIPDesc]   = useState('');
-  const [mashupShows, setMashupShows]     = useState<string[]>(['', '']);
-
-  // {'\u2500'}{'\u2500'} Prompt details {'\u2500'}{'\u2500'}
-  const [prompt, setPrompt]       = useState('');
-  const [tone, setTone]           = useState('dramatic');
-  const [format, setFormat]       = useState('short');
-  const [crossover, setCrossover] = useState('');
-
-  // {'\u2500'}{'\u2500'} AI Q&A (vidmuse-style refinement) {'\u2500'}{'\u2500'}
-  const [aiQuestions, setAiQuestions]   = useState<{ q: string; a: string }[]>([]);
-  const [currentAnswer, setCurrentAnswer] = useState('');
-  const [questionPhase, setQuestionPhase] = useState(0);
-
-  // {'\u2500'}{'\u2500'} Script (NEW in Phase 2) {'\u2500'}{'\u2500'}
+  // -- Script state (Step 2) --
   const [scriptScenes, setScriptScenes] = useState<ScriptScene[]>([]);
   const [scriptTitle, setScriptTitle]   = useState('');
   const [scriptLogline, setScriptLogline] = useState('');
@@ -242,172 +151,108 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
   const [editingScript, setEditingScript] = useState<number | null>(null);
   const [scriptEditText, setScriptEditText] = useState('');
 
-  // {'\u2500'}{'\u2500'} Storyboard {'\u2500'}{'\u2500'}
+  // -- Storyboard state (Step 3) --
   const [scenes, setScenes]             = useState<StoryboardScene[]>([]);
   const [editingScene, setEditingScene] = useState<string | null>(null);
   const [sceneEditText, setSceneEditText] = useState('');
-
-  // {'\u2500'}{'\u2500'} Generation progress {'\u2500'}{'\u2500'}
-  const [genProgress, setGenProgress]   = useState(0);
-  const [genStage, setGenStage]         = useState('');
-
-  // {'\u2500'}{'\u2500'} Result {'\u2500'}{'\u2500'}
-  const [resultData, setResultData] = useState<ResultData | null>(null);
-  const [showShareMenu, setShowShareMenu] = useState(false);
-  const [shareToast, setShareToast] = useState('');
-
-  // {'\u2500'}{'\u2500'} Image generation config {'\u2500'}{'\u2500'}
-  const [imageModel, setImageModel] = useState('flux-schnell');
   const [storyboardLoading, setStoryboardLoading] = useState(false);
   const [storyboardError, setStoryboardError] = useState('');
-  const [sceneImages, setSceneImages] = useState<Record<string, string>>({});
-  const [sceneImageUrls, setSceneImageUrls] = useState<Record<string, string>>({});
-  const [genError, setGenError] = useState('');
 
-  // {'\u2500'}{'\u2500'} Art & aspect config {'\u2500'}{'\u2500'}
-  const [artStyle, setArtStyle]           = useState('source-faithful');
-  const [aspectRatio, setAspectRatio]     = useState('16:9');
-  const [negativePrompt, setNegativePrompt] = useState('blurry, low quality, distorted, watermark, text, ugly, deformed');
-  const [showAdvanced, setShowAdvanced]   = useState(false);
-  const [genElapsed, setGenElapsed]       = useState(0);
-  const [sceneNarration, setSceneNarration] = useState<Record<string, string>>({});
-  const [narrationLoading, setNarrationLoading] = useState(false);
+  // -- Image generation (Step 4) --
+  const [sceneImages, setSceneImages]       = useState<Record<string, string>>({});
+  const [sceneImageUrls, setSceneImageUrls] = useState<Record<string, string>>({});
+  const [genProgress, setGenProgress]       = useState(0);
+  const [genStage, setGenStage]             = useState('');
+  const [genError, setGenError]             = useState('');
+  const [genElapsed, setGenElapsed]         = useState(0);
   const [regeneratingScene, setRegeneratingScene] = useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // {'\u2500'}{'\u2500'} Video generation (NEW in Phase 2) {'\u2500'}{'\u2500'}
-  const [videoModel, setVideoModel] = useState('wan');
-  const [sceneVideos, setSceneVideos] = useState<Record<string, string>>({});
+  // -- Video generation (Step 5) --
+  const [sceneVideos, setSceneVideos]         = useState<Record<string, string>>({});
   const [videoGenerating, setVideoGenerating] = useState(false);
-  const [videoProgress, setVideoProgress] = useState(0);
-  const [videoStage, setVideoStage] = useState('');
-  const [videoError, setVideoError] = useState('');
-  const [showVideoGen, setShowVideoGen] = useState(false);
+  const [videoProgress, setVideoProgress]     = useState(0);
+  const [videoStage, setVideoStage]           = useState('');
+  const [videoError, setVideoError]           = useState('');
 
-  // {'\u2500'}{'\u2500'} Parallel batch runner (Showrunner-style concurrency) {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-  // Runs tasks in batches of `concurrency`, calling `onProgress` after each.
+  // -- Result state (Step 6) --
+  const [resultData, setResultData]     = useState<ResultData | null>(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [shareToast, setShareToast]     = useState('');
+
+  // -- Derived --
+  const showProfile = SHOW_PROFILES[selectedMedia.title];
+  const displayTitle = selectedMedia.category === 'Custom' ? 'Your Original IP' : selectedMedia.title;
+  const resolvedStylePrompt = resolveArtStylePrompt(artStyle, selectedMedia.category);
+
+  // Step order for progress indicator
+  const STEP_ORDER: WizardStep[] = ['config', 'script', 'storyboard', 'generating', 'review-images', 'review-videos', 'result'];
+  const STEP_LABELS: Record<string, string> = {
+    config: 'Config', script: 'Script', storyboard: 'Storyboard',
+    'review-images': 'Images', 'review-videos': 'Video', result: 'Result',
+  };
+  const VISIBLE_STEPS = STEP_ORDER.filter(s => s !== 'generating');
+  const stepIndex = STEP_ORDER.indexOf(step);
+
+  // ===================================================================
+  //  PARALLEL BATCH RUNNER
+  // ===================================================================
   async function runParallelBatches<T, R>(
     items: T[],
     task: (item: T, index: number) => Promise<R>,
-    { concurrency = 3, onProgress }: { concurrency?: number; onProgress?: (completed: number, total: number, result: R | null, index: number, error?: string) => void } = {}
+    opts: { concurrency?: number; onProgress?: (completed: number, total: number, result: R | null, index: number, error?: string) => void } = {}
   ): Promise<(R | null)[]> {
+    const { concurrency = 3, onProgress } = opts;
     const results: (R | null)[] = new Array(items.length).fill(null);
     let completed = 0;
-
     for (let batchStart = 0; batchStart < items.length; batchStart += concurrency) {
       const batch = items.slice(batchStart, batchStart + concurrency);
-      const batchPromises = batch.map(async (item, batchIdx) => {
-        const globalIdx = batchStart + batchIdx;
+      const promises = batch.map(async (item, bi) => {
+        const gi = batchStart + bi;
         try {
-          const result = await task(item, globalIdx);
-          results[globalIdx] = result;
+          const r = await task(item, gi);
+          results[gi] = r;
           completed++;
-          onProgress?.(completed, items.length, result, globalIdx);
-          return result;
-        } catch (err: any) {
+          onProgress?.(completed, items.length, r, gi);
+          return r;
+        } catch (err: unknown) {
           completed++;
-          onProgress?.(completed, items.length, null, globalIdx, err?.message || String(err));
-          console.error(`Parallel task ${globalIdx + 1} failed:`, err);
+          const msg = err instanceof Error ? err.message : String(err);
+          onProgress?.(completed, items.length, null, gi, msg);
           return null;
         }
       });
-      await Promise.allSettled(batchPromises);
+      await Promise.allSettled(promises);
     }
     return results;
   }
 
-  // {'\u2500'}{'\u2500'} TMDB Characters (real images, full cast) {'\u2500'}{'\u2500'}
-  const [tmdbCharacters, setTmdbCharacters] = useState<CharacterOption[]>([]);
-  const [tmdbLoading, setTmdbLoading] = useState(false);
-  const [charSearch, setCharSearch] = useState('');
-  const charScrollRef = useRef<HTMLDivElement>(null);
-
-  // Fetch FULL cast from TMDB API on mount
-  useEffect(() => {
-    if (isCustomIP || !selectedMedia?.id) return;
-    setTmdbLoading(true);
-    fetch(`/api/tmdb?action=cast&id=${selectedMedia.id}&v=2`, { cache: 'no-cache' })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data?.characters?.length) {
-          setTmdbCharacters(data.characters.map((c: any) => ({
-            id: c.id,
-            name: c.character || c.name,   // Show CHARACTER name (e.g. "Walter White"), not actor
-            role: c.name ? `Played by ${c.name}` : '',  // Actor name as subtitle
-            emoji: '\u{1F3AD}',
-            imageUrl: c.imageUrl,
-            tmdbId: c.tmdbId,
-          })));
-        }
-      })
-      .catch(() => {})
-      .finally(() => setTmdbLoading(false));
-  }, [selectedMedia?.id, isCustomIP]);
-
-  // Use TMDB characters if available, fall back to CHARACTER_DB
-  const fallbackChars = CHARACTER_DB[selectedMedia.title] || [];
-  const allCharacters = tmdbCharacters.length > 0 ? tmdbCharacters : fallbackChars;
-
-  // Filter by search
-  const characters = charSearch
-    ? allCharacters.filter(c =>
-        c.name.toLowerCase().includes(charSearch.toLowerCase()) ||
-        c.role.toLowerCase().includes(charSearch.toLowerCase())
-      )
-    : allCharacters;
-
-  // Display title
-  const displayTitle = isCustomIP ? (customIPName || 'Your Original IP') : isMashup ? (mashupShows.filter(Boolean).join(' \u00D7 ') || 'Mashup') : selectedMedia.title;
-
-  // {'\u2500'}{'\u2500'} Step progression {'\u2500'}{'\u2500'}
-  const STEP_ORDER: WizardStep[] = ['character', 'prompt', 'script', 'storyboard', 'generating', 'review-images', 'review-videos', 'result'];
-  const stepIndex = STEP_ORDER.indexOf(step);
-
-  // {'\u2500'}{'\u2500'} AI Questions (vidmuse-style) {'\u2500'}{'\u2500'}
-  const AI_QUESTIONS = isCustomIP ? [
-    `Tell us about your original IP \u2014 what's the world, the rules, the vibe?`,
-    `What's the main conflict or inciting incident in your story?`,
-    `Describe the look and feel \u2014 dark and gritty? Colorful and whimsical? Retro-futuristic?`,
-  ] : isMashup ? [
-    `How do the worlds of ${mashupShows.filter(Boolean).join(' and ')} collide? What brings them together?`,
-    `Which characters meet and what's the dynamic \u2014 allies, rivals, frenemies?`,
-    `What's the tone of this crossover \u2014 epic showdown, comedy of errors, or something else?`,
-  ] : [
-    `What's the main conflict or twist in your ${selectedMedia.title} reimagining?`,
-    `How does ${selectedCharacter?.name || 'the character'} react to the situation? What emotions drive them?`,
-    `Describe the setting \u2014 is it the original world, a new universe, or a mashup?`,
-  ];
-
-  // {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-  //  AI GENERATION FUNCTIONS
-  // {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-
-  // {'\u2500'}{'\u2500'} Generate Script (Phase 2 {'\u2014'} with retry + timeout) {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
+  // ===================================================================
+  //  GENERATE SCRIPT (Step 2)
+  // ===================================================================
   async function generateScript() {
     setScriptLoading(true);
     setScriptError('');
-
     const MAX_RETRIES = 2;
-    const TIMEOUT_MS = 55000; // 55s {'\u2014'} under the 60s server limit
+    const TIMEOUT_MS = 55000;
 
     const payload = JSON.stringify({
       mediaTitle: displayTitle,
-      character: selectedCharacter,
       prompt,
+      personalCharacter: personalCharacter || undefined,
       tone: TONES.find(t => t.id === tone)?.label || 'Dramatic',
       format,
-      crossover: crossover || (isMashup ? mashupShows.filter(Boolean).join(' + ') : ''),
-      qaAnswers: aiQuestions.filter(q => q.a),
-      isCustomIP,
-      isMashup,
-      customIPDesc,
+      crossover: crossover || undefined,
+      artStyle,
+      showProfile: showProfile
+        ? { visualStyle: showProfile.visualStyle, audioTone: showProfile.audioTone, characters: showProfile.characters.map(c => c.name) }
+        : undefined,
     });
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
       try {
         const res = await fetch('/api/create/script', {
           method: 'POST',
@@ -416,109 +261,92 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
           signal: controller.signal,
         });
         clearTimeout(timer);
-
         if (!res.ok) {
           const errData = await res.json().catch(() => ({ error: 'Script generation failed' }));
-          throw new Error(errData.error || `Generation failed (${res.status})`);
+          throw new Error(errData.error || 'Generation failed (' + res.status + ')');
         }
-
         const data = await res.json();
         setScriptTitle(data.title || '');
         setScriptLogline(data.logline || '');
         setScriptScenes(data.scenes || []);
+        setScriptLoading(false);
         setStep('script');
-        return; // success {'\u2014'} exit the retry loop
-      } catch (err: any) {
+        return;
+      } catch (err: unknown) {
         clearTimeout(timer);
-        const isNetworkError = err.name === 'AbortError' || err.name === 'TypeError' || !err.message || err.message.includes('onnect');
-
-        if (isNetworkError && attempt < MAX_RETRIES) {
-          // Retry after a short delay
+        const e = err instanceof Error ? err : new Error(String(err));
+        const isNetwork = e.name === 'AbortError' || e.name === 'TypeError';
+        if (isNetwork && attempt < MAX_RETRIES) {
           await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
           continue;
         }
-
-        console.error('Script error:', err);
-        if (err.name === 'AbortError') {
-          setScriptError('Request timed out \u2014 please try again or pick a shorter format.');
-        } else if (err.name === 'TypeError' || err.message?.includes('onnect')) {
-          setScriptError('Network error \u2014 check your connection and try again.');
+        if (e.name === 'AbortError') {
+          setScriptError('Request timed out -- try a shorter format.');
         } else {
-          setScriptError(err.message || 'Failed to generate script');
+          setScriptError(e.message || 'Failed to generate script');
         }
       }
     }
     setScriptLoading(false);
   }
 
-  // {'\u2500'}{'\u2500'} Generate Storyboard (from script) {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
+  // ===================================================================
+  //  GENERATE STORYBOARD (Step 3)
+  // ===================================================================
   async function generateStoryboard() {
     setStoryboardLoading(true);
-
     setStoryboardError('');
-
     try {
       const res = await fetch('/api/create/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mediaTitle: displayTitle,
-          character: selectedCharacter,
           prompt,
+          personalCharacter: personalCharacter || undefined,
           tone: TONES.find(t => t.id === tone)?.label || 'Dramatic',
           format,
-          crossover: crossover || (isMashup ? mashupShows.filter(Boolean).join(' + ') : ''),
-          qaAnswers: aiQuestions.filter(q => q.a),
-          isCustomIP,
-          isMashup,
-          customIPDesc,
+          crossover: crossover || undefined,
           artStyle,
-          artStylePrompt: STYLES.find(s => s.id === artStyle)?.prompt,
-          // Pass script context for better storyboard
+          artStylePrompt: resolvedStylePrompt,
           scriptScenes: scriptScenes.length > 0 ? scriptScenes : undefined,
         }),
       });
-
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: 'AI generation failed' }));
-        throw new Error(errData.error || `Generation failed (${res.status})`);
+        throw new Error(errData.error || 'Generation failed (' + res.status + ')');
       }
-
       const data = await res.json();
-      const aiScenes: StoryboardScene[] = (data.scenes || []).map((s: any, i: number) => ({
-        id: `sc_${i + 1}`,
-        sceneNum: s.sceneNum || i + 1,
-        description: s.description || '',
-        duration: s.duration || '',
-        visual: s.visual || '',
-        emoji: s.emoji || ['\u{1F3AC}', '\u{1F4AB}', '\u{1F525}', '\u{1F31F}', '\u{1F3AD}', '\u{1F48E}'][i % 6],
+      const emojis = ['\u{1F3AC}', '\u{1F4AB}', '\u{1F525}', '\u{1F31F}', '\u{1F3AD}', '\u{1F48E}'];
+      const aiScenes: StoryboardScene[] = (data.scenes || []).map((s: Record<string, unknown>, i: number) => ({
+        id: 'sc_' + (i + 1),
+        sceneNum: (s.sceneNum as number) || i + 1,
+        description: (s.description as string) || '',
+        duration: (s.duration as string) || '',
+        visual: (s.visual as string) || '',
+        emoji: (s.emoji as string) || emojis[i % 6],
       }));
-
-      if (aiScenes.length === 0) {
-        throw new Error('AI returned no scenes \u2014 try rephrasing your prompt');
-      }
-
+      if (aiScenes.length === 0) throw new Error('AI returned no scenes -- try rephrasing');
       setScenes(aiScenes);
       setStep('storyboard');
-    } catch (err: any) {
-      console.error('Storyboard error:', err);
-      setStoryboardError(err.message || 'Failed to generate storyboard');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStoryboardError(msg || 'Failed to generate storyboard');
     } finally {
       setStoryboardLoading(false);
     }
   }
 
-  // {'\u2500'}{'\u2500'} Build enhanced prompt with style + aspect info {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
+  // ===================================================================
+  //  IMAGE GENERATION (Step 4)
+  // ===================================================================
   function buildImagePrompt(sceneVisual: string): string {
-    const style = STYLES.find(s => s.id === artStyle);
-    // Original: just the show's visual. Others: show visual + art style effect
-    if (!style?.prompt) return sceneVisual;
-    return `${sceneVisual}, ${style.prompt}`;
+    if (!resolvedStylePrompt) return sceneVisual;
+    return sceneVisual + ', ' + resolvedStylePrompt;
   }
 
-  // {'\u2500'}{'\u2500'} Generate a single scene image {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
   async function generateSceneImage(scene: StoryboardScene): Promise<{ image: string; imageUrl?: string } | null> {
-    const arInfo = ASPECT_RATIOS.find(a => a.id === aspectRatio) || ASPECT_RATIOS[0];
+    const ar = ASPECT_RATIOS.find(a => a.id === aspectRatio) || ASPECT_RATIOS[0];
     let attempts = 0;
     while (attempts < 3) {
       const res = await fetch('/api/create/imagine', {
@@ -526,28 +354,24 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: buildImagePrompt(scene.visual),
-          model: imageModel,
+          model: AUTO_IMAGE_MODEL,
           sceneId: scene.id,
           negative_prompt: negativePrompt,
-          width: arInfo.width,
-          height: arInfo.height,
+          width: ar.width,
+          height: ar.height,
         }),
       });
-
       if (res.status === 503) {
-        const data = await res.json().catch(() => ({}));
-        const wait = Math.min((data.estimated_time || 20) * 1000, 60000);
+        const data = await res.json().catch(() => ({} as Record<string, unknown>));
+        const wait = Math.min(((data.estimated_time as number) || 20) * 1000, 60000);
         await new Promise(r => setTimeout(r, wait));
         attempts++;
         continue;
       }
-
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        const msg = errData.error || errData.details || `Image generation failed (${res.status})`;
-        throw new Error(msg);
+        const errData = await res.json().catch(() => ({} as Record<string, unknown>));
+        throw new Error((errData.error as string) || (errData.details as string) || 'Image generation failed (' + res.status + ')');
       }
-
       const data = await res.json();
       if (data.image) return { image: data.image, imageUrl: data.imageUrl };
       throw new Error('No image returned');
@@ -555,7 +379,6 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
     return null;
   }
 
-  // {'\u2500'}{'\u2500'} Regenerate a single scene {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
   async function regenerateScene(sceneId: string) {
     const scene = scenes.find(s => s.id === sceneId);
     if (!scene) return;
@@ -564,113 +387,15 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
       const result = await generateSceneImage(scene);
       if (result) {
         setSceneImages(prev => ({ ...prev, [sceneId]: result.image }));
-        if (result.imageUrl) {
-          setSceneImageUrls(prev => ({ ...prev, [sceneId]: result.imageUrl! }));
-        }
+        if (result.imageUrl) setSceneImageUrls(prev => ({ ...prev, [sceneId]: result.imageUrl as string }));
       }
-    } catch (err: any) {
-      console.error('Regen error:', err);
+    } catch {
+      // silently fail on regen
     } finally {
       setRegeneratingScene(null);
     }
   }
 
-  // {'\u2500'}{'\u2500'} Generate character dialogue audio for all scenes {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-  // generateNarration removed \u2014 audio is now synced in video via /api/generate/scene
-  async function generateNarration() {
-    // No-op: audio is generated with video in the unified pipeline
-    console.log('[info] generateNarration called but audio is now part of video generation');
-  }
-
-  // {'\u2500'}{'\u2500'} Animate a single scene (submit + poll if pending) {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-  async function animateScene(scene: any, idx: number, totalScenes: number): Promise<string | null> {
-    setVideoStage(`\u{1F3AC} Scene ${idx + 1}/${totalScenes}: ${scene.description.slice(0, 40)}...`);
-
-    try {
-      // Get dialogue from script scene data
-      const scriptScene = scriptScenes.find(ss => ss.sceneNum === scene.sceneNum);
-      const dialogue = (scriptScene?.dialogue || []).filter(d => d.line?.trim());
-      const charNames = [...new Set(dialogue.map(d => d.character))];
-
-      // Unified pipeline: video + audio generated together in one pass
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 300000);
-
-      const res = await fetch('/api/generate/scene', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          show: isCustomIP ? (customIPName || 'custom') : selectedMedia.title,
-          artStyle,
-          sceneDescription: scene.visual || scene.description,
-          dialogue: dialogue.map(d => ({ character: d.character, line: d.line })),
-          characters: charNames,
-          duration: scene.duration ? parseInt(scene.duration) : undefined,
-          aspectRatio,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-      const data = await res.json();
-      console.log('[scene-gen] Scene', idx + 1, 'response:', JSON.stringify(data).slice(0, 300));
-
-      if (data.success && data.videoUrl) {
-        setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
-        return data.videoUrl;
-      }
-
-      const errMsg = data.error || 'Scene generation failed (no video)';
-      setVideoError(prev => prev ? prev + ' | Scene ' + (idx + 1) + ': ' + errMsg : 'Scene ' + (idx + 1) + ': ' + errMsg);
-      return null;
-    } catch (err: any) {
-      const errMsg = err.name === 'AbortError'
-        ? 'Scene ' + (idx + 1) + ': timed out (5 min)'
-        : 'Scene ' + (idx + 1) + ': ' + err.message;
-      setVideoError(prev => prev ? prev + ' | ' + errMsg : errMsg);
-      return null;
-    }
-  }
-
-  // {'\u2500'}{'\u2500'} Parallel video generation for all scenes {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-  async function generateVideos() {
-    setVideoGenerating(true);
-    setVideoProgress(0);
-    setVideoError('');
-    const totalScenes = scenes.length;
-    const CONCURRENCY = Math.min(2, totalScenes);
-
-    setVideoStage(`\u{1F3AC} Generating ${totalScenes} videos (${CONCURRENCY} in parallel)...`);
-
-    await runParallelBatches(
-      scenes,
-      (scene, idx) => animateScene(scene, idx, totalScenes),
-      {
-        concurrency: CONCURRENCY,
-        onProgress: (completed, total) => {
-          setVideoProgress(Math.round((completed / total) * 100));
-        },
-      }
-    );
-
-    const videoCount = Object.keys(sceneVideos).length;
-    setVideoStage(videoCount > 0 ? `${videoCount} videos ready! \u{1F389}` : 'Video generation finished');
-    setVideoGenerating(false);
-  }
-
-  // {'\u2500'}{'\u2500'} Download all scene images {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
-  function downloadAllImages() {
-    setDownloadingAll(true);
-    Object.entries(sceneImages).forEach(([, dataUrl], idx) => {
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `${displayTitle.replace(/[^a-zA-Z0-9]/g, '_')}_scene_${idx + 1}.png`;
-      link.click();
-    });
-    setTimeout(() => setDownloadingAll(false), 1000);
-  }
-
-  // {'\u2500'}{'\u2500'} Parallel AI image generation for all scenes {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}
   async function startGeneration() {
     setStep('generating');
     setGenProgress(0);
@@ -678,77 +403,121 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
     setSceneImages({});
     setSceneImageUrls({});
     setGenElapsed(0);
-
-    elapsedRef.current = setInterval(() => {
-      setGenElapsed(prev => prev + 1);
-    }, 1000);
-
-    const totalScenes = scenes.length;
-    const CONCURRENCY = Math.min(3, totalScenes); // 3 scenes at a time
-
-    setGenStage(`\u{1F3A8} Generating ${totalScenes} scenes (${CONCURRENCY} in parallel)...`);
-
+    elapsedRef.current = setInterval(() => setGenElapsed(prev => prev + 1), 1000);
+    const total = scenes.length;
+    const CONCURRENCY = Math.min(3, total);
+    setGenStage('\u{1F3A8} Generating ' + total + ' scenes (' + CONCURRENCY + ' in parallel)...');
     await runParallelBatches(
       scenes,
       async (scene, idx) => {
-        setGenStage(`\u{1F3A8} Scene ${idx + 1}/${totalScenes}: ${scene.description.slice(0, 50)}...`);
+        setGenStage('\u{1F3A8} Scene ' + (idx + 1) + '/' + total + ': ' + scene.description.slice(0, 50) + '...');
         const result = await generateSceneImage(scene);
         if (result) {
           setSceneImages(prev => ({ ...prev, [scene.id]: result.image }));
-          if (result.imageUrl) {
-            setSceneImageUrls(prev => ({ ...prev, [scene.id]: result.imageUrl! }));
-          }
+          if (result.imageUrl) setSceneImageUrls(prev => ({ ...prev, [scene.id]: result.imageUrl as string }));
         }
         return result;
       },
       {
         concurrency: CONCURRENCY,
-        onProgress: (completed, total, result, idx, error) => {
+        onProgress: (completed, total, _result, idx, error) => {
           setGenProgress(Math.round((completed / total) * 100));
-          if (!result) {
-            const errMsg = error || 'Unknown error';
-            setGenError(prev => prev ? `${prev}\nScene ${idx + 1}: ${errMsg}` : `Scene ${idx + 1}: ${errMsg}`);
-          }
+          if (!_result) setGenError(prev => prev ? prev + '\nScene ' + (idx + 1) + ': ' + (error || 'Unknown') : 'Scene ' + (idx + 1) + ': ' + (error || 'Unknown'));
         },
       }
     );
-
     if (elapsedRef.current) clearInterval(elapsedRef.current);
-
     setGenStage('Complete! \u2728');
     setGenProgress(100);
-
-    setTimeout(() => {
-      setStep('review-images');
-    }, 600);
+    setTimeout(() => setStep('review-images'), 600);
   }
 
-  // {'\u2500'}{'\u2500'} Share handlers {'\u2500'}{'\u2500'}
-  const SOCIAL_PLATFORMS = [
-    { id: 'x',        name: 'X (Twitter)', icon: '\u{1D54F}',  color: '#000',    url: 'https://x.com/intent/tweet?text=' },
-    { id: 'facebook',  name: 'Facebook',   icon: 'f',  color: '#1877F2', url: 'https://www.facebook.com/sharer/sharer.php?u=' },
-    { id: 'instagram', name: 'Instagram',  icon: '\u{1F4F7}', color: '#E4405F', url: '' },
-    { id: 'threads',   name: 'Threads',    icon: '\u{1F9F5}', color: '#000',    url: '' },
-    { id: 'tiktok',    name: 'TikTok',     icon: '\u{1F3B5}', color: '#000',    url: '' },
-    { id: 'youtube',   name: 'YouTube',    icon: '\u25B6\uFE0F', color: '#FF0000', url: '' },
-    { id: 'reddit',    name: 'Reddit',     icon: '\u{1F916}', color: '#FF5700', url: 'https://reddit.com/submit?title=' },
-  ];
+  // ===================================================================
+  //  VIDEO GENERATION (Step 5) -- video + audio in sync
+  // ===================================================================
+  async function animateScene(scene: StoryboardScene, idx: number, totalScenes: number): Promise<string | null> {
+    setVideoStage('\u{1F3AC} Scene ' + (idx + 1) + '/' + totalScenes + ': ' + scene.description.slice(0, 40) + '...');
+    try {
+      const scriptScene = scriptScenes.find(ss => ss.sceneNum === scene.sceneNum);
+      const dialogue = (scriptScene?.dialogue || []).filter(d => d.line?.trim());
+      const charNames = [...new Set(dialogue.map(d => d.character))];
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 300000);
+      const res = await fetch('/api/generate/scene', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          show: selectedMedia.category === 'Custom' ? 'custom' : selectedMedia.title,
+          artStyle,
+          sceneDescription: scene.visual || scene.description,
+          dialogue: dialogue.map(d => ({ character: d.character, line: d.line })),
+          characters: charNames,
+          duration: scene.duration ? parseInt(scene.duration) : undefined,
+          aspectRatio,
+          videoModel: AUTO_VIDEO_MODEL,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (data.success && data.videoUrl) {
+        setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
+        return data.videoUrl;
+      }
+      setVideoError(prev => (prev ? prev + ' | ' : '') + 'Scene ' + (idx + 1) + ': ' + (data.error || 'No video'));
+      return null;
+    } catch (err: unknown) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      const msg = e.name === 'AbortError' ? 'timed out (5 min)' : e.message;
+      setVideoError(prev => (prev ? prev + ' | ' : '') + 'Scene ' + (idx + 1) + ': ' + msg);
+      return null;
+    }
+  }
 
+  async function generateVideos() {
+    setVideoGenerating(true);
+    setVideoProgress(0);
+    setVideoError('');
+    const total = scenes.length;
+    const CONCURRENCY = Math.min(2, total);
+    setVideoStage('\u{1F3AC} Generating ' + total + ' videos with synced audio (' + CONCURRENCY + ' in parallel)...');
+    await runParallelBatches(
+      scenes,
+      (scene, idx) => animateScene(scene, idx, total),
+      { concurrency: CONCURRENCY, onProgress: (completed, total2) => setVideoProgress(Math.round((completed / total2) * 100)) }
+    );
+    const count = Object.keys(sceneVideos).length;
+    setVideoStage(count > 0 ? count + ' videos ready! \u{1F389}' : 'Video generation finished');
+    setVideoGenerating(false);
+  }
+
+  // -- Download all images --
+  function downloadAllImages() {
+    setDownloadingAll(true);
+    Object.entries(sceneImages).forEach(([, dataUrl], idx) => {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = displayTitle.replace(/[^a-zA-Z0-9]/g, '_') + '_scene_' + (idx + 1) + '.png';
+      link.click();
+    });
+    setTimeout(() => setDownloadingAll(false), 1000);
+  }
+
+  // -- Share handler --
   function handleShare(platformId: string) {
     const platform = SOCIAL_PLATFORMS.find(p => p.id === platformId);
     if (!platform) return;
-    setShareToast(`Shared to ${platform.name}!`);
+    setShareToast('Shared to ' + platform.name + '!');
     setShowShareMenu(false);
     setTimeout(() => setShareToast(''), 2500);
   }
 
-  // {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
+  // ===================================================================
   //  RENDER
-  // {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-
+  // ===================================================================
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex flex-col">
-      {/* {'\u2500'}{'\u2500'} Header {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'} */}
+      {/* -- Header ------------------------------------------------ */}
       <div className="shrink-0 border-b border-border bg-bg/95 backdrop-blur px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="text-muted hover:text-white text-sm transition">{'\u2190'} Back</button>
@@ -759,275 +528,113 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
             <p className="text-[10px] text-muted">{selectedMedia.category} {'\u00B7'} {selectedMedia.year} {'\u00B7'} {selectedMedia.genre}</p>
           </div>
         </div>
-
-        {/* Step indicator */}
+        {/* Step progress dots */}
         <div className="hidden sm:flex items-center gap-1">
-          {STEP_ORDER.filter(s => s !== 'generating' && s !== 'review-videos').map((s, i) => (
-            <div key={s} className={`flex items-center gap-1 ${i > 0 ? '' : ''}`}>
-              {i > 0 && <div className={`w-4 h-px ${
-                stepIndex > i || (s === 'result' && step === 'result')
-                  ? 'bg-lime' : step === s || (step === 'generating' && s === 'storyboard') || (step === 'review-images' && s === 'review-images') || (step === 'review-videos' && s === 'review-images') ? 'bg-rip' : 'bg-border'
-              }`} />}
-              <div className={`w-2 h-2 rounded-full transition-all ${
-                stepIndex > i || (s === 'result' && step === 'result')
-                  ? 'bg-lime scale-100'
-                  : step === s || (step === 'generating' && s === 'storyboard')
-                    ? 'bg-rip scale-125'
-                    : 'bg-border scale-100'
-              }`} />
+          {VISIBLE_STEPS.map((s, i) => (
+            <div key={s} className="flex items-center gap-1">
+              {i > 0 && <div className={'w-4 h-px ' + (
+                stepIndex > STEP_ORDER.indexOf(s) ? 'bg-lime'
+                : step === s || (step === 'generating' && s === 'review-images') ? 'bg-rip'
+                : 'bg-border'
+              )} />}
+              <div className={'w-2 h-2 rounded-full transition-all ' + (
+                stepIndex > STEP_ORDER.indexOf(s) || (s === 'result' && step === 'result') ? 'bg-lime scale-100'
+                : step === s || (step === 'generating' && s === 'review-images') ? 'bg-rip scale-125'
+                : 'bg-border scale-100'
+              )} title={STEP_LABELS[s] || s} />
             </div>
           ))}
         </div>
       </div>
 
-      {/* {'\u2500'}{'\u2500'} Body (scrollable) {'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'}{'\u2500'} */}
+      {/* -- Body (scrollable) ------------------------------------- */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
         <div className="max-w-2xl mx-auto">
 
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 1: CHARACTER SELECTION
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
-          {step === 'character' && (
-            <div>
-              <h3 className="font-display text-2xl text-white mb-1">Choose Your Character</h3>
-              <p className="text-sm text-muted mb-6">
-                {isCustomIP ? 'Create your original character' : `Pick a character from ${selectedMedia.title} \u2014 or create your own`}
-              </p>
-
-              {/* Search bar */}
-              {!isCustomIP && allCharacters.length > 5 && (
-                <div className="mb-4">
-                  <input value={charSearch} onChange={e => setCharSearch(e.target.value)}
-                    placeholder="\u{1F50D} Search characters..."
-                    className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-rip placeholder:text-muted2" />
-                </div>
-              )}
-
-              {/* TMDB loading spinner */}
-              {tmdbLoading && (
-                <div className="flex items-center gap-2 mb-4 text-muted text-xs">
-                  <span className="animate-spin">{'\u{1F504}'}</span> Loading cast from TMDB...
-                </div>
-              )}
-
-              {/* Character grid */}
-              <div ref={charScrollRef} className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4 max-h-[50vh] overflow-y-auto pr-1">
-                {characters.map(c => (
-                  <button key={c.id} onClick={() => { setSelectedCharacter(c); setShowCustomForm(false); }}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedCharacter?.id === c.id
-                        ? 'border-rip bg-rip/5 scale-[1.02]'
-                        : 'border-border bg-bg2 hover:border-bord2'
-                    }`}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      {c.imageUrl ? (
-                        <img src={c.imageUrl} alt={c.name} referrerPolicy="no-referrer"
-                          className="w-8 h-8 rounded-full object-cover border border-border" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                          style={{ background: `linear-gradient(135deg, hsl(${(c.name || '').charCodeAt(0) * 7 % 360}, 70%, 45%), hsl(${((c.name || '').charCodeAt(0) * 7 + 60) % 360}, 70%, 55%))` }}>
-                          {(c.name || '?')[0].toUpperCase()}
-                        </div>
-                      )}
-                      <span className="text-xs font-bold text-white truncate">{c.name}</span>
-                    </div>
-                    <p className="text-[10px] text-muted truncate">{c.role}</p>
-                  </button>
-                ))}
-
-                {/* Custom character button */}
-                <button onClick={() => { setShowCustomForm(true); setSelectedCharacter(null); }}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    showCustomForm ? 'border-cyan bg-cyan/5' : 'border-dashed border-border bg-bg2 hover:border-cyan'
-                  }`}>
-                  <span className="text-xl block mb-1">{'\u2728'}</span>
-                  <span className="text-xs font-bold text-white">Create Custom</span>
-                  <p className="text-[10px] text-muted">Your own character</p>
-                </button>
-              </div>
-
-              {/* Custom character form */}
-              {showCustomForm && (
-                <div className="bg-bg2 border border-cyan/30 rounded-xl p-4 mb-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span>{'\u2728'}</span>
-                    <span className="text-[9px] text-cyan uppercase tracking-widest font-bold">Custom Character</span>
-                  </div>
-                  <div className="space-y-2">
-                    <input value={customCharName} onChange={e => setCustomCharName(e.target.value)}
-                      placeholder="Character name..."
-                      className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-cyan placeholder:text-muted2" />
-                    <input value={customCharRole} onChange={e => setCustomCharRole(e.target.value)}
-                      placeholder="Role / description..."
-                      className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-cyan placeholder:text-muted2" />
-                    <button onClick={() => {
-                      if (customCharName.trim()) {
-                        setSelectedCharacter({
-                          id: 'custom_' + Date.now(),
-                          name: customCharName,
-                          role: customCharRole || 'Custom character',
-                          emoji: '\u2728',
-                          isCustom: true,
-                        });
-                      }
-                    }}
-                      disabled={!customCharName.trim()}
-                      className="w-full py-2 rounded-lg bg-cyan/10 border border-cyan text-cyan text-xs font-bold disabled:opacity-40 hover:bg-cyan/20 transition-all">
-                      Create Character
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Next button */}
-              <button onClick={() => setStep('prompt')}
-                disabled={!selectedCharacter}
-                className={`w-full py-3.5 rounded-xl font-display text-lg tracking-wide transition-all ${
-                  selectedCharacter
-                    ? 'text-white hover:brightness-110'
-                    : 'text-muted bg-bg3 border border-border cursor-not-allowed'
-                }`}
-                style={selectedCharacter ? { background: 'linear-gradient(90deg,#ff2d78,#a855f7)' } : {}}>
-                {selectedCharacter ? `Continue with ${selectedCharacter.name} \u2192` : 'Select a character'}
-              </button>
-            </div>
-          )}
-
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 2: PROMPT / VISION
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
-          {step === 'prompt' && (
+          {/* ======================================================
+               STEP 1: CONFIG
+               Prompt + Personal Character + Tone + Art Style + Format
+             ====================================================== */}
+          {step === 'config' && (
             <div>
               <h3 className="font-display text-2xl text-white mb-1">Describe Your Vision</h3>
-              <p className="text-sm text-muted mb-6">Tell us your idea {'\u2014'} AI will write a full script for you to review</p>
+              <p className="text-sm text-muted mb-6">Configure everything in one place -- AI will write a full script from this</p>
 
-              {/* Main prompt */}
+              {/* Prompt */}
               <div className="mb-4">
                 <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-1.5">Your Idea *</label>
                 <textarea value={prompt} onChange={e => setPrompt(e.target.value)}
-                  placeholder={`e.g. "${selectedCharacter?.name} discovers they're in a simulation and must convince everyone to escape..."`}
+                  placeholder={'e.g. "Walter White and Gus Fring have a chess match that mirrors their power struggle..."'}
                   rows={4}
                   className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-rip placeholder:text-muted2 resize-none" />
               </div>
 
-              {/* Tone selection */}
+              {/* Personal Character (optional) */}
+              <div className="mb-4">
+                <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-1.5">
+                  {'\u2728'} Personal Character <span className="text-muted2">(optional)</span>
+                </label>
+                <input value={personalCharacter} onChange={e => setPersonalCharacter(e.target.value)}
+                  placeholder="Add your own character into the story... e.g. 'Alex, a time-traveling detective'"
+                  className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-cyan placeholder:text-muted2" />
+                <p className="text-[10px] text-muted mt-1">
+                  Show characters are auto-detected from your prompt + {displayTitle} profile. Add your own OC here if you want.
+                </p>
+              </div>
+
+              {/* Tone */}
               <div className="mb-4">
                 <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-2">Tone / Style</label>
                 <div className="flex flex-wrap gap-2">
                   {TONES.map(t => (
                     <button key={t.id} onClick={() => setTone(t.id)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                      className={'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ' + (
                         tone === t.id
                           ? 'bg-rip/15 border border-rip text-rip'
                           : 'bg-bg2 border border-border text-muted hover:text-white'
-                      }`}>
+                      )}>
                       <span>{t.emoji}</span> {t.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Format selection */}
+              {/* Art Style */}
+              <div className="mb-4">
+                <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-2">{'\u{1F3A8}'} Art Style</label>
+                <p className="text-[10px] text-muted mb-2">All styles use the Original 1:1 look as the base, then layer the effect on top</p>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {ART_STYLES.map(s => (
+                    <button key={s.id} onClick={() => setArtStyle(s.id as ArtStyleId)}
+                      className={'p-2.5 rounded-xl text-center transition-all ' + (
+                        artStyle === s.id
+                          ? 'bg-rip/15 border-2 border-rip text-white scale-[1.02]'
+                          : 'bg-bg2 border border-border text-muted hover:text-white hover:border-bord2'
+                      )}>
+                      <span className="text-xl block mb-1">{s.emoji}</span>
+                      <span className="text-[10px] font-bold">{s.label}</span>
+                      {s.id === 'cartoon-realistic' && (
+                        <span className="text-[8px] block text-cyan mt-0.5">
+                          {['Cartoon', 'Anime'].includes(selectedMedia.category) ? '+ Realistic' : '+ Cartoon'}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Format */}
               <div className="mb-4">
                 <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-2">Format</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {FORMATS.map(f => (
                     <button key={f.id} onClick={() => setFormat(f.id)}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        format === f.id
-                          ? 'border-cyan bg-cyan/5'
-                          : 'border-border bg-bg2 hover:border-bord2'
-                      }`}>
+                      className={'p-3 rounded-xl border text-left transition-all ' + (
+                        format === f.id ? 'border-cyan bg-cyan/5' : 'border-border bg-bg2 hover:border-bord2'
+                      )}>
                       <div className="text-lg mb-1">{f.emoji}</div>
                       <div className="text-xs font-bold text-white">{f.label}</div>
                       <div className="text-[10px] text-muted">{f.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Crossover (optional) */}
-              <div className="mb-4">
-                <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-1.5">Crossover (optional)</label>
-                <input value={crossover} onChange={e => setCrossover(e.target.value)}
-                  placeholder="Mix with another IP... e.g. 'SpongeBob meets Breaking Bad'"
-                  className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-rip placeholder:text-muted2" />
-              </div>
-
-              {/* AI Q&A Section (vidmuse-style) */}
-              {prompt.trim() && (
-                <div className="mb-4 bg-bg2 border border-purple/30 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">{'\u{1F9E0}'}</span>
-                    <div className="text-[9px] text-purple uppercase tracking-widest font-bold">AI Refinement Questions</div>
-                  </div>
-
-                  {AI_QUESTIONS.slice(0, questionPhase + 1).map((q, i) => (
-                    <div key={i} className="mb-3">
-                      <div className="flex items-start gap-2 mb-1.5">
-                        <span className="text-purple text-xs mt-0.5">Q{i + 1}:</span>
-                        <p className="text-sm text-white">{q}</p>
-                      </div>
-                      {aiQuestions[i]?.a ? (
-                        <div className="ml-6 bg-bg3 border border-border rounded-lg px-3 py-2">
-                          <p className="text-xs text-muted">{aiQuestions[i].a}</p>
-                        </div>
-                      ) : i === questionPhase ? (
-                        <div className="ml-6 flex gap-2">
-                          <input value={currentAnswer} onChange={e => setCurrentAnswer(e.target.value)}
-                            placeholder="Your answer..."
-                            className="flex-1 bg-bg3 border border-border rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-purple placeholder:text-muted2"
-                            onKeyDown={e => {
-                              if (e.key === 'Enter' && currentAnswer.trim()) {
-                                setAiQuestions([...aiQuestions, { q, a: currentAnswer }]);
-                                setCurrentAnswer('');
-                                setQuestionPhase(prev => prev + 1);
-                              }
-                            }} />
-                          <button onClick={() => {
-                            if (currentAnswer.trim()) {
-                              setAiQuestions([...aiQuestions, { q, a: currentAnswer }]);
-                              setCurrentAnswer('');
-                              setQuestionPhase(prev => prev + 1);
-                            }
-                          }}
-                            disabled={!currentAnswer.trim()}
-                            className="px-3 py-2 rounded-lg bg-purple/20 border border-purple text-purple text-xs font-bold hover:bg-purple/30 transition-all disabled:opacity-40">
-                            {'\u2192'}
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-
-                  {questionPhase >= AI_QUESTIONS.length && (
-                    <div className="flex items-center gap-2 text-lime text-xs mt-2">
-                      <span>{'\u2713'}</span> All questions answered {'\u2014'} your vision is clear!
-                    </div>
-                  )}
-
-                  {questionPhase < AI_QUESTIONS.length && (
-                    <button onClick={() => setQuestionPhase(AI_QUESTIONS.length)}
-                      className="text-[10px] text-muted hover:text-white mt-2 underline transition">
-                      Skip remaining questions {'\u2192'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Art Style */}
-              <div className="mb-4">
-                <label className="text-[10px] text-muted font-bold uppercase tracking-widest block mb-2">{'\u{1F3A8}'} Art Style</label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {STYLES.map(s => (
-                    <button key={s.id} onClick={() => setArtStyle(s.id)}
-                      className={`p-2.5 rounded-xl text-center transition-all ${
-                        artStyle === s.id
-                          ? 'bg-rip/15 border-2 border-rip text-white scale-[1.02]'
-                          : 'bg-bg2 border border-border text-muted hover:text-white hover:border-bord2'
-                      }`}>
-                      <span className="text-xl block mb-1">{s.emoji}</span>
-                      <span className="text-[10px] font-bold">{s.label}</span>
                     </button>
                   ))}
                 </div>
@@ -1039,11 +646,11 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                 <div className="flex flex-wrap gap-2">
                   {ASPECT_RATIOS.map(a => (
                     <button key={a.id} onClick={() => setAspectRatio(a.id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                      className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ' + (
                         aspectRatio === a.id
                           ? 'bg-cyan/15 border border-cyan text-cyan'
                           : 'bg-bg2 border border-border text-muted hover:text-white'
-                      }`}>
+                      )}>
                       <span>{a.emoji}</span> {a.label}
                       <span className="text-[9px] text-muted font-normal hidden sm:inline">{'\u00B7'} {a.desc}</span>
                     </button>
@@ -1051,59 +658,43 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                 </div>
               </div>
 
-              {/* AI Engine + Model selection */}
-              <div className="mb-4 bg-bg2 border border-lime/30 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">{'\u{1F916}'}</span>
-                  <div className="text-[9px] text-lime uppercase tracking-widest font-bold">AI Engine</div>
-                  <button onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="ml-auto text-[9px] text-muted hover:text-white transition-all">
-                    {showAdvanced ? '\u25B2 Hide Advanced' : '\u25BC Advanced'}
-                  </button>
-                </div>
-
-                {/* Image model selector {'\u2014'} fal.ai models */}
-                <div className="mb-3">
-                  <label className="text-[10px] text-muted font-bold block mb-1.5">Image Generation Model</label>
-                  <div className="flex flex-wrap gap-2">
-                    {IMAGE_MODELS.map(m => (
-                      <button key={m.id} onClick={() => setImageModel(m.id)}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                          imageModel === m.id
-                            ? 'bg-lime/15 border border-lime text-lime'
-                            : 'bg-bg3 border border-border text-muted hover:text-white'
-                        }`}>
-                        <span>{m.emoji}</span> {m.name}
-                        {m.tier !== 'free' && (
-                          <span className="text-[8px] px-1 py-0.5 rounded bg-rip/20 text-rip">{m.tier}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {showAdvanced && (
-                  <div className="mt-3 pt-3 border-t border-border space-y-3">
-                    <div>
-                      <label className="text-[10px] text-muted font-bold block mb-1">Negative Prompt</label>
-                      <textarea value={negativePrompt}
-                        onChange={e => setNegativePrompt(e.target.value)}
-                        placeholder="Things to avoid..."
-                        className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-muted/50 resize-none focus:border-lime/50 focus:outline-none"
-                        rows={2} />
-                    </div>
-                  </div>
-                )}
-
-                <div className="text-[10px] text-muted mt-3">
-                  {'\u{1F4DD}'} <span className="text-purple font-bold">Claude Sonnet</span> {'\u2192'}
-                  {'\u270D'}{'\uFE0F'} <span className="text-orange-400 font-bold">Script</span> {'\u2192'}
-                  {'\u{1F3A8}'} <span className="text-lime font-bold">{IMAGE_MODELS.find(m => m.id === imageModel)?.name || imageModel}</span> {'\u2192'}
-                  {'\u{1F3AC}'} <span className="text-rip font-bold">{STYLES.find(s => s.id === artStyle)?.label || 'Original'}</span>
-                </div>
+              {/* Crossover (optional) */}
+              <div className="mb-4">
+                <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-1.5">Crossover <span className="text-muted2">(optional)</span></label>
+                <input value={crossover} onChange={e => setCrossover(e.target.value)}
+                  placeholder="Mix with another IP... e.g. 'SpongeBob meets Breaking Bad'"
+                  className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-rip placeholder:text-muted2" />
               </div>
 
-              {/* Script error */}
+              {/* Advanced (negative prompt, etc) */}
+              <div className="mb-6 bg-bg2 border border-border rounded-xl p-4">
+                <button onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center justify-between w-full text-left">
+                  <span className="text-[9px] text-muted uppercase tracking-widest font-bold">{'\u2699\uFE0F'} Advanced Options</span>
+                  <span className="text-xs text-muted">{showAdvanced ? '\u25B2' : '\u25BC'}</span>
+                </button>
+                {showAdvanced && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <label className="text-[10px] text-muted font-bold block mb-1">Negative Prompt</label>
+                    <textarea value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)}
+                      placeholder="Things to avoid..."
+                      className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-muted/50 resize-none focus:border-lime/50 focus:outline-none"
+                      rows={2} />
+                  </div>
+                )}
+              </div>
+
+              {/* Pipeline summary */}
+              <div className="mb-6 text-[10px] text-muted bg-bg2 border border-lime/20 rounded-xl p-3">
+                <div className="font-bold text-white text-xs mb-1">{'\u26A1'} Free Pipeline (auto-selected)</div>
+                {'\u{1F4DD}'} <span className="text-purple font-bold">Claude Sonnet</span> {'\u2192 '}
+                {'\u270D\uFE0F'} <span className="text-orange-400 font-bold">Script</span> {'\u2192 '}
+                {'\u{1F3A8}'} <span className="text-lime font-bold">Pollinations</span> {'\u2192 '}
+                {'\u{1F3AC}'} <span className="text-cyan font-bold">Self-Hosted Wan 2.1</span> {'\u2192 '}
+                {'\u{1F3AF}'} <span className="text-rip font-bold">{ART_STYLES.find(s => s.id === artStyle)?.label || 'Original'}</span>
+              </div>
+
+              {/* Script error from previous attempt */}
               {scriptError && (
                 <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
                   <span>{'\u274C'}</span>
@@ -1112,150 +703,100 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                 </div>
               )}
 
-              {/* Navigation */}
-              <div className="flex gap-3">
-                <button onClick={() => setStep('character')}
-                  className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-bord2 transition-all">
-                  {'\u2190'} Back
-                </button>
-                <button onClick={generateScript}
-                  disabled={!prompt.trim() || scriptLoading}
-                  className={`flex-1 py-3.5 rounded-xl font-display text-lg tracking-wide transition-all ${
-                    prompt.trim() && !scriptLoading
-                      ? 'text-white hover:brightness-110'
-                      : 'text-muted bg-bg3 border border-border cursor-not-allowed'
-                  }`}
-                  style={prompt.trim() && !scriptLoading ? { background: 'linear-gradient(90deg,#ff2d78,#a855f7)' } : {}}>
-                  {scriptLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">{'\u270D'}{'\uFE0F'}</span> AI Writing Script...
-                    </span>
-                  ) : (
-                    'Generate Script \u2192'
-                  )}
-                </button>
-              </div>
+              {/* Generate Script button */}
+              <button onClick={generateScript}
+                disabled={!prompt.trim() || scriptLoading}
+                className={'w-full py-3.5 rounded-xl font-display text-lg tracking-wide transition-all ' + (
+                  prompt.trim() && !scriptLoading ? 'text-white hover:brightness-110' : 'text-muted bg-bg3 border border-border cursor-not-allowed'
+                )}
+                style={prompt.trim() && !scriptLoading ? { background: 'linear-gradient(90deg,#ff2d78,#a855f7)' } : {}}>
+                {scriptLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="animate-spin">{'\u270D\uFE0F'}</span> AI Writing Script...
+                  </span>
+                ) : prompt.trim() ? 'Generate Script \u2192' : 'Describe your idea to continue'}
+              </button>
             </div>
           )}
 
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 3: SCRIPT REVIEW (NEW {'\u2014'} Phase 2)
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
+          {/* ======================================================
+               STEP 2: SCRIPT REVIEW
+             ====================================================== */}
           {step === 'script' && (
             <div>
-              <h3 className="font-display text-2xl text-white mb-1">{'\u{1F4DC}'} Your Script</h3>
-              <p className="text-sm text-muted mb-2">Review and edit the AI-generated screenplay. Click any scene to modify it.</p>
+              <h3 className="font-display text-2xl text-white mb-1">{scriptTitle || 'Your Script'}</h3>
+              {scriptLogline && <p className="text-sm text-muted italic mb-4">{scriptLogline}</p>}
 
-              {/* Script header */}
-              {scriptTitle && (
-                <div className="bg-bg2 border border-rip/30 rounded-xl p-4 mb-4">
-                  <h4 className="font-display text-xl text-white mb-1">{scriptTitle}</h4>
-                  {scriptLogline && <p className="text-sm text-muted italic">{scriptLogline}</p>}
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <span className="px-2 py-1 rounded-full bg-rip/10 border border-rip/30 text-rip text-[10px] font-bold">
-                      {selectedCharacter?.emoji} {selectedCharacter?.name}
-                    </span>
-                    <span className="px-2 py-1 rounded-full bg-purple/10 border border-purple/30 text-purple text-[10px] font-bold">
-                      {'\u{1F3AD}'} {scriptScenes.length} scenes
-                    </span>
-                    <span className="px-2 py-1 rounded-full bg-cyan/10 border border-cyan/30 text-cyan text-[10px] font-bold">
-                      {TONES.find(t => t.id === tone)?.emoji} {TONES.find(t => t.id === tone)?.label}
-                    </span>
-                  </div>
-                </div>
-              )}
+              {/* Script metadata */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <span className="px-2 py-1 rounded-full bg-rip/10 border border-rip/30 text-rip text-[10px] font-bold">
+                  {TONES.find(t => t.id === tone)?.emoji} {TONES.find(t => t.id === tone)?.label}
+                </span>
+                <span className="px-2 py-1 rounded-full bg-cyan/10 border border-cyan/30 text-cyan text-[10px] font-bold">
+                  {ART_STYLES.find(s => s.id === artStyle)?.emoji || ''} {ART_STYLES.find(s => s.id === artStyle)?.label}
+                </span>
+                <span className="px-2 py-1 rounded-full bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold">
+                  {scriptScenes.length} scenes
+                </span>
+                {personalCharacter && (
+                  <span className="px-2 py-1 rounded-full bg-purple/10 border border-purple/30 text-purple text-[10px] font-bold">
+                    {'\u2728'} {personalCharacter}
+                  </span>
+                )}
+              </div>
 
-              {/* Script scenes */}
-              <div className="space-y-4 mb-6">
-                {scriptScenes.map((scene, idx) => (
-                  <div key={idx}
-                    className={`bg-bg2 border rounded-xl overflow-hidden transition-all ${
-                      editingScript === idx ? 'border-rip' : 'border-border hover:border-bord2'
-                    }`}>
-                    {/* Scene heading */}
-                    <div className="bg-bg3 px-4 py-2 border-b border-border flex items-center justify-between">
+              {/* Scene cards */}
+              <div className="space-y-3 mb-6">
+                {scriptScenes.map((scene, i) => (
+                  <div key={i} className="bg-bg2 border border-border rounded-xl p-4 hover:border-bord2 transition-all">
+                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-rip text-xs font-bold">Scene {scene.sceneNum}</span>
-                        <span className="text-[10px] text-muted font-mono">{scene.duration}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple/10 text-purple font-bold">{scene.mood}</span>
+                        <span className="w-7 h-7 rounded-full bg-rip/20 flex items-center justify-center text-xs font-bold text-rip">{scene.sceneNum}</span>
+                        <h4 className="text-sm font-bold text-white">{scene.heading}</h4>
                       </div>
-                      <button onClick={() => {
-                        if (editingScript === idx) {
-                          setEditingScript(null);
-                        } else {
-                          setEditingScript(idx);
-                          setScriptEditText(JSON.stringify(scene, null, 2));
-                        }
-                      }}
-                        className="text-muted hover:text-white text-xs transition">
-                        {editingScript === idx ? '\u2715' : '\u270F\uFE0F'}
-                      </button>
+                      <div className="flex items-center gap-2 text-[10px] text-muted">
+                        <span>{scene.duration}</span>
+                        <span>{'\u00B7'}</span>
+                        <span>{scene.mood}</span>
+                      </div>
                     </div>
 
-                    {editingScript === idx ? (
-                      <div className="p-4 space-y-2">
-                        <textarea value={scriptEditText}
-                          onChange={e => setScriptEditText(e.target.value)}
-                          rows={12}
-                          className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-white text-xs font-mono outline-none focus:border-rip resize-none" />
-                        <div className="flex gap-2">
+                    {editingScript === i ? (
+                      <div>
+                        <textarea value={scriptEditText} onChange={e => setScriptEditText(e.target.value)}
+                          className="w-full bg-bg3 border border-rip/30 rounded-lg px-3 py-2 text-xs text-white resize-none focus:outline-none"
+                          rows={4} />
+                        <div className="flex gap-2 mt-2">
                           <button onClick={() => {
-                            try {
-                              const updated = JSON.parse(scriptEditText);
-                              setScriptScenes(scriptScenes.map((s, i) => i === idx ? updated : s));
-                              setEditingScript(null);
-                            } catch {
-                              // If JSON is invalid, just update the action text
-                              setScriptScenes(scriptScenes.map((s, i) =>
-                                i === idx ? { ...s, action: scriptEditText } : s
-                              ));
-                              setEditingScript(null);
-                            }
-                          }}
-                            className="px-3 py-1.5 rounded-lg bg-lime/10 border border-lime text-lime text-[10px] font-bold">
-                            Save
-                          </button>
+                            const updated = [...scriptScenes];
+                            updated[i] = { ...updated[i], description: scriptEditText };
+                            setScriptScenes(updated);
+                            setEditingScript(null);
+                          }} className="px-3 py-1.5 rounded-lg bg-lime/10 border border-lime text-lime text-[10px] font-bold">Save</button>
                           <button onClick={() => setEditingScript(null)}
-                            className="px-3 py-1.5 rounded-lg text-[10px] text-muted hover:text-white">
-                            Cancel
-                          </button>
+                            className="px-3 py-1.5 rounded-lg bg-bg3 border border-border text-muted text-[10px] font-bold">Cancel</button>
                         </div>
                       </div>
                     ) : (
-                      <div className="p-4">
-                        {/* Scene heading (INT/EXT) */}
-                        <p className="text-xs font-bold text-cyan mb-2 font-mono uppercase">{scene.heading}</p>
-
-                        {/* Description */}
-                        <p className="text-xs text-muted italic mb-3">{scene.description}</p>
-
-                        {/* Action */}
-                        <p className="text-xs text-white mb-3">{scene.action}</p>
-
-                        {/* Dialogue */}
+                      <>
+                        <p className="text-xs text-muted mb-2">{scene.description}</p>
+                        {scene.action && <p className="text-xs text-cyan/70 italic mb-2">{scene.action}</p>}
                         {scene.dialogue?.length > 0 && (
-                          <div className="space-y-2 pl-4 border-l-2 border-rip/20">
+                          <div className="space-y-1 mt-2 pt-2 border-t border-border/50">
                             {scene.dialogue.map((d, di) => (
-                              <div key={di}>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-bold text-rip uppercase">{d.character}</span>
-                                  {d.direction && (
-                                    <span className="text-[9px] text-muted italic">({d.direction})</span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-white/90 ml-2">&ldquo;{d.line}&rdquo;</p>
+                              <div key={di} className="flex gap-2">
+                                <span className="text-[10px] font-bold text-rip uppercase shrink-0">{d.character}</span>
+                                <span className="text-[11px] text-white">{d.line}</span>
                               </div>
                             ))}
                           </div>
                         )}
-
-                        {/* Camera note */}
                         {scene.cameraNote && (
-                          <p className="text-[10px] text-muted/60 mt-3 italic">
-                            {'\u{1F3A5}'} {scene.cameraNote}
-                          </p>
+                          <p className="text-[10px] text-muted mt-2">{'\u{1F3A5}'} {scene.cameraNote}</p>
                         )}
-                      </div>
+                        <button onClick={() => { setEditingScript(i); setScriptEditText(scene.description); }}
+                          className="mt-2 text-[10px] text-muted hover:text-rip transition">{'\u270F\uFE0F'} Edit</button>
+                      </>
                     )}
                   </div>
                 ))}
@@ -1263,9 +804,9 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
 
               {/* Navigation */}
               <div className="flex gap-3">
-                <button onClick={() => setStep('prompt')}
+                <button onClick={() => setStep('config')}
                   className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-bord2 transition-all">
-                  {'\u2190'} Edit Prompt
+                  {'\u2190'} Config
                 </button>
                 <button onClick={generateStoryboard}
                   disabled={storyboardLoading}
@@ -1273,245 +814,139 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                   style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
                   {storyboardLoading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">{'\u{1F3A8}'}</span> Creating Storyboard...
+                      <span className="animate-spin">{'\u{1F3A8}'}</span> Building Storyboard...
                     </span>
-                  ) : (
-                    'Approve \u2192 Storyboard \u2192'
-                  )}
+                  ) : 'Approve & Build Storyboard \u2192'}
                 </button>
               </div>
-
               {storyboardError && (
-                <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
-                  <span>{'\u274C'}</span>
+                <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
                   <p className="text-xs text-red-400">{storyboardError}</p>
                 </div>
               )}
             </div>
           )}
 
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 4: STORYBOARD REVIEW
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
+          {/* ======================================================
+               STEP 3: APPROVE STORYBOARD
+             ====================================================== */}
           {step === 'storyboard' && (
             <div>
-              <h3 className="font-display text-2xl text-white mb-1">Storyboard</h3>
-              <p className="text-sm text-muted mb-2">Review and edit your visual scenes before generation.</p>
+              <h3 className="font-display text-2xl text-white mb-1">Approve Storyboard</h3>
+              <p className="text-sm text-muted mb-6">Review and edit scene visuals before generation. Click a scene to edit its visual prompt.</p>
 
-              {/* Config summary */}
-              <div className="flex flex-wrap gap-2 mb-6">
-                <span className="px-2.5 py-1 rounded-full bg-rip/10 border border-rip/30 text-rip text-[10px] font-bold">
-                  {'\u{1F3A8}'} {STYLES.find(s => s.id === artStyle)?.label || 'Original'}
-                </span>
-                <span className="px-2.5 py-1 rounded-full bg-cyan/10 border border-cyan/30 text-cyan text-[10px] font-bold">
-                  {'\u{1F4D0}'} {aspectRatio}
-                </span>
-                <span className="px-2.5 py-1 rounded-full bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold">
-                  {'\u{1F916}'} {IMAGE_MODELS.find(m => m.id === imageModel)?.name || imageModel}
-                </span>
-                <span className="px-2.5 py-1 rounded-full bg-purple/10 border border-purple/30 text-purple text-[10px] font-bold">
-                  {'\u{1F3AD}'} {scenes.length} scenes
-                </span>
-              </div>
-
-              <div className="space-y-3 mb-6">
+              <div className="grid grid-cols-2 gap-3 mb-6">
                 {scenes.map((scene) => (
                   <div key={scene.id}
-                    className={`bg-bg2 border rounded-xl p-4 transition-all ${
-                      editingScene === scene.id ? 'border-rip' : 'border-border hover:border-bord2'
-                    }`}>
-                    <div className="flex items-start gap-3">
-                      <div className="shrink-0 w-10 h-10 rounded-lg bg-bg3 border border-border flex items-center justify-center text-lg">
-                        {scene.emoji}
+                    className={'p-3 rounded-xl border transition-all ' + (
+                      editingScene === scene.id ? 'border-rip bg-rip/5' : 'border-border bg-bg2 hover:border-bord2'
+                    )}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">{scene.emoji}</span>
+                      <div>
+                        <span className="text-[10px] font-bold text-white">Scene {scene.sceneNum}</span>
+                        <span className="text-[10px] text-muted ml-2">{scene.duration}</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-bold text-rip">Scene {scene.sceneNum}</span>
-                          <span className="text-[10px] text-muted font-mono">{scene.duration}</span>
-                        </div>
-                        {editingScene === scene.id ? (
-                          <div className="space-y-2">
-                            <textarea value={sceneEditText} onChange={e => setSceneEditText(e.target.value)}
-                              rows={3}
-                              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-rip resize-none" />
-                            <div className="flex gap-2">
-                              <button onClick={() => {
-                                setScenes(scenes.map(s => s.id === scene.id ? { ...s, description: sceneEditText } : s));
-                                setEditingScene(null);
-                              }}
-                                className="px-3 py-1.5 rounded-lg bg-lime/10 border border-lime text-lime text-[10px] font-bold">Save</button>
-                              <button onClick={() => setEditingScene(null)}
-                                className="px-3 py-1.5 rounded-lg text-[10px] text-muted hover:text-white">Cancel</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <p className="text-xs text-white leading-relaxed">{scene.description}</p>
-                            <p className="text-[10px] text-muted2 mt-1 italic">Visual: {scene.visual}</p>
-                          </>
-                        )}
-                      </div>
-                      {editingScene !== scene.id && (
-                        <button onClick={() => { setEditingScene(scene.id); setSceneEditText(scene.description); }}
-                          className="shrink-0 text-muted hover:text-white text-xs transition">{'\u270F'}{'\uFE0F'}</button>
-                      )}
                     </div>
+
+                    {editingScene === scene.id ? (
+                      <div>
+                        <textarea value={sceneEditText} onChange={e => setSceneEditText(e.target.value)}
+                          className="w-full bg-bg3 border border-rip/30 rounded-lg px-3 py-2 text-[11px] text-white resize-none focus:outline-none"
+                          rows={3} />
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => {
+                            setScenes(prev => prev.map(s => s.id === scene.id ? { ...s, visual: sceneEditText, description: sceneEditText } : s));
+                            setEditingScene(null);
+                          }} className="px-2 py-1 rounded bg-lime/10 border border-lime text-lime text-[9px] font-bold">Save</button>
+                          <button onClick={() => setEditingScene(null)}
+                            className="px-2 py-1 rounded bg-bg3 border border-border text-muted text-[9px] font-bold">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-[11px] text-muted line-clamp-3">{scene.visual || scene.description}</p>
+                        <button onClick={() => { setEditingScene(scene.id); setSceneEditText(scene.visual || scene.description); }}
+                          className="mt-2 text-[10px] text-muted hover:text-rip transition">{'\u270F\uFE0F'} Edit visual</button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
-
-              {/* Add scene */}
-              <button onClick={() => {
-                const newScene: StoryboardScene = {
-                  id: 'sc_' + Date.now(),
-                  sceneNum: scenes.length + 1,
-                  description: 'New scene \u2014 click edit to describe it',
-                  duration: '0:00-0:00',
-                  visual: 'Describe the visual style',
-                  emoji: '\u{1F3AC}',
-                };
-                setScenes([...scenes, newScene]);
-              }}
-                className="w-full py-2.5 rounded-xl border border-dashed border-border text-xs text-muted hover:text-white hover:border-bord2 transition-all mb-6">
-                + Add Scene
-              </button>
 
               {/* Navigation */}
               <div className="flex gap-3">
                 <button onClick={() => setStep('script')}
                   className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-bord2 transition-all">
-                  {'\u2190'} Back to Script
+                  {'\u2190'} Script
                 </button>
                 <button onClick={startGeneration}
                   className="flex-1 py-3.5 rounded-xl font-display text-lg tracking-wide text-white transition-all hover:brightness-110"
                   style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
-                  {'\u263D'} Generate Images {'\u2192'}
+                  Generate Images {'\u2192'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 5: GENERATING (animated progress)
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
+          {/* ======================================================
+               STEP 4a: GENERATING IMAGES (progress)
+             ====================================================== */}
           {step === 'generating' && (
-            <div className="flex flex-col items-center justify-center py-20">
-              <div className="text-6xl mb-6 animate-pulse">{'\u{1F3AC}'}</div>
-              <h3 className="font-display text-3xl text-white mb-2">Creating Your Vision</h3>
-              <p className="text-sm text-muted mb-4 text-center max-w-md">
-                Bringing {selectedCharacter?.name}&apos;s story to life in the {displayTitle} universe...
-              </p>
-
-              {/* Elapsed timer */}
-              <div className="flex items-center gap-2 mb-6">
-                <span className="text-xs text-muted">{'\u23F1'}{'\uFE0F'} Elapsed:</span>
-                <span className="font-mono text-sm text-white font-bold">
-                  {Math.floor(genElapsed / 60)}:{String(genElapsed % 60).padStart(2, '0')}
-                </span>
-                <span className="mx-2 text-muted">{'\u00B7'}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rip/10 border border-rip/30 text-rip font-bold">
-                  {STYLES.find(s => s.id === artStyle)?.label}
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-lime/10 border border-lime/30 text-lime font-bold">
-                  {IMAGE_MODELS.find(m => m.id === imageModel)?.name}
-                </span>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full max-w-md mb-4">
-                <div className="h-3 bg-bg3 rounded-full overflow-hidden">
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4 animate-pulse">{'\u{1F3A8}'}</div>
+              <h3 className="font-display text-2xl text-white mb-2">
+                Bringing {displayTitle} to life...
+              </h3>
+              <p className="text-sm text-muted mb-6">{genStage}</p>
+              <div className="max-w-sm mx-auto mb-4">
+                <div className="h-2 bg-bg3 rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${genProgress}%`, background: 'linear-gradient(90deg,#ff2d78,#a855f7,#00d4ff)' }} />
+                    style={{ width: genProgress + '%', background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }} />
+                </div>
+                <div className="flex justify-between mt-1.5 text-[10px] text-muted">
+                  <span>{genProgress}%</span>
+                  <span>{genElapsed}s</span>
                 </div>
               </div>
-              <div className="flex items-center justify-between w-full max-w-md">
-                <p className="text-xs text-muted">{genStage}</p>
-                <p className="text-xs font-bold text-white">{Math.round(genProgress)}%</p>
-              </div>
-
               {genError && (
-                <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2 w-full max-w-md">
-                  <span>{'\u274C'}</span>
-                  <p className="text-xs text-red-400">{genError}</p>
+                <div className="text-left max-w-sm mx-auto bg-red-500/10 border border-red-500/30 rounded-xl p-3 mt-4">
+                  <p className="text-[10px] text-red-400 whitespace-pre-wrap">{genError}</p>
                 </div>
               )}
-
-              {/* Scene images as they generate */}
-              <div className="mt-10 grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-lg">
-                {scenes.map((scene, i) => (
-                  <div key={scene.id} className="relative">
-                    {sceneImages[scene.id] ? (
-                      <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
-                        className="aspect-video object-cover rounded-lg border border-lime/30" />
-                    ) : (
-                      <div className={`aspect-video bg-bg2 border border-border rounded-lg flex items-center justify-center text-2xl ${
-                        i <= Math.ceil((genProgress / 100) * scenes.length) ? 'animate-pulse' : 'opacity-30'
-                      }`}>
-                        {scene.emoji}
-                      </div>
-                    )}
-                    <span className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-white font-bold">
-                      {scene.sceneNum}
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 5b: REVIEW IMAGES {'\u2014'} Approve / Edit / Regenerate
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
+          {/* ======================================================
+               STEP 4b: REVIEW IMAGES
+             ====================================================== */}
           {step === 'review-images' && (
             <div>
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">{'\u{1F3A8}'}</div>
-                <h3 className="font-display text-3xl text-white mb-1">Review Your Scenes</h3>
-                <p className="text-sm text-muted">Approve, regenerate, or edit each scene before animating</p>
-              </div>
+              <h3 className="font-display text-2xl text-white mb-1">Review Images</h3>
+              <p className="text-sm text-muted mb-4">Approve your scenes or regenerate any you don&apos;t like</p>
 
-              {genError && (
-                <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
-                  <p className="text-xs text-red-400 font-bold mb-1">{'\u26A0'}{'\uFE0F'} Some scenes failed:</p>
-                  <p className="text-xs text-red-400 whitespace-pre-line">{genError}</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
                 {scenes.map((scene, i) => (
-                  <div key={scene.id} className="bg-bg2 border border-border rounded-xl overflow-hidden group">
-                    <div className="relative">
-                      {sceneImages[scene.id] ? (
-                        <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
-                          className="aspect-video object-cover w-full" />
-                      ) : (
-                        <div className="aspect-video bg-bg3 flex items-center justify-center">
-                          <span className="text-2xl opacity-40">{scene.emoji} {'\u274C'}</span>
-                        </div>
-                      )}
-                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                        <span className="text-xs text-white font-bold">Scene {scene.sceneNum}</span>
+                  <div key={scene.id} className="relative group">
+                    {sceneImages[scene.id] ? (
+                      <img src={sceneImages[scene.id]} alt={'Scene ' + (i + 1)}
+                        className="aspect-video object-cover rounded-xl border border-border group-hover:border-rip transition-all" />
+                    ) : (
+                      <div className="aspect-video bg-bg3 border border-border rounded-xl flex items-center justify-center text-2xl opacity-40">
+                        {scene.emoji}
                       </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent rounded-b-xl">
+                      <span className="text-[10px] text-white font-bold">Scene {scene.sceneNum}</span>
+                      <p className="text-[9px] text-white/60 line-clamp-1">{scene.description.slice(0, 60)}</p>
                     </div>
-                    <div className="p-3">
-                      <p className="text-xs text-muted mb-2 line-clamp-2">{scene.description}</p>
-                      <div className="flex gap-2">
-                        <button onClick={() => regenerateScene(scene.id)}
-                          disabled={regeneratingScene === scene.id}
-                          className="flex-1 px-2 py-1.5 rounded-lg bg-rip/10 border border-rip/30 text-rip text-[10px] font-bold hover:bg-rip/20 disabled:opacity-50">
-                          {regeneratingScene === scene.id ? '\u{1F504} Regenerating...' : '\u{1F504} Regenerate'}
-                        </button>
-                        <button onClick={() => {
-                          if (!sceneImages[scene.id]) return;
-                          const link = document.createElement('a');
-                          link.href = sceneImages[scene.id];
-                          link.download = `scene-${scene.sceneNum}.png`;
-                          link.click();
-                        }}
-                          className="px-2 py-1.5 rounded-lg bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold hover:bg-lime/20">
-                          {'\u2B07'}{'\uFE0F'}
-                        </button>
-                      </div>
+                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button onClick={() => regenerateScene(scene.id)}
+                        disabled={regeneratingScene === scene.id}
+                        title="Regenerate"
+                        className="w-7 h-7 rounded-lg bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-xs hover:border-rip transition-all disabled:animate-spin">
+                        {'\u{1F504}'}
+                      </button>
                     </div>
                     {regeneratingScene === scene.id && (
                       <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center">
@@ -1522,177 +957,130 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                 ))}
               </div>
 
-              {/* Video model selector */}
-              <div className="bg-bg2 border border-cyan/30 rounded-xl p-4 mb-4">
-                <label className="text-[10px] text-muted font-bold block mb-2">{'\u{1F3A5}'} Choose Video Model for Animation</label>
-                <div className="flex flex-wrap gap-2">
-                  {VIDEO_MODELS.map(m => (
-                    <button key={m.id} onClick={() => setVideoModel(m.id)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                        videoModel === m.id
-                          ? 'bg-cyan/15 border border-cyan text-cyan'
-                          : 'bg-bg3 border border-border text-muted hover:text-white'
-                      }`}>
-                      <span>{m.emoji}</span> {m.name}
-                      <span className="text-[8px] px-1 py-0.5 rounded bg-rip/20 text-rip">{m.tier}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+              {/* Navigation */}
               <div className="flex gap-3">
                 <button onClick={() => setStep('storyboard')}
-                  className="px-4 py-3 rounded-xl bg-bg2 border border-border text-sm text-muted hover:text-white transition-all">
-                  {'\u2190'} Back
-                </button>
-                <button onClick={async () => {
-                  setStep('review-videos');
-                  setVideoGenerating(true);
-                  setVideoProgress(0);
-                  setVideoError('');
-                  const totalScenes = scenes.length;
-                  setVideoStage(`\u{1F3AC} Generating ${totalScenes} videos...`);
-                  await runParallelBatches(
-                    scenes,
-                    (scene, idx) => animateScene(scene, idx, totalScenes),
-                    {
-                      concurrency: 2,
-                      onProgress: (completed, total) => {
-                        setVideoProgress(Math.round((completed / total) * 100));
-                      },
-                    }
-                  );
-                  setVideoGenerating(false);
-                  const videoCount = Object.keys(sceneVideos).length;
-                  setVideoStage(videoCount > 0 ? `${videoCount} videos ready! \u{1F389}` : 'Video generation finished');
-                }}
-                  disabled={Object.keys(sceneImages).length === 0}
-                  className="flex-1 py-3 rounded-xl font-display text-sm tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50"
-                  style={{ background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }}>
-                  {'\u{1F3AC}'} Animate All Scenes {'\u2192'} Video
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-bord2 transition-all">
+                  {'\u2190'} Storyboard
                 </button>
                 <button onClick={() => {
-                  setResultData({
-                    title: scriptTitle || `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
-                    media: selectedMedia,
-                    character: selectedCharacter!,
-                    prompt, tone, format, scenes,
-                    scriptScenes: scriptScenes.length > 0 ? scriptScenes : undefined,
-                  });
-                  setStep('result');
+                  setStep('review-videos');
+                  generateVideos();
                 }}
-                  className="px-4 py-3 rounded-xl bg-lime/10 border border-lime/30 text-lime text-sm font-bold hover:bg-lime/20 transition-all">
-                  Skip Video {'\u2192'}
+                  disabled={Object.keys(sceneImages).length === 0}
+                  className="flex-1 py-3.5 rounded-xl font-display text-lg tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }}>
+                  Generate Video + Audio {'\u2192'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 5c: REVIEW VIDEOS {'\u2014'} Approve / Edit clips
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
+          {/* ======================================================
+               STEP 5: GENERATE & REVIEW VIDEOS
+             ====================================================== */}
           {step === 'review-videos' && (
             <div>
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">{'\u{1F3AC}'}</div>
-                <h3 className="font-display text-3xl text-white mb-1">Review Video Clips</h3>
-                <p className="text-sm text-muted">Approve each clip, then assemble your final video</p>
-              </div>
+              <h3 className="font-display text-2xl text-white mb-1">Generate Video</h3>
+              <p className="text-sm text-muted mb-4">Video + audio generated in sync -- characters speak when they&apos;re supposed to</p>
 
+              {/* Progress */}
               {videoGenerating && (
                 <div className="mb-6">
-                  <div className="h-3 bg-bg3 rounded-full overflow-hidden mb-2">
+                  <div className="h-2 bg-bg3 rounded-full overflow-hidden mb-2">
                     <div className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${videoProgress}%`, background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }} />
+                      style={{ width: videoProgress + '%', background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }} />
                   </div>
-                  <p className="text-xs text-muted text-center">{videoStage} {videoProgress}%</p>
+                  <p className="text-xs text-muted">{videoStage}</p>
                 </div>
               )}
 
-              {videoError && !videoGenerating && (
-                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
-                  <p className="text-xs text-red-400 font-bold mb-1">{'\u26A0'}{'\uFE0F'} Video generation errors:</p>
-                  <p className="text-xs text-red-300">{videoError}</p>
+              {videoError && (
+                <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                  <p className="text-xs text-red-400">{videoError}</p>
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              {/* Video grid */}
+              <div className="grid grid-cols-2 gap-3 mb-6">
                 {scenes.map((scene, i) => (
-                  <div key={scene.id} className="bg-bg2 border border-border rounded-xl overflow-hidden">
-                    <div className="relative">
-                      {sceneVideos[scene.id] ? (
-                        <video src={sceneVideos[scene.id]}
-                          className="aspect-video object-cover w-full rounded-t-xl"
-                          controls muted loop playsInline />
-                      ) : sceneImages[scene.id] ? (
-                        <div className="relative">
-                          <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
-                            className="aspect-video object-cover w-full opacity-50" />
+                  <div key={scene.id} className="relative">
+                    {sceneVideos[scene.id] ? (
+                      <video src={sceneVideos[scene.id]}
+                        className="aspect-video object-cover rounded-xl border border-lime/30"
+                        controls muted loop playsInline />
+                    ) : sceneImages[scene.id] ? (
+                      <div className="relative">
+                        <img src={sceneImages[scene.id]} alt={'Scene ' + (i + 1)}
+                          className="aspect-video object-cover rounded-xl border border-border opacity-50" />
+                        {videoGenerating && (
                           <div className="absolute inset-0 flex items-center justify-center">
-                            {videoGenerating ? (
-                              <span className="text-2xl animate-spin">{'\u{1F3AC}'}</span>
-                            ) : (
-                              <span className="text-sm text-muted">No video yet</span>
-                            )}
+                            <span className="text-2xl animate-spin">{'\u{1F3AC}'}</span>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="aspect-video bg-bg3 flex items-center justify-center">
-                          <span className="text-2xl opacity-40">{scene.emoji}</span>
-                        </div>
-                      )}
-                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                        <span className="text-xs text-white font-bold">Scene {scene.sceneNum}</span>
-                        {sceneVideos[scene.id] && <span className="ml-2 text-[9px] text-lime">{'\u2705'} Ready</span>}
+                        )}
                       </div>
-                    </div>
-                    <div className="p-3">
-                      <p className="text-xs text-muted line-clamp-1">{scene.description}</p>
+                    ) : (
+                      <div className="aspect-video bg-bg3 border border-border rounded-xl flex items-center justify-center text-2xl opacity-40">
+                        {scene.emoji}
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent rounded-b-xl">
+                      <span className="text-[10px] text-white font-bold">Scene {scene.sceneNum}</span>
                     </div>
                   </div>
                 ))}
               </div>
 
+              {/* Navigation */}
               <div className="flex gap-3">
                 <button onClick={() => setStep('review-images')}
-                  className="px-4 py-3 rounded-xl bg-bg2 border border-border text-sm text-muted hover:text-white transition-all">
-                  {'\u2190'} Back to Images
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-muted border border-border hover:border-bord2 transition-all">
+                  {'\u2190'} Images
                 </button>
                 <button onClick={() => {
-                  setResultData({
-                    title: scriptTitle || `${selectedCharacter?.name || 'Character'}: ${prompt.slice(0, 40)}`,
+                  const rd: ResultData = {
+                    title: scriptTitle || displayTitle + ': ' + prompt.slice(0, 40),
                     media: selectedMedia,
-                    character: selectedCharacter!,
-                    prompt, tone, format, scenes,
-                    scriptScenes: scriptScenes.length > 0 ? scriptScenes : undefined,
-                  });
+                    prompt,
+                    personalCharacter,
+                    tone,
+                    format,
+                    scenes,
+                    scriptScenes,
+                    videoUrl: Object.values(sceneVideos)[0],
+                    thumbnailUrl: Object.values(sceneImages)[0],
+                  };
+                  setResultData(rd);
                   setStep('result');
                 }}
                   disabled={videoGenerating}
-                  className="flex-1 py-3 rounded-xl font-display text-sm tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg,#ff2d78,#a855f7,#00d4ff)' }}>
-                  {videoGenerating ? '\u23F3 Generating...' : `\u2705 Finalize (${Object.keys(sceneVideos).length} clips ready)`}
+                  className="flex-1 py-3.5 rounded-xl font-display text-lg tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
+                  {videoGenerating ? 'Generating...' : 'Review Result \u2192'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}
-               STEP 6: RESULT {'\u2014'} Download / Video / NFT / Share
-             {'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'}{'\u2550'} */}
+          {/* ======================================================
+               STEP 6: RESULT -- Publish or Edit in RIP Studio
+             ====================================================== */}
           {step === 'result' && resultData && (
             <div>
               <div className="text-center mb-6">
                 <div className="text-5xl mb-3">{'\u{1F389}'}</div>
                 <h3 className="font-display text-3xl text-white mb-1">Your Creation is Ready!</h3>
-                <p className="text-sm text-muted">{resultData.media.title} {'\u00D7'} {resultData.character.name}</p>
+                <p className="text-sm text-muted">{resultData.media.title}</p>
               </div>
 
               {/* Preview card */}
               <div className="bg-bg2 border border-border rounded-2xl overflow-hidden mb-6">
                 <div className="aspect-video flex items-center justify-center relative overflow-hidden"
                   style={Object.keys(sceneImages).length > 0 ? {} : { background: resultData.media.gradient }}>
-                  {Object.keys(sceneImages).length > 0 ? (
+                  {Object.keys(sceneVideos).length > 0 ? (
+                    <video src={Object.values(sceneVideos)[0]}
+                      className="w-full h-full object-cover" controls autoPlay muted loop playsInline />
+                  ) : Object.keys(sceneImages).length > 0 ? (
                     <img src={sceneImages[scenes[0]?.id] || Object.values(sceneImages)[0]}
                       alt="Hero scene" className="w-full h-full object-cover" />
                   ) : (
@@ -1701,7 +1089,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                   <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
                     <span className="px-2 py-1 rounded-full bg-black/50 backdrop-blur text-white text-[10px] font-bold">{resultData.media.category}</span>
                     <span className="px-2 py-1 rounded-full bg-black/50 backdrop-blur text-white text-[10px] font-bold">{TONES.find(t => t.id === resultData.tone)?.label}</span>
-                    <span className="px-2 py-1 rounded-full bg-rip/40 backdrop-blur text-white text-[10px] font-bold">{'\u{1F3A8}'} {STYLES.find(s => s.id === artStyle)?.label}</span>
+                    <span className="px-2 py-1 rounded-full bg-rip/40 backdrop-blur text-white text-[10px] font-bold">{'\u{1F3A8}'} {ART_STYLES.find(s => s.id === artStyle)?.label}</span>
                   </div>
                   <div className="absolute top-3 right-3 px-2 py-1 rounded bg-black/40 backdrop-blur text-white/70 text-[8px] font-mono">
                     FAN-MADE {'\u00B7'} remixip.icu
@@ -1709,167 +1097,12 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                 </div>
                 <div className="p-4">
                   <h4 className="font-display text-xl text-white mb-1">{resultData.title}</h4>
-                  <p className="text-xs text-muted">{resultData.character.emoji} {resultData.character.name} {'\u00B7'} {resultData.prompt.slice(0, 80)}...</p>
+                  <p className="text-xs text-muted">{resultData.prompt.slice(0, 100)}...</p>
                 </div>
               </div>
 
-              {/* Generated scene gallery */}
-              {Object.keys(sceneImages).length > 0 && (
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-xs font-bold text-muted uppercase tracking-widest">{'\u{1F3AC}'} Generated Scenes</h4>
-                    <div className="flex gap-2">
-                      <button onClick={generateVideos} disabled={videoGenerating || Object.keys(sceneImages).length === 0}
-                        className="px-3 py-1.5 rounded-lg bg-cyan/10 border border-cyan/30 text-cyan text-[10px] font-bold hover:bg-cyan/20 transition-all disabled:opacity-50">
-                        {videoGenerating ? '\u{1F3AC} Generating...' : Object.keys(sceneVideos).length > 0 ? '\u2705 Videos Ready' : '\u{1F3AC} Generate Videos'}
-                      </button>
-                      <button onClick={downloadAllImages} disabled={downloadingAll}
-                        className="px-3 py-1.5 rounded-lg bg-lime/10 border border-lime/30 text-lime text-[10px] font-bold hover:bg-lime/20 transition-all disabled:opacity-50">
-                        {downloadingAll ? '\u23F3...' : '\u2B07\uFE0F Download All'}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {scenes.map((scene, i) => (
-                      <div key={scene.id} className="relative group">
-                        {sceneImages[scene.id] ? (
-                          <>
-                            {sceneVideos[scene.id] ? (
-                              <video src={sceneVideos[scene.id]}
-                                className="aspect-video object-cover rounded-xl border border-lime/30"
-                                controls muted loop playsInline />
-                            ) : (
-                              <img src={sceneImages[scene.id]} alt={`Scene ${i + 1}`}
-                                className="aspect-video object-cover rounded-xl border border-border group-hover:border-rip transition-all" />
-                            )}
-                          </>
-                        ) : (
-                          <div className="aspect-video bg-bg3 border border-border rounded-xl flex items-center justify-center text-2xl opacity-40">
-                            {scene.emoji}
-                          </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent rounded-b-xl">
-                          <span className="text-[10px] text-white font-bold">Scene {scene.sceneNum}</span>
-                          <p className="text-[9px] text-white/60 line-clamp-1">{scene.description.slice(0, 60)}</p>
-                        </div>
-                        {/* Action buttons */}
-                        <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                          <button onClick={() => regenerateScene(scene.id)}
-                            disabled={regeneratingScene === scene.id}
-                            title="Regenerate"
-                            className="w-7 h-7 rounded-lg bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-xs hover:border-rip transition-all disabled:animate-spin">
-                            {'\u{1F504}'}
-                          </button>
-                          <button onClick={() => {
-                            const dataUrl = sceneImages[scene.id];
-                            if (!dataUrl) return;
-                            const link = document.createElement('a');
-                            link.href = dataUrl;
-                            link.download = `scene-${scene.sceneNum}-${displayTitle.replace(/\s+/g, '-').slice(0, 20)}.png`;
-                            link.click();
-                          }}
-                            title="Download"
-                            className="w-7 h-7 rounded-lg bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-xs hover:border-lime transition-all">
-                            {'\u2B07'}{'\uFE0F'}
-                          </button>
-                        </div>
-                        {sceneNarration[scene.id] && (
-                          <div className="absolute top-1 left-1">
-                            <audio src={sceneNarration[scene.id]} controls
-                              className="w-24 h-6 opacity-80 hover:opacity-100" />
-                          </div>
-                        )}
-                        {regeneratingScene === scene.id && (
-                          <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center">
-                            <span className="text-2xl animate-spin">{'\u{1F3A8}'}</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* {'\u2500'}{'\u2500'} Video Generation Panel (NEW {'\u2014'} Phase 2) {'\u2500'}{'\u2500'} */}
-              <div className="bg-bg2 border border-cyan/30 rounded-xl p-4 mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{'\u{1F3A5}'}</span>
-                    <div>
-                      <div className="text-[9px] text-cyan uppercase tracking-widest font-bold">Bring to Life {'\u2014'} Video Generation</div>
-                      <p className="text-[10px] text-muted">Generate video with synced character audio in one pass</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setShowVideoGen(!showVideoGen)}
-                    className="text-xs text-muted hover:text-white transition">
-                    {showVideoGen ? '\u25B2 Hide' : '\u25BC Expand'}
-                  </button>
-                </div>
-
-                {showVideoGen && (
-                  <div className="mt-3 pt-3 border-t border-border">
-                    {/* Video model selector */}
-                    <label className="text-[10px] text-muted font-bold block mb-2">Video Model</label>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {VIDEO_MODELS.map(m => (
-                        <button key={m.id} onClick={() => setVideoModel(m.id)}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                            videoModel === m.id
-                              ? 'bg-cyan/15 border border-cyan text-cyan'
-                              : 'bg-bg3 border border-border text-muted hover:text-white'
-                          }`}>
-                          <span>{m.emoji}</span> {m.name}
-                          <span className="text-[8px] px-1 py-0.5 rounded bg-rip/20 text-rip">{m.tier}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Video progress */}
-                    {videoGenerating && (
-                      <div className="mb-3">
-                        <div className="h-2 bg-bg3 rounded-full overflow-hidden mb-2">
-                          <div className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${videoProgress}%`, background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }} />
-                        </div>
-                        <p className="text-xs text-muted">{videoStage}</p>
-                      </div>
-                    )}
-
-                    {/* Generate videos button */}
-                    <button onClick={generateVideos}
-                      disabled={videoGenerating || Object.keys(sceneImages).length === 0}
-                      className="w-full py-3 rounded-xl font-display text-sm tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ background: 'linear-gradient(90deg,#00d4ff,#a855f7)' }}>
-                      {videoGenerating ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="animate-spin">{'\u{1F3AC}'}</span> Generating Videos... {videoProgress}%
-                        </span>
-                      ) : Object.keys(sceneVideos).length > 0 ? (
-                        `\u2705 ${Object.keys(sceneVideos).length} Videos Generated \u2014 Regenerate?`
-                      ) : (
-                        '\u{1F3AC} Generate Video + Audio'
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Action buttons grid */}
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                <button onClick={downloadAllImages} disabled={downloadingAll}
-                  className="p-4 bg-bg2 border border-border rounded-xl hover:border-lime transition-all group text-left disabled:opacity-50">
-                  <span className="text-2xl mb-2 block group-hover:scale-110 transition-transform">{downloadingAll ? '\u23F3' : '\u2B07\uFE0F'}</span>
-                  <div className="text-sm font-bold text-white">{downloadingAll ? 'Downloading...' : 'Download'}</div>
-                  <div className="text-[10px] text-muted">{Object.keys(sceneImages).length} scene images</div>
-                </button>
-
-                <button onClick={() => onOpenEditor(resultData)}
-                  className="p-4 bg-bg2 border border-border rounded-xl hover:border-cyan transition-all group text-left">
-                  <span className="text-2xl mb-2 block group-hover:scale-110 transition-transform">{'\u2702'}{'\uFE0F'}</span>
-                  <div className="text-sm font-bold text-white">Edit</div>
-                  <div className="text-[10px] text-muted">CapCut-style editor</div>
-                </button>
-
+              {/* Primary actions: Publish or Edit in RIP Studio */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
                 <button onClick={() => {
                   if (onPublish && resultData) {
                     onPublish({
@@ -1881,52 +1114,61 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                       genre: resultData.media.category,
                     });
                   }
-                }} className="p-4 bg-bg2 border border-border rounded-xl hover:border-purple transition-all group text-left">
-                  <span className="text-2xl mb-2 block group-hover:scale-110 transition-transform">{'\u{1F48E}'}</span>
-                  <div className="text-sm font-bold text-white">Mint NFT</div>
-                  <div className="text-[10px] text-muted">Solo or Collection</div>
+                }}
+                  className="py-4 rounded-xl font-display text-lg tracking-wide text-white transition-all hover:brightness-110"
+                  style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7,#00d4ff)' }}>
+                  {'\u263D'} Publish
                 </button>
+                <button onClick={() => onOpenEditor(resultData)}
+                  className="py-4 rounded-xl font-display text-lg tracking-wide text-white border-2 border-cyan bg-cyan/10 hover:bg-cyan/20 transition-all">
+                  {'\u2702\uFE0F'} Edit in RIP Studio
+                </button>
+              </div>
 
-                <div className="relative">
-                  <button onClick={() => setShowShareMenu(!showShareMenu)}
-                    className="w-full p-4 bg-bg2 border border-border rounded-xl hover:border-rip transition-all group text-left">
-                    <span className="text-2xl mb-2 block group-hover:scale-110 transition-transform">{'\u{1F4E4}'}</span>
-                    <div className="text-sm font-bold text-white">Share</div>
-                    <div className="text-[10px] text-muted">Social media</div>
-                  </button>
-
-                  {showShareMenu && (
-                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-bg3 border border-bord2 rounded-xl p-2 shadow-2xl z-50">
-                      {SOCIAL_PLATFORMS.map(p => (
-                        <button key={p.id} onClick={() => handleShare(p.id)}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted hover:text-white hover:bg-bg2 transition-all">
-                          <span className="w-6 h-6 rounded-full flex items-center justify-center text-sm"
-                            style={{ backgroundColor: p.color + '30', color: p.color || '#fff' }}>{p.icon}</span>
-                          {p.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              {/* Social share on publish */}
+              <div className="bg-bg2 border border-border rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">{'\u{1F4E4}'}</span>
+                  <span className="text-[9px] text-muted uppercase tracking-widest font-bold">Share Across Social Media</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {SOCIAL_PLATFORMS.map(p => (
+                    <button key={p.id} onClick={() => handleShare(p.id)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bg3 border border-border text-xs text-muted hover:text-white hover:border-bord2 transition-all">
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px]"
+                        style={{ backgroundColor: (p.color || '#333') + '30', color: p.color || '#fff' }}>{p.icon}</span>
+                      {p.name}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Publish to RemixIP */}
-              <button onClick={() => {
-                if (onPublish && resultData) {
-                  onPublish({
-                    title: resultData.title,
-                    description: prompt,
-                    thumbnail: sceneImages[scenes[0]?.id] || Object.values(sceneImages)[0],
-                    mediaUrl: sceneVideos[scenes[0]?.id] || Object.values(sceneVideos)[0],
-                    show: resultData.media.title,
-                    genre: resultData.media.category,
-                  });
-                }
-              }}
-                className="w-full py-4 rounded-xl font-display text-xl tracking-wide text-white transition-all hover:brightness-110 mb-3"
-                style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7,#00d4ff)' }}>
-                {'\u263D'} Publish to RemixIP
-              </button>
+              {/* Secondary actions */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <button onClick={downloadAllImages} disabled={downloadingAll}
+                  className="p-3 bg-bg2 border border-border rounded-xl hover:border-lime transition-all text-left disabled:opacity-50">
+                  <span className="text-lg block mb-1">{downloadingAll ? '\u23F3' : '\u2B07\uFE0F'}</span>
+                  <div className="text-xs font-bold text-white">Download All</div>
+                  <div className="text-[10px] text-muted">{Object.keys(sceneImages).length} images + {Object.keys(sceneVideos).length} videos</div>
+                </button>
+                <button onClick={() => {
+                  if (onPublish && resultData) {
+                    onPublish({
+                      title: resultData.title,
+                      description: prompt,
+                      thumbnail: sceneImages[scenes[0]?.id] || Object.values(sceneImages)[0],
+                      mediaUrl: sceneVideos[scenes[0]?.id] || Object.values(sceneVideos)[0],
+                      show: resultData.media.title,
+                      genre: resultData.media.category,
+                    });
+                  }
+                }} className="p-3 bg-bg2 border border-border rounded-xl hover:border-purple transition-all text-left">
+                  <span className="text-lg block mb-1">{'\u{1F48E}'}</span>
+                  <div className="text-xs font-bold text-white">Mint NFT</div>
+                  <div className="text-[10px] text-muted">Solo or Collection</div>
+                </button>
+              </div>
+
               <p className="text-center text-[10px] text-muted">
                 Published creations appear on RxTV / RxMovies with a shareable link and optional NFT minting
               </p>
@@ -1939,6 +1181,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
               )}
             </div>
           )}
+
         </div>
       </div>
     </div>

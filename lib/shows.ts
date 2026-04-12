@@ -5,16 +5,15 @@
 // -- Art Style Types ---------------------------------------------
 export type ArtStyleId =
   | 'source-faithful'   // 1:1 recreation of the original show's look
+  | 'claymation'
   | 'cinematic'
   | 'anime'
   | 'comic'
-  | 'photorealistic'
-  | 'watercolor'
   | 'noir'
   | '3d_render'
   | 'retro'
   | 'pixel'
-  | 'oil_paint';
+  | 'cartoon-realistic'; // Context-aware: cartoon->realistic or realistic->cartoon
 
 export interface ArtStyle {
   id: ArtStyleId;
@@ -26,17 +25,40 @@ export interface ArtStyle {
 
 export const ART_STYLES: ArtStyle[] = [
   { id: 'source-faithful', label: 'Original', emoji: '\u{1F3AF}', prompt: '', description: '1:1 recreation matching the original show\'s art style' },
+  { id: 'claymation',     label: 'Claymation',     emoji: '\u{1FAE0}', prompt: 'claymation stop-motion style, sculpted clay figures, fingerprint texture, handmade miniature set, warm studio lighting, Wallace and Gromit aesthetic', description: 'Clay/stop-motion style layered on original look' },
   { id: 'cinematic',      label: 'Cinematic',      emoji: '\u{1F3AC}', prompt: 'cinematic film still, professional cinematography, dramatic lighting, shallow depth of field, anamorphic lens, color graded', description: 'Film-quality cinematic look' },
   { id: 'anime',          label: 'Anime',          emoji: '\u{1F338}', prompt: 'anime style, Studio Ghibli inspired, vibrant colors, detailed cel shading, Japanese animation', description: 'Japanese anime style' },
   { id: 'comic',          label: 'Comic Book',     emoji: '\u{1F4A5}', prompt: 'comic book art style, bold outlines, halftone dots, vibrant panels, dynamic composition', description: 'Bold comic book panels' },
-  { id: 'photorealistic', label: 'Photorealistic', emoji: '\u{1F4F7}', prompt: 'photorealistic, ultra HD, 8k, raw photo, hyperrealistic detail, natural lighting', description: 'Ultra-realistic photo quality' },
-  { id: 'watercolor',     label: 'Watercolor',     emoji: '\u{1F3A8}', prompt: 'watercolor painting, soft edges, flowing colors, artistic brush strokes, paper texture', description: 'Soft watercolor painting' },
   { id: 'noir',           label: 'Film Noir',      emoji: '\u{1F311}', prompt: 'film noir style, high contrast black and white, dramatic shadows, venetian blinds lighting, 1940s aesthetic', description: 'Classic film noir look' },
   { id: '3d_render',      label: '3D Render',      emoji: '\u{1F9CA}', prompt: '3D rendered, Pixar quality, subsurface scattering, global illumination, octane render', description: 'Pixar-quality 3D render' },
   { id: 'retro',          label: 'Retro/VHS',      emoji: '\u{1F4FC}', prompt: 'retro VHS aesthetic, scan lines, chromatic aberration, 80s color palette, CRT screen effect', description: '80s retro VHS aesthetic' },
   { id: 'pixel',          label: 'Pixel Art',      emoji: '\u{1F47E}', prompt: '16-bit pixel art style, retro game aesthetic, clean pixel work, limited color palette', description: 'Retro pixel art' },
-  { id: 'oil_paint',      label: 'Oil Painting',   emoji: '\u{1F5BC}\uFE0F', prompt: 'oil painting masterpiece, rich impasto texture, museum quality, classical fine art composition', description: 'Classical oil painting' },
+  { id: 'cartoon-realistic', label: 'Cartoon/Realistic', emoji: '\u{1F500}', prompt: '', description: 'Context-aware: applies realistic style to cartoons, cartoon style to live-action' },
 ];
+
+// Helper: resolve the Cartoon/Realistic style prompt based on source category
+export function resolveArtStylePrompt(styleId: ArtStyleId, showCategory: string): string {
+  const style = ART_STYLES.find(s => s.id === styleId);
+  if (!style) return '';
+
+  // Original: no extra prompt, just the show's own visual
+  if (styleId === 'source-faithful') return '';
+
+  // Cartoon/Realistic is context-aware
+  if (styleId === 'cartoon-realistic') {
+    const isCartoon = ['Cartoon', 'Anime'].includes(showCategory);
+    if (isCartoon) {
+      // Source is cartoon/anime -> apply realistic style
+      return 'photorealistic render, ultra HD, hyperrealistic detail, natural lighting, real-world textures, lifelike proportions';
+    } else {
+      // Source is live-action/realistic -> apply cartoon style
+      return 'cartoon style, bold outlines, bright saturated colors, exaggerated features, animated look, clean vector art';
+    }
+  }
+
+  // All other styles: use their prompt (layered on the Original base)
+  return style.prompt;
+}
 
 // -- Character Definition ----------------------------------------
 export interface ShowCharacter {
