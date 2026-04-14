@@ -138,6 +138,10 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
   const [characterImageFile, setCharacterImageFile] = useState<File | null>(null);
   const [dragOver, setDragOver]                   = useState(false);
   const characterImageRef                         = useRef<HTMLInputElement>(null);
+  const [musicFile, setMusicFile]                 = useState<File | null>(null);
+  const [musicUrl, setMusicUrl]                   = useState<string | null>(null);
+  const [musicDragOver, setMusicDragOver]         = useState(false);
+  const musicInputRef                             = useRef<HTMLInputElement>(null);
   const [tone, setTone]                           = useState('dramatic');
   const [format, setFormat]                       = useState('short');
   const [artStyle, setArtStyle]                   = useState<ArtStyleId>('source-faithful');
@@ -200,6 +204,18 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
     reader.readAsDataURL(file);
   }
 
+  // -- Music file upload handler --
+  function handleMusicFile(file: File | null) {
+    if (!file) { setMusicFile(null); setMusicUrl(null); return; }
+    const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/flac', 'audio/aac'];
+    if (!audioTypes.some(t => file.type.startsWith(t.split('/')[0])) && !file.name.match(/\.(mp3|wav|m4a|ogg|flac|aac|wma)$/i)) {
+      alert('Please upload an audio file (mp3, wav, m4a, ogg, flac, aac)');
+      return;
+    }
+    setMusicFile(file);
+    setMusicUrl(URL.createObjectURL(file));
+  }
+
   // Step order for progress indicator
   const STEP_ORDER: WizardStep[] = ['config', 'script', 'storyboard', 'generating', 'review-images', 'review-videos', 'result'];
   const STEP_LABELS: Record<string, string> = {
@@ -256,6 +272,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
       prompt,
       personalCharacter: personalCharacter || undefined,
       characterImageUrl: characterImage || undefined,
+      hasMusicUpload: !!musicFile,
       tone: TONES.find(t => t.id === tone)?.label || 'Dramatic',
       format,
       crossover: crossover || undefined,
@@ -696,6 +713,54 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                   ))}
                 </div>
               </div>
+
+              {/* Music Upload (shown when Music Video format selected) */}
+              {format === 'music_vid' && (
+                <div className="mb-4">
+                  <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-1.5">
+                    {'\uD83C\uDFB5'} Your Soundtrack <span className="text-muted2">(optional — AI generates music if empty)</span>
+                  </label>
+                  <div
+                    className={'relative rounded-xl border-2 border-dashed transition-all cursor-pointer p-4 '
+                      + (musicDragOver ? 'border-purple bg-purple/10'
+                        : musicFile ? 'border-lime/50 bg-lime/5'
+                        : 'border-border bg-bg2 hover:border-purple/50 hover:bg-bg3')}
+                    onClick={() => musicInputRef.current?.click()}
+                    onDragOver={e => { e.preventDefault(); setMusicDragOver(true); }}
+                    onDragLeave={() => setMusicDragOver(false)}
+                    onDrop={e => { e.preventDefault(); setMusicDragOver(false); handleMusicFile(e.dataTransfer.files?.[0] || null); }}
+                  >
+                    <input ref={musicInputRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac" className="hidden"
+                      onChange={e => handleMusicFile(e.target.files?.[0] || null)} />
+                    {musicFile ? (
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-purple/20 flex items-center justify-center flex-shrink-0">
+                          <span className="text-2xl">{'\uD83C\uDFB6'}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white font-bold truncate">{musicFile.name}</p>
+                          <p className="text-[10px] text-muted">{(musicFile.size / (1024 * 1024)).toFixed(1)} MB</p>
+                          {musicUrl && (
+                            <audio src={musicUrl} controls className="mt-2 w-full h-8"
+                              style={{ filter: 'invert(1) hue-rotate(180deg)', opacity: 0.7 }} />
+                          )}
+                        </div>
+                        <button onClick={e => { e.stopPropagation(); handleMusicFile(null); }}
+                          className="w-7 h-7 rounded-full bg-black/50 text-white text-xs flex items-center justify-center hover:bg-red-500 transition-colors flex-shrink-0">
+                          {'\u2715'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-center py-2">
+                        <span className="text-3xl block mb-2">{'\uD83C\uDFB5'}</span>
+                        <p className="text-sm text-muted">Drag & drop your audio file here</p>
+                        <p className="text-[10px] text-muted2 mt-1">MP3, WAV, M4A, OGG, FLAC • or click to browse</p>
+                        <p className="text-[10px] text-purple mt-2">No file? VidMuse AI will generate a soundtrack from your visuals</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Aspect Ratio */}
               <div className="mb-4">
