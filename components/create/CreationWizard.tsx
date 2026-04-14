@@ -134,6 +134,10 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
   // -- Config state (Step 1) --
   const [prompt, setPrompt]                       = useState('');
   const [personalCharacter, setPersonalCharacter] = useState('');
+  const [characterImage, setCharacterImage]       = useState<string | null>(null);
+  const [characterImageFile, setCharacterImageFile] = useState<File | null>(null);
+  const [dragOver, setDragOver]                   = useState(false);
+  const characterImageRef                         = useRef<HTMLInputElement>(null);
   const [tone, setTone]                           = useState('dramatic');
   const [format, setFormat]                       = useState('short');
   const [artStyle, setArtStyle]                   = useState<ArtStyleId>('source-faithful');
@@ -185,6 +189,16 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
   const showProfile = SHOW_PROFILES[selectedMedia.title];
   const displayTitle = selectedMedia.category === 'Custom' ? 'Your Original IP' : selectedMedia.title;
   const resolvedStylePrompt = resolveArtStylePrompt(artStyle, selectedMedia.category);
+
+  // -- Character image upload handler --
+  function handleCharacterImage(file: File | null) {
+    if (!file) { setCharacterImage(null); setCharacterImageFile(null); return; }
+    if (!file.type.startsWith('image/')) return;
+    setCharacterImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setCharacterImage(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }
 
   // Step order for progress indicator
   const STEP_ORDER: WizardStep[] = ['config', 'script', 'storyboard', 'generating', 'review-images', 'review-videos', 'result'];
@@ -241,6 +255,7 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
       mediaTitle: displayTitle,
       prompt,
       personalCharacter: personalCharacter || undefined,
+      characterImageUrl: characterImage || undefined,
       tone: TONES.find(t => t.id === tone)?.label || 'Dramatic',
       format,
       crossover: crossover || undefined,
@@ -569,17 +584,59 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
                   className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-rip placeholder:text-muted2 resize-none" />
               </div>
 
-              {/* Personal Character (optional) */}
+              {/* Personal Character (optional) + Reference Image Upload */}
               <div className="mb-4">
                 <label className="text-[9px] font-bold text-muted uppercase tracking-widest block mb-1.5">
                   {'\u2728'} Personal Character <span className="text-muted2">(optional)</span>
                 </label>
-                <input value={personalCharacter} onChange={e => setPersonalCharacter(e.target.value)}
-                  placeholder="Add your own character into the story... e.g. 'Alex, a time-traveling detective'"
-                  className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-cyan placeholder:text-muted2" />
-                <p className="text-[10px] text-muted mt-1">
-                  Show characters are auto-detected from your prompt + {displayTitle} profile. Add your own OC here if you want.
-                </p>
+                <div className="flex gap-3">
+                  {/* Left: image upload area */}
+                  <div
+                    className={'relative flex-shrink-0 w-28 h-28 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center overflow-hidden group '
+                      + (dragOver ? 'border-cyan bg-cyan/10 scale-[1.02]'
+                        : characterImage ? 'border-rip/50 bg-rip/5'
+                        : 'border-border bg-bg2 hover:border-cyan/50 hover:bg-bg3')}
+                    onClick={() => characterImageRef.current?.click()}
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={e => { e.preventDefault(); setDragOver(false); handleCharacterImage(e.dataTransfer.files?.[0] || null); }}
+                  >
+                    <input ref={characterImageRef} type="file" accept="image/*" className="hidden"
+                      onChange={e => handleCharacterImage(e.target.files?.[0] || null)} />
+                    {characterImage ? (
+                      <>
+                        <img src={characterImage} alt="Character ref" className="absolute inset-0 w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="text-white text-xs font-bold">Change</span>
+                        </div>
+                        <button onClick={e => { e.stopPropagation(); handleCharacterImage(null); }}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] flex items-center justify-center hover:bg-red-500 transition-colors z-10">
+                          {'\u2715'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-2xl mb-1 text-muted group-hover:text-cyan transition-colors">{'\uD83D\uDDBC\uFE0F'}</span>
+                        <span className="text-[9px] text-muted text-center leading-tight group-hover:text-white transition-colors">Upload<br/>Reference</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right: text input + helper */}
+                  <div className="flex-1 min-w-0">
+                    <input value={personalCharacter} onChange={e => setPersonalCharacter(e.target.value)}
+                      placeholder="Add your own character into the story... e.g. 'Alex, a time-traveling detective'"
+                      className="w-full bg-bg2 border border-border rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-cyan placeholder:text-muted2" />
+                    <p className="text-[10px] text-muted mt-1">
+                      Show characters are auto-detected from your prompt + {displayTitle} profile. Add your own OC here if you want.
+                    </p>
+                    {characterImage && (
+                      <p className="text-[10px] text-cyan mt-1 flex items-center gap-1">
+                        {'\u2705'} Reference image attached — AI will use this as visual reference
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Tone */}
