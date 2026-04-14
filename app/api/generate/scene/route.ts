@@ -140,6 +140,8 @@ export async function POST(req: NextRequest) {
       audioSynced: result.audioSynced,
       prompt: result.prompt,
       requestId: result.requestId,
+      // Per-line dialogue audio (when video provider doesn't bake audio in)
+      ...(result.dialogueAudio ? { dialogueAudio: result.dialogueAudio } : {}),
     });
 
   } catch (err) {
