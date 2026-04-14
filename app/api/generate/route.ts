@@ -1,8 +1,13 @@
 // app/api/generate/route.ts
+// Script/text generation — FREE-FIRST fallback chain:
+//   1. Pollinations (free, no key, no limits)
+//   2. Groq (free tier, 14,400 req/day — if GROQ_API_KEY set)
+//   3. nexos.ai / Claude (paid — if keys set)
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-import { createSupabaseAdmin }       from '@/lib/supabase';
+import { pollinationsChat } from '@/lib/pollinations';
+import { isGroqConfigured, groqChat } from '@/lib/groq';
 import { isNexosConfigured, nexosChat } from '@/lib/nexos';
+import { createSupabaseAdmin } from '@/lib/supabase';
 import { logGeneration } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
@@ -73,34 +78,69 @@ HASHTAGS: [12-15 hashtags: show-specific, genre, #RemixIP #RiP #FanStudio #FanFi
 
 DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/owners of ${showTitle}.`;
 
-    // ── Call AI (nexos.ai gateway or direct Claude) ─────────────
+    // ── Call AI — FREE-FIRST fallback chain ──────────────────────
     let text: string;
     const genStart = Date.now();
     let modelUsed = 'unknown';
 
-    if (isNexosConfigured()) {
-      modelUsed = 'nexos/claude-sonnet-4.5';
-      const nexosResponse = await nexosChat(
+    // 1. Try Pollinations (free, no key)
+    try {
+      const polResult = await pollinationsChat(
         [{ role: 'user', content: prompt }],
-        { model: 'claude-sonnet-4.5', max_tokens: 1024 },
+        { model: 'openai', maxTokens: 2048 },
       );
-      text = nexosResponse.choices[0]?.message?.content || '';
-    } else {
-      if (!process.env.ANTHROPIC_API_KEY) {
-        return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
+      text = polResult.text;
+      modelUsed = `pollinations/${polResult.model}`;
+    } catch (polErr) {
+      console.warn('Pollinations text failed, trying fallbacks:', polErr);
+
+      // 2. Try Groq (free tier, if key set)
+      if (isGroqConfigured()) {
+        try {
+          const groqResult = await groqChat(
+            [{ role: 'user', content: prompt }],
+            { model: 'llama-3.3-70b', maxTokens: 2048 },
+          );
+          text = groqResult.text;
+          modelUsed = `groq/${groqResult.model}`;
+        } catch (groqErr) {
+          console.warn('Groq failed, trying paid providers:', groqErr);
+          text = ''; // Will fall through to paid
+        }
+      } else {
+        text = ''; // Will fall through to paid
       }
-      // Lazy init — avoids module-scope crash when env var is missing
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY?.trim() });
-      modelUsed = 'claude-sonnet-4-20250514';
-      const message = await anthropic.messages.create({
-        model:      'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages:   [{ role: 'user', content: prompt }],
-      });
-      text = message.content.map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '').join('\n');
+
+      // 3. Paid fallback — nexos.ai or direct Claude
+      if (!text) {
+        if (isNexosConfigured()) {
+          modelUsed = 'nexos/claude-sonnet-4.5';
+          const nexosResponse = await nexosChat(
+            [{ role: 'user', content: prompt }],
+            { model: 'claude-sonnet-4.5', max_tokens: 2048 },
+          );
+          text = nexosResponse.choices[0]?.message?.content || '';
+        } else if (process.env.ANTHROPIC_API_KEY) {
+          const Anthropic = (await import('@anthropic-ai/sdk')).default;
+          const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+          modelUsed = 'claude-sonnet-4-20250514';
+          const message = await anthropic.messages.create({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 2048,
+            messages: [{ role: 'user', content: prompt }],
+          });
+          text = message.content.map((b: { type: string; text?: string }) => b.type === 'text' ? b.text : '').join('\n');
+        } else {
+          return NextResponse.json(
+            { error: 'All text providers failed. Pollinations is temporarily unavailable and no API keys are configured (GROQ_API_KEY, ANTHROPIC_API_KEY, or NEXOS_API_KEY).' },
+            { status: 503 },
+          );
+        }
+      }
     }
+
     const genDuration = Date.now() - genStart;
-    const g    = (re: RegExp) => text.match(re)?.[1]?.trim() || '';
+    const g = (re: RegExp) => text.match(re)?.[1]?.trim() || '';
 
     const result = {
       title:      g(/TITLE:\s*(.+)/),
@@ -127,7 +167,7 @@ DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/o
       .select()
       .single();
 
-    // ── Log generation to generations table ───────────────────────
+    // ── Log generation ────────────────────────────────────────────
     await logGeneration({
       userId,
       creationType: typeLabel,
@@ -148,6 +188,7 @@ DISCLAIMER: Fan-made creation. Not affiliated with or endorsed by the creators/o
       ...result,
       creationId: creation?.id,
       generationsLeft: profile.generations_limit - profile.generations_used - 1,
+      provider: modelUsed,
     });
 
   } catch (err: any) {

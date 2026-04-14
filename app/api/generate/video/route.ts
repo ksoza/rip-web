@@ -1,8 +1,17 @@
 // app/api/generate/video/route.ts
-// Video generation — fal.ai (primary), with Luma/Runway legacy fallback
-// Flat pricing: check tier access, no credit deduction
+// Video generation — FREE-FIRST fallback chain:
+//   1. Self-hosted Wan 2.1 (free Colab/Kaggle — if GPU online)
+//   2. Pollinations video (free, no key)
+//   3. fal.ai (paid, best quality — if FAL_KEY set)
+//   4. Luma / Runway (paid legacy — if keys set)
 import { NextRequest, NextResponse } from 'next/server';
-import { isNexosConfigured, nexosGenerate } from '@/lib/nexos';
+import {
+  isSelfHostedConfigured,
+  checkSelfHostedHealth,
+  selfHostedGenerateVideo,
+  selfHostedDownloadUrl,
+} from '@/lib/self-hosted';
+import { pollinationsGenerateVideo } from '@/lib/pollinations';
 import { falGenerate, FAL_VIDEO_MODELS } from '@/lib/fal';
 import { checkGenerationAccess, recordGeneration } from '@/lib/credits';
 import { canAccessTier } from '@/lib/revenue';
@@ -17,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const {
       prompt,
-      provider = 'wan',
+      provider = 'auto',
       model: modelKey,
       imageUrl,
       duration = 5,
@@ -40,10 +49,11 @@ export async function POST(req: NextRequest) {
     let result: { url: string; id: string; duration: number };
     let usedProvider = modelKey || provider;
 
-    // ── fal.ai models (new, primary) ────────────────────────────
-    const falModel = FAL_VIDEO_MODELS[modelKey || ''] || FAL_VIDEO_MODELS[provider || ''];
+    // ── Explicit fal.ai model requested ─────────────────────────
+    const falModel = FAL_VIDEO_MODELS[modelKey || ''] || (provider !== 'auto' && provider !== 'self-hosted' && provider !== 'pollinations' ? FAL_VIDEO_MODELS[provider || ''] : null);
+
     if (falModel) {
-      // Check tier access for this model
+      // Explicit paid model — check tier + key
       if (falModel.tier && !canAccessTier(access.tier, falModel.tier)) {
         return NextResponse.json(
           { error: `${falModel.tier} tier required for this model. Upgrade your plan.` },
@@ -51,15 +61,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const input: any = {
-        prompt,
-        aspect_ratio: aspectRatio,
-      };
+      const input: any = { prompt, aspect_ratio: aspectRatio };
       if (imageUrl) input.image_url = imageUrl;
       if (duration) input.duration = String(duration);
 
       const falResult = await falGenerate(falModel.id, input);
-
       result = {
         url: falResult.video?.url || '',
         id: falResult.request_id || '',
@@ -67,96 +73,148 @@ export async function POST(req: NextRequest) {
       };
       usedProvider = modelKey || provider;
 
-    // ── Legacy providers (backward compatibility) ───────────────
-    } else {
-      // Legacy providers require at least starter tier
-      if (!canAccessTier(access.tier, 'starter')) {
-        return NextResponse.json(
-          { error: 'Starter tier or above required for legacy video providers.' },
-          { status: 403 },
-        );
+    } else if (provider === 'luma') {
+      // Legacy Luma
+      const key = process.env.LUMA_API_KEY;
+      if (!key) return NextResponse.json({ error: 'LUMA_API_KEY not configured.' }, { status: 500 });
+
+      const body: any = { prompt, aspect_ratio: aspectRatio, loop: false };
+      if (imageUrl) body.keyframes = { frame0: { type: 'image', url: imageUrl } };
+
+      const createRes = await fetch('https://api.lumalabs.ai/dream-machine/v1/generations', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!createRes.ok) {
+        return NextResponse.json({ error: `Luma error: ${await createRes.text()}` }, { status: 500 });
       }
 
-      switch (provider) {
-        case 'luma': {
-          const key = process.env.LUMA_API_KEY;
-          if (!key) return NextResponse.json({ error: 'LUMA_API_KEY not configured.' }, { status: 500 });
+      let gen = await createRes.json();
+      const deadline = Date.now() + 300000;
+      while (gen.state !== 'completed' && gen.state !== 'failed' && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 5000));
+        const pollRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/${gen.id}`, {
+          headers: { 'Authorization': `Bearer ${key}` },
+        });
+        gen = await pollRes.json();
+      }
+      if (gen.state === 'failed') {
+        return NextResponse.json({ error: gen.failure_reason || 'Video generation failed' }, { status: 500 });
+      }
+      result = { url: gen.assets?.video || gen.video?.url || '', id: gen.id, duration: 5 };
+      usedProvider = 'luma';
 
-          const body: any = { prompt, aspect_ratio: aspectRatio, loop: false };
-          if (imageUrl) body.keyframes = { frame0: { type: 'image', url: imageUrl } };
+    } else if (provider === 'runway') {
+      // Legacy Runway
+      const key = process.env.RUNWAY_API_KEY;
+      if (!key) return NextResponse.json({ error: 'RUNWAY_API_KEY not configured.' }, { status: 500 });
 
-          const createRes = await fetch('https://api.lumalabs.ai/dream-machine/v1/generations', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          if (!createRes.ok) {
-            return NextResponse.json({ error: `Luma error: ${await createRes.text()}` }, { status: 500 });
-          }
+      const body: any = { promptText: prompt, model: 'gen3a_turbo', duration: Math.min(duration, 10), watermark: false };
+      if (imageUrl) body.promptImage = imageUrl;
 
-          let gen = await createRes.json();
-          const deadline = Date.now() + 300000;
-          while (gen.state !== 'completed' && gen.state !== 'failed' && Date.now() < deadline) {
-            await new Promise(r => setTimeout(r, 5000));
-            const pollRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/${gen.id}`, {
-              headers: { 'Authorization': `Bearer ${key}` },
+      const createRes = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          'X-Runway-Version': '2024-11-06',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!createRes.ok) {
+        return NextResponse.json({ error: `Runway error: ${await createRes.text()}` }, { status: 500 });
+      }
+
+      let task = await createRes.json();
+      const deadline = Date.now() + 300000;
+      while (task.status !== 'SUCCEEDED' && task.status !== 'FAILED' && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 5000));
+        const pollRes = await fetch(`https://api.dev.runwayml.com/v1/tasks/${task.id}`, {
+          headers: { 'Authorization': `Bearer ${key}`, 'X-Runway-Version': '2024-11-06' },
+        });
+        task = await pollRes.json();
+      }
+      if (task.status === 'FAILED') {
+        return NextResponse.json({ error: 'Runway generation failed' }, { status: 500 });
+      }
+      result = { url: task.output?.[0] || '', id: task.id, duration };
+      usedProvider = 'runway';
+
+    } else {
+      // ── FREE-FIRST AUTO FALLBACK ──────────────────────────────
+      // 1. Self-hosted Wan 2.1 (if configured + online)
+      // 2. Pollinations video (always free)
+      // 3. fal.ai Wan (if FAL_KEY set)
+
+      let generated = false;
+
+      // 1. Try self-hosted GPU
+      if (isSelfHostedConfigured()) {
+        try {
+          const health = await checkSelfHostedHealth();
+          if (health && health.models.video) {
+            const shResult = await selfHostedGenerateVideo({
+              prompt,
+              width: aspectRatio === '9:16' ? 480 : 848,
+              height: aspectRatio === '9:16' ? 848 : 480,
+              num_frames: Math.min(duration * 8, 81),
             });
-            gen = await pollRes.json();
+            if (shResult.success && shResult.download_url) {
+              result = {
+                url: selfHostedDownloadUrl(shResult.download_url),
+                id: 'self-hosted',
+                duration: shResult.duration_seconds || duration,
+              };
+              usedProvider = 'self-hosted-wan';
+              generated = true;
+            }
           }
-          if (gen.state === 'failed') {
-            return NextResponse.json({ error: gen.failure_reason || 'Video generation failed' }, { status: 500 });
-          }
-
-          result = { url: gen.assets?.video || gen.video?.url || '', id: gen.id, duration: 5 };
-          break;
+        } catch (shErr) {
+          console.warn('Self-hosted video failed:', shErr);
         }
+      }
 
-        case 'runway': {
-          const key = process.env.RUNWAY_API_KEY;
-          if (!key) return NextResponse.json({ error: 'RUNWAY_API_KEY not configured.' }, { status: 500 });
+      // 2. Try Pollinations video (free)
+      if (!generated) {
+        try {
+          const polResult = await pollinationsGenerateVideo(prompt);
+          result = { url: polResult.url, id: 'pollinations', duration };
+          usedProvider = 'pollinations';
+          generated = true;
+        } catch (polErr) {
+          console.warn('Pollinations video failed:', polErr);
+        }
+      }
 
-          const body: any = {
-            promptText: prompt,
-            model: 'gen3a_turbo',
-            duration: Math.min(duration, 10),
-            watermark: false,
-          };
-          if (imageUrl) body.promptImage = imageUrl;
-
-          const createRes = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${key}`,
-              'Content-Type': 'application/json',
-              'X-Runway-Version': '2024-11-06',
-            },
-            body: JSON.stringify(body),
-          });
-          if (!createRes.ok) {
-            return NextResponse.json({ error: `Runway error: ${await createRes.text()}` }, { status: 500 });
-          }
-
-          let task = await createRes.json();
-          const deadline = Date.now() + 300000;
-          while (task.status !== 'SUCCEEDED' && task.status !== 'FAILED' && Date.now() < deadline) {
-            await new Promise(r => setTimeout(r, 5000));
-            const pollRes = await fetch(`https://api.dev.runwayml.com/v1/tasks/${task.id}`, {
-              headers: { 'Authorization': `Bearer ${key}`, 'X-Runway-Version': '2024-11-06' },
+      // 3. Try fal.ai Wan (paid fallback)
+      if (!generated && process.env.FAL_KEY) {
+        try {
+          const wanModel = FAL_VIDEO_MODELS['wan'] || FAL_VIDEO_MODELS['wan-2.1'];
+          if (wanModel) {
+            const falResult = await falGenerate(wanModel.id, {
+              prompt,
+              aspect_ratio: aspectRatio,
+              duration: String(duration),
             });
-            task = await pollRes.json();
+            result = {
+              url: falResult.video?.url || '',
+              id: falResult.request_id || '',
+              duration,
+            };
+            usedProvider = 'fal-wan';
+            generated = true;
           }
-          if (task.status === 'FAILED') {
-            return NextResponse.json({ error: 'Runway generation failed' }, { status: 500 });
-          }
-
-          result = { url: task.output?.[0] || '', id: task.id, duration };
-          break;
+        } catch (falErr) {
+          console.warn('fal.ai video failed:', falErr);
         }
+      }
 
-        default:
-          return NextResponse.json({
-            error: `Unknown provider: ${provider}. Available: seedance, kling, wan, veo, ltx-video, hailuo (fal.ai) or luma, runway (legacy)`,
-          }, { status: 400 });
+      if (!generated) {
+        return NextResponse.json(
+          { error: 'All video providers failed. Self-hosted GPU is offline, Pollinations is temporarily unavailable, and no paid API keys are configured (FAL_KEY).' },
+          { status: 503 },
+        );
       }
     }
 
@@ -169,14 +227,14 @@ export async function POST(req: NextRequest) {
       creationType: 'video',
       model: usedProvider,
       prompt: prompt.slice(0, 500),
-      result: { url: result.url, id: result.id },
+      result: { url: result!.url, id: result!.id },
       success: true,
     }).catch(() => {});
 
     return NextResponse.json({
       type: 'video',
       provider: usedProvider,
-      ...result,
+      ...result!,
       prompt,
       tier: access.tier,
     });

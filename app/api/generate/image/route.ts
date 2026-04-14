@@ -1,9 +1,12 @@
 // app/api/generate/image/route.ts
-// Image generation — fal.ai (primary), with DALL·E & nexos.ai fallback
-// Flat pricing: check tier access, no credit deduction
+// Image generation — FREE-FIRST fallback chain:
+//   1. Pollinations (free, no key, no limits)
+//   2. fal.ai (paid, best quality — if FAL_KEY set)
+//   3. DALL·E / nexos.ai (paid legacy — if keys set)
 import { NextRequest, NextResponse } from 'next/server';
+import { pollinationsGenerateImage, isPollinationsAvailable } from '@/lib/pollinations';
 import { isNexosConfigured, nexosImageGenerate } from '@/lib/nexos';
-import { falGenerate, FAL_IMAGE_MODELS, mapSizeToFal, getModelByKey } from '@/lib/fal';
+import { falGenerate, FAL_IMAGE_MODELS, mapSizeToFal } from '@/lib/fal';
 import { checkGenerationAccess, recordGeneration } from '@/lib/credits';
 import { canAccessTier } from '@/lib/revenue';
 import { logGeneration } from '@/lib/db';
@@ -28,6 +31,16 @@ async function generateWithDalle(prompt: string, options: any = {}) {
   if (!res.ok) throw new Error(`DALL·E error: ${await res.text()}`);
   const data = await res.json();
   return { url: data.data[0].url, revised_prompt: data.data[0].revised_prompt };
+}
+
+// Map size string to Pollinations dimensions
+function mapSizeToPollinations(size?: string): { width: number; height: number } {
+  switch (size) {
+    case '1792x1024': return { width: 1792, height: 1024 };
+    case '1024x1792': return { width: 1024, height: 1792 };
+    case '512x512': return { width: 512, height: 512 };
+    default: return { width: 1024, height: 1024 };
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -59,12 +72,13 @@ export async function POST(req: NextRequest) {
     }
 
     let result: { url: string; revised_prompt?: string };
-    let usedProvider = provider || modelKey || 'flux-schnell';
+    let usedProvider = provider || modelKey || 'pollinations';
 
-    // ── fal.ai models (new, primary) ────────────────────────────
+    // ── Explicit provider/model requested ───────────────────────
     const falModel = FAL_IMAGE_MODELS[modelKey || ''] || FAL_IMAGE_MODELS[provider || ''];
+
     if (falModel) {
-      // Check tier access for this model
+      // fal.ai model explicitly requested — check tier + key
       if (falModel.tier && !canAccessTier(access.tier, falModel.tier)) {
         return NextResponse.json(
           { error: `${falModel.tier} tier required for this model. Upgrade your plan.` },
@@ -79,35 +93,74 @@ export async function POST(req: NextRequest) {
         ...(options || {}),
       });
 
-      result = {
-        url: falResult.images?.[0]?.url || '',
-        revised_prompt: undefined,
-      };
+      result = { url: falResult.images?.[0]?.url || '' };
       usedProvider = modelKey || provider || 'fal';
 
-    // ── Legacy providers (backward compatibility) ───────────────
-    } else {
-      const selectedProvider = provider || 'dalle';
-
-      switch (selectedProvider) {
-        case 'dalle':
-          if (isNexosConfigured()) {
-            result = await nexosImageGenerate(enhancedPrompt, { size, quality: options?.quality });
-          } else {
-            result = await generateWithDalle(enhancedPrompt, { size, style, ...options });
-          }
-          break;
-        case 'nexos':
-          if (!isNexosConfigured()) {
-            return NextResponse.json({ error: 'NEXOS_API_KEY not configured' }, { status: 503 });
-          }
-          result = await nexosImageGenerate(enhancedPrompt, { size, quality: options?.quality });
-          break;
-        default:
-          return NextResponse.json({ error: `Unknown provider: ${selectedProvider}. Use model keys like flux-schnell, flux-pro, sdxl, seedream, etc.` }, { status: 400 });
+    } else if (provider === 'dalle' || provider === 'nexos') {
+      // Explicit paid provider requested
+      if (provider === 'nexos' || isNexosConfigured()) {
+        if (!isNexosConfigured()) {
+          return NextResponse.json({ error: 'NEXOS_API_KEY not configured' }, { status: 503 });
+        }
+        result = await nexosImageGenerate(enhancedPrompt, { size, quality: options?.quality });
+      } else {
+        result = await generateWithDalle(enhancedPrompt, { size, style, ...options });
       }
+      usedProvider = provider;
 
-      usedProvider = selectedProvider;
+    } else {
+      // ── FREE-FIRST AUTO FALLBACK ──────────────────────────────
+      // 1. Pollinations (always free)
+      // 2. fal.ai flux-schnell (if FAL_KEY set)
+      // 3. DALL·E (if OPENAI_API_KEY set)
+
+      try {
+        const dims = mapSizeToPollinations(size);
+        const polResult = await pollinationsGenerateImage(enhancedPrompt, {
+          width: dims.width,
+          height: dims.height,
+          model: 'flux',
+          nologo: true,
+        });
+        result = { url: polResult.url };
+        usedProvider = 'pollinations';
+      } catch (polErr) {
+        console.warn('Pollinations image failed, trying fallbacks:', polErr);
+
+        // Try fal.ai if configured
+        if (process.env.FAL_KEY) {
+          try {
+            const falResult = await falGenerate('fal-ai/flux/schnell', {
+              prompt: enhancedPrompt,
+              image_size: mapSizeToFal(size),
+              num_images: 1,
+            });
+            result = { url: falResult.images?.[0]?.url || '' };
+            usedProvider = 'fal-flux-schnell';
+          } catch {
+            // Fall through to DALL·E
+            if (process.env.OPENAI_API_KEY || isNexosConfigured()) {
+              if (isNexosConfigured()) {
+                result = await nexosImageGenerate(enhancedPrompt, { size });
+              } else {
+                result = await generateWithDalle(enhancedPrompt, { size, style });
+              }
+              usedProvider = 'dalle-fallback';
+            } else {
+              throw new Error('All image providers failed. Pollinations is temporarily unavailable and no paid API keys are configured.');
+            }
+          }
+        } else if (process.env.OPENAI_API_KEY || isNexosConfigured()) {
+          if (isNexosConfigured()) {
+            result = await nexosImageGenerate(enhancedPrompt, { size });
+          } else {
+            result = await generateWithDalle(enhancedPrompt, { size, style });
+          }
+          usedProvider = 'dalle-fallback';
+        } else {
+          throw new Error('All image providers failed. Pollinations is temporarily unavailable and no paid API keys are configured.');
+        }
+      }
     }
 
     // Record generation (for free tier daily counting)
