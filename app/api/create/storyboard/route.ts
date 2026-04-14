@@ -91,16 +91,34 @@ Always respond with valid JSON only — no markdown, no code fences, no explanat
 
 export async function POST(req: NextRequest) {
   try {
+    const body = await req.json();
+
+    // Accept both field names — wizard sends personalCharacter, legacy sends character
     const {
-      mediaTitle, character, prompt, tone, format,
+      mediaTitle, prompt, tone, format,
       crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
       artStyle, artStylePrompt,
       scriptScenes,
-    } = await req.json();
+      personalCharacter, character: characterRaw,
+      characterImageUrl, hasMusicUpload,
+    } = body;
 
-    if (!prompt || !character) {
+    // Normalize character — accept string or object { name, role }
+    const character = (() => {
+      const raw = characterRaw || personalCharacter;
+      if (!raw) return null;
+      if (typeof raw === 'string') return { name: raw, role: 'main character' };
+      return { name: raw.name || 'Character', role: raw.role || 'main character' };
+    })();
+
+    if (!prompt && !character) {
       return NextResponse.json({ error: 'Missing prompt or character' }, { status: 400 });
     }
+
+    // Use prompt alone if no character, or character alone if no prompt
+    const charName = character?.name || 'Original Character';
+    const charRole = character?.role || 'main character';
+    const userIdea = prompt || `A story about ${charName}`;
 
     const durationGuide: Record<string, string> = {
       short:    '60 seconds total (5 scenes, ~12s each)',
@@ -124,14 +142,16 @@ export async function POST(req: NextRequest) {
 
     const userPrompt = `Create a detailed visual storyboard for this fan-made creation:
 
-IP / Show: ${mediaTitle}
-Character: ${character.name} (${character.role || 'main character'})
-User's Vision: ${prompt}
+IP / Show: ${mediaTitle || 'Original Creation'}
+Character: ${charName} (${charRole})
+User's Vision: ${userIdea}
 Tone: ${tone}
 Format: ${format} — ${durationGuide[format] || '60 seconds total'}
 ${crossover ? `Crossover with: ${crossover}` : ''}
 ${isCustomIP ? `Custom IP Description: ${customIPDesc}` : ''}
 ${isMashup ? `Mashup Mode: Combining multiple IPs` : ''}
+${characterImageUrl ? `Character reference image provided — incorporate visual details into scene descriptions.` : ''}
+${hasMusicUpload ? `User is providing their own music track — write scenes that sync well with music beats and rhythm changes.` : ''}
 
 ${qaContext ? `Additional context from Q&A:\n${qaContext}` : ''}
 ${scriptContext}
@@ -190,7 +210,7 @@ Respond with ONLY valid JSON: { "title": "...", "scenes": [...] }`;
 
     return NextResponse.json({
       scenes,
-      title: storyboard.title || `${character.name}: ${prompt.slice(0, 50)}`,
+      title: storyboard.title || `${charName}: ${userIdea.slice(0, 50)}`,
       model: result.model,
     });
 
