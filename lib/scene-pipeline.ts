@@ -3,7 +3,8 @@
 //
 // Fallback chain (lowest cost first):
 //   1. Self-hosted GPU (Wan 2.1 on Colab/Kaggle) -- $0.00
-//   2. fal.ai (Veo 3.1 / Seedance 2) -- paid, best quality
+//   2. Pollinations video (free, no key, no audio sync) -- $0.00
+//   3. fal.ai (Veo 3.1 / Seedance 2) -- paid, best quality + audio sync
 //
 // Self-hosted: Wan 2.1 via free Google Colab T4 or Kaggle P100
 // fal.ai: Veo 3.1 (primary) or Seedance 2 (fallback) for synchronized output
@@ -11,6 +12,8 @@
 import { falGenerate, FAL_VIDEO_MODELS, type FalModel } from './fal';
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
+import { pollinationsGenerateVideo } from './pollinations';
+import { generateDialogueAudio } from './kokoro-tts';
 import {
   isSelfHostedConfigured,
   checkSelfHostedHealth,
@@ -55,8 +58,8 @@ export interface SceneInput {
   model?: string;
   /** Optional seed for reproducibility */
   seed?: number;
-  /** Force a specific provider: 'self-hosted' | 'fal' | 'auto' (default) */
-  provider?: 'self-hosted' | 'fal' | 'auto';
+  /** Force a specific provider: 'self-hosted' | 'pollinations' | 'fal' | 'auto' (default) */
+  provider?: 'self-hosted' | 'pollinations' | 'fal' | 'auto';
 }
 
 export interface SceneResult {
@@ -78,10 +81,21 @@ export interface SceneResult {
   error?: string;
   /** RAG context injected from RAGflow (if available) */
   ragContext?: string;
-  /** Which provider was used: 'self-hosted' | 'fal' */
+  /** Which provider was used: 'self-hosted' | 'pollinations' | 'fal' */
   providerUsed?: string;
-  /** Cost of this generation ($0 for self-hosted) */
+  /** Cost of this generation ($0 for self-hosted and pollinations) */
   cost?: number;
+  /** Per-line dialogue audio (when video provider doesn't sync audio) */
+  dialogueAudio?: {
+    lines: {
+      character: string;
+      line: string;
+      audioUrl: string;
+      voice: string;
+      duration: number;
+    }[];
+    totalDuration: number;
+  };
 }
 
 // -- Duration estimation -----------------------------------------
@@ -182,10 +196,11 @@ async function trySelfHosted(
  *
  * Fallback chain:
  *   1. Self-hosted GPU (Wan 2.1 on Colab) -- FREE
- *   2. fal.ai Veo 3.1 -- best quality, paid
- *   3. fal.ai Seedance 2 -- fallback, paid
+ *   2. Pollinations video (free, no key needed) -- FREE (no audio sync)
+ *   3. fal.ai Veo 3.1 -- best quality + audio sync, paid
+ *   4. fal.ai Seedance 2 -- fallback + audio sync, paid
  *
- * Override with input.provider: 'self-hosted' | 'fal' | 'auto'
+ * Override with input.provider: 'self-hosted' | 'pollinations' | 'fal' | 'auto'
  */
 export async function generateScene(input: SceneInput): Promise<SceneResult> {
   const { show, artStyle, sceneDescription, dialogue, characters } = input;
@@ -246,7 +261,65 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
     }
   }
 
-  // -- Fall back to fal.ai (paid) ------------------------------
+  // -- Try Pollinations video + Kokoro TTS (FREE, $0) ----------
+  if (provider === 'pollinations' || provider === 'auto') {
+    try {
+      console.log('[scene-pipeline] Trying Pollinations video ($0 cost)...');
+      const polResult = await pollinationsGenerateVideo(prompt);
+      if (polResult.url) {
+        console.log('[scene-pipeline] Video generated via Pollinations ($0 cost)');
+
+        // Generate character dialogue audio via Kokoro TTS (free)
+        let dialogueResult: SceneResult['dialogueAudio'] = undefined;
+        let mainAudioUrl: string | undefined = undefined;
+        if (dialogue.length > 0) {
+          try {
+            console.log(`[scene-pipeline] Generating TTS audio for ${dialogue.length} dialogue lines via Kokoro...`);
+            const ttsResult = await generateDialogueAudio(dialogue);
+            if (ttsResult.lines.some(l => l.audioUrl)) {
+              dialogueResult = {
+                lines: ttsResult.lines,
+                totalDuration: ttsResult.totalDuration,
+              };
+              mainAudioUrl = ttsResult.audioUrl;
+              console.log(`[scene-pipeline] Kokoro TTS: ${ttsResult.lines.filter(l => l.audioUrl).length}/${dialogue.length} lines generated (${ttsResult.totalDuration.toFixed(1)}s total)`);
+            }
+          } catch (ttsErr) {
+            // TTS is optional — video still works without it
+            console.warn('[scene-pipeline] Kokoro TTS failed (video still usable):', ttsErr);
+          }
+        }
+
+        return {
+          success: true,
+          videoUrl: polResult.url,
+          audioUrl: mainAudioUrl,
+          model: 'pollinations',
+          audioSynced: false, // Audio is separate, not baked into video
+          prompt,
+          ragContext: ragContext || undefined,
+          providerUsed: 'pollinations',
+          cost: 0,
+          dialogueAudio: dialogueResult,
+        };
+      }
+    } catch (polErr) {
+      console.warn('[scene-pipeline] Pollinations video failed:', polErr);
+    }
+    if (provider === 'pollinations') {
+      return {
+        success: false,
+        model: 'pollinations',
+        audioSynced: false,
+        prompt,
+        error: 'Pollinations video generation failed. The service may be temporarily unavailable.',
+        providerUsed: 'pollinations',
+        cost: 0,
+      };
+    }
+  }
+
+  // -- Fall back to fal.ai (paid, best quality + audio sync) ---
   try {
     // Generate via fal.ai - audio-capable models return video with baked-in audio
     const result = await falGenerate(selectedModel.id, {
@@ -338,7 +411,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
           model: modelKey,
           audioSynced: false,
           prompt,
-          error: `All providers failed. Self-hosted: unavailable. Veo: ${errorMsg}. Seedance: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+          error: `All providers failed. Self-hosted: unavailable. Pollinations: unavailable. Veo: ${errorMsg}. Seedance: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
           providerUsed: 'fal',
         };
       }
