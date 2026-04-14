@@ -5,6 +5,13 @@ const nextConfig = {
       { protocol: 'https', hostname: '**.supabase.co' },
       { protocol: 'https', hostname: 'image.tmdb.org' },
       { protocol: 'https', hostname: 'i.imgur.com' },
+      { protocol: 'https', hostname: 'image.pollinations.ai' },
+      { protocol: 'https', hostname: '**.pollinations.ai' },
+      { protocol: 'https', hostname: 'fal.media' },
+      { protocol: 'https', hostname: '**.fal.media' },
+      { protocol: 'https', hostname: 'replicate.delivery' },
+      { protocol: 'https', hostname: '**.replicate.delivery' },
+      { protocol: 'https', hostname: 'oaidalleapiprodscus.blob.core.windows.net' },
     ],
   },
   async headers() {
