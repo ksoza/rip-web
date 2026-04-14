@@ -53,14 +53,32 @@ async function callLLM(systemPrompt: string, userPrompt: string, signal: AbortSi
 
 export async function POST(req: NextRequest) {
   try {
-    const {
-      mediaTitle, character, prompt, tone, format,
-      crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
-    } = await req.json();
+    const body = await req.json();
 
-    if (!prompt || !character) {
+    // Accept both field names — wizard sends personalCharacter, legacy sends character
+    const {
+      mediaTitle, prompt, tone, format,
+      crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
+      personalCharacter, character: characterRaw,
+      characterImageUrl, hasMusicUpload,
+    } = body;
+
+    // Normalize character — accept string or object { name, role }
+    const character = (() => {
+      const raw = characterRaw || personalCharacter;
+      if (!raw) return null;
+      if (typeof raw === 'string') return { name: raw, role: 'main character' };
+      return { name: raw.name || 'Character', role: raw.role || 'main character' };
+    })();
+
+    if (!prompt && !character) {
       return NextResponse.json({ error: 'Missing prompt or character' }, { status: 400 });
     }
+
+    // Use prompt alone if no character, or character alone if no prompt
+    const charName = character?.name || 'Original Character';
+    const charRole = character?.role || 'main character';
+    const userIdea = prompt || `A story about ${charName}`;
 
     const durationGuide: Record<string, string> = {
       short:     '60 seconds (3-4 scenes, punchy)',
@@ -82,14 +100,16 @@ CRITICAL: Respond with valid JSON only — no markdown, no code fences, no expla
 
     const userPrompt = `Write a screenplay for this fan-made creation:
 
-IP / Show: ${mediaTitle}
-Main Character: ${character.name} (${character.role || 'main character'})
-User's Vision: ${prompt}
-Tone: ${tone}
-Format: ${format} — ${durationGuide[format] || '60 seconds total'}
+IP / Show: ${mediaTitle || 'Original Creation'}
+Main Character: ${charName} (${charRole})
+User's Vision: ${userIdea}
+Tone: ${tone || 'Dramatic'}
+Format: ${format || 'short'} — ${durationGuide[format] || '60 seconds total'}
 ${crossover ? `Crossover with: ${crossover}` : ''}
 ${isCustomIP ? `Original IP Description: ${customIPDesc}` : ''}
 ${isMashup ? `Mashup Mode: Combining multiple IPs` : ''}
+${characterImageUrl ? `Character reference image provided — incorporate visual details into scene descriptions.` : ''}
+${hasMusicUpload ? `User is providing their own music track — write scenes that sync well with music beats and rhythm changes.` : ''}
 
 ${qaContext ? `Additional context from creator Q&A:\n${qaContext}` : ''}
 
@@ -120,7 +140,7 @@ Generate a screenplay as JSON with this EXACT structure:
 
 Requirements:
 - Each scene MUST have a proper INT./EXT. heading
-- Dialogue should feel authentic to the characters from ${mediaTitle}
+- Dialogue should feel authentic to the characters from ${mediaTitle || 'the source material'}
 - Action lines should be vivid and visual — describe what the CAMERA sees
 - Camera notes should be specific and cinematic
 - Duration timestamps should be sequential and match the format
@@ -163,7 +183,7 @@ Respond with ONLY the JSON object.`;
     }
 
     return NextResponse.json({
-      title: script.title || `${character.name}: ${prompt.slice(0, 50)}`,
+      title: script.title || `${charName}: ${userIdea.slice(0, 50)}`,
       logline: script.logline || '',
       scenes: script.scenes || [],
       model: result.model,
