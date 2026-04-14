@@ -64,7 +64,9 @@ OUTPUT FORMAT: Return a JSON object:
       "visual": "<DETAILED image/video generation prompt>",
       "emoji": "🎬",
       "transition": "fade",
-      "narration": "<optional voiceover text — 1-2 sentences>"
+      "dialogue": [
+        { "character": "CHARACTER NAME", "line": "What they say", "direction": "how they say it" }
+      ]
     }
   ]
 }
@@ -79,6 +81,12 @@ VISUAL PROMPT RULES (these prompts go DIRECTLY to AI image/video generation mode
 - Keep each prompt to 2-4 sentences — specific but concise
 - Do NOT mention text overlays, UI elements, charts, or programming concepts
 - Do NOT use vague terms like "a scene showing" — describe what the CAMERA SEES
+
+DIALOGUE RULES:
+- NO narration or voiceover — characters speak as THEMSELVES
+- Each scene must have at least one line of dialogue from a character
+- Characters talk in their authentic voice from the source material
+- Include parenthetical direction for how they deliver the line
 
 STORYBOARD RULES:
 - Hook in first scene — visually striking opening shot
@@ -205,7 +213,7 @@ Respond with ONLY valid JSON: { "title": "...", "scenes": [...] }`;
     const scenes = (storyboard.scenes || storyboard).map((s: any) => ({
       ...s,
       transition: s.transition || 'cut',
-      narration: s.narration || '',
+      dialogue: s.dialogue || [],
     }));
 
     return NextResponse.json({
