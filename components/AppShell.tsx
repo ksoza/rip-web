@@ -3,6 +3,7 @@
 // Main app shell - hamburger navigation, 6 pages, legal agreement gate
 // Updated: wired ReferralBanner, RxTVFeed, RxMoviesFeed, PublishFlow, Phases 3-6
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase';
 
@@ -27,8 +28,7 @@ import { PublishFlow } from './publish/PublishFlow';
 // Referral (Phase 6)
 import { ReferralBanner } from './referral/ReferralBanner';
 
-// Creation
-import { CreationWizard } from './create/CreationWizard';
+// Creation — wizard now lives at /create, just need the type
 import type { MediaItem }  from './create/CreationWizard';
 
 // Legal
@@ -78,14 +78,12 @@ function SignInPrompt({ pageName, onSignIn }: { pageName: string; onSignIn: () =
 //  MAIN APP SHELL
 // ---------------------------------------------------------------
 export function AppShell({ user }: { user: User | null }) {
+  const router = useRouter();
   const [page, setPage]                       = useState<PageId>('remixr');
   const [profile, setProfile]                 = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading]   = useState(true);
   const [showAgreement, setShowAgreement]     = useState(false);
   const [pendingMedia, setPendingMedia]       = useState<MediaItem | null>(null);
-  // Creation wizard
-  const [wizardMedia, setWizardMedia]         = useState<MediaItem | null>(null);
-  const [showWizard, setShowWizard]           = useState(false);
   // Publish flow (Phase 3)
   const [showPublish, setShowPublish]         = useState(false);
   const [publishData, setPublishData]         = useState<{
@@ -97,6 +95,36 @@ export function AppShell({ user }: { user: User | null }) {
   const [studioCategory, setStudioCategory]   = useState('');
 
   const supabase = createSupabaseBrowser();
+
+  // -- Check URL params for returning from /create ---------------
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('page') === 'studio') {
+      setPage('studio');
+      try {
+        const result = sessionStorage.getItem('rip_studio_result');
+        if (result) {
+          const { showName, category } = JSON.parse(result);
+          if (showName) setStudioShowName(showName);
+          if (category) setStudioCategory(category);
+          sessionStorage.removeItem('rip_studio_result');
+        }
+      } catch { /* ignore */ }
+      // Clean URL
+      window.history.replaceState({}, '', '/');
+    }
+    if (params.get('publish') === 'true') {
+      try {
+        const data = sessionStorage.getItem('rip_publish_data');
+        if (data) {
+          setPublishData(JSON.parse(data));
+          setShowPublish(true);
+          sessionStorage.removeItem('rip_publish_data');
+        }
+      } catch { /* ignore */ }
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
 
   // -- Google Sign In ------------------------------------------
   async function handleSignIn() {
@@ -197,8 +225,11 @@ export function AppShell({ user }: { user: User | null }) {
       return;
     }
 
-    setWizardMedia(media);
-    setShowWizard(true);
+    // Store media in sessionStorage and navigate to /create
+    try {
+      sessionStorage.setItem('rip_create_media', JSON.stringify(media));
+    } catch { /* ignore */ }
+    router.push('/create');
   }
 
   // -- Handle agreement acceptance -----------------------------
@@ -215,11 +246,13 @@ export function AppShell({ user }: { user: User | null }) {
     setProfile(prev => prev ? { ...prev, content_agreement: true } : prev);
     setShowAgreement(false);
 
-    // Continue to wizard if there was a pending media selection
+    // Continue to /create if there was a pending media selection
     if (pendingMedia) {
-      setWizardMedia(pendingMedia);
-      setShowWizard(true);
+      try {
+        sessionStorage.setItem('rip_create_media', JSON.stringify(pendingMedia));
+      } catch { /* ignore */ }
       setPendingMedia(null);
+      router.push('/create');
     }
   }
 
@@ -228,13 +261,7 @@ export function AppShell({ user }: { user: User | null }) {
     setPendingMedia(null);
   }
 
-  // -- Open editor from wizard result --------------------------
-  function handleOpenEditor(resultData: any) {
-    setShowWizard(false);
-    setStudioShowName(resultData.media.title);
-    setStudioCategory(resultData.media.category);
-    setPage('studio');
-  }
+  // handleOpenEditor removed — wizard now lives at /create and navigates back via router
 
   // -- Render current page -------------------------------------
   function renderPage() {
@@ -312,16 +339,7 @@ export function AppShell({ user }: { user: User | null }) {
         />
       )}
 
-      {/* -- Creation Wizard Overlay ---------------------------- */}
-      {showWizard && wizardMedia && user && (
-        <CreationWizard
-          user={user}
-          selectedMedia={wizardMedia}
-          onClose={() => setShowWizard(false)}
-          onOpenEditor={handleOpenEditor}
-          onPublish={handlePublish}
-        />
-      )}
+      {/* -- Creation Wizard now at /create (no longer an overlay) */}
 
       {/* -- Publish Flow Modal (Phase 3) --------------------- */}
       {showPublish && user && (
