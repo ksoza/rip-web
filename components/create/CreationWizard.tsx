@@ -379,6 +379,11 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
 
   async function generateSceneImage(scene: StoryboardScene): Promise<{ image: string; imageUrl?: string } | null> {
     const ar = ASPECT_RATIOS.find(a => a.id === aspectRatio) || ASPECT_RATIOS[0];
+    // Extract character names from the matching script scene's dialogue
+    const scriptScene = scriptScenes.find(ss => ss.sceneNum === scene.sceneNum);
+    const charNames = scriptScene?.dialogue
+      ? [...new Set(scriptScene.dialogue.map(d => d.character).filter(Boolean))]
+      : [];
     let attempts = 0;
     while (attempts < 3) {
       const res = await fetch('/api/create/imagine', {
@@ -391,6 +396,10 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
           negative_prompt: negativePrompt,
           width: ar.width,
           height: ar.height,
+          // Pass show context so imagine route can inject 1:1 faithful style
+          showTitle: selectedMedia.category === 'Custom' ? undefined : selectedMedia.title,
+          artStyle,
+          characters: charNames,
         }),
       });
       if (res.status === 503) {
