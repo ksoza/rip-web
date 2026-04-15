@@ -3,7 +3,8 @@
 //
 // Fallback chain (lowest cost first):
 //   1. Pollinations (FREE, no key needed) — auto-selects model per show category
-//   2. fal.ai FLUX (paid fallback)
+//   2. HuggingFace FLUX.1-schnell (free with HF_TOKEN)
+//   3. fal.ai FLUX (paid fallback)
 //   3. HuggingFace Inference (free tier, may be slow)
 //
 // Injects show-specific visual style + character descriptions from SHOW_PROFILES
@@ -241,7 +242,55 @@ export async function POST(req: NextRequest) {
       errors.push(`Pollinations: ${msg}`);
     }
 
-    // ── 2. fal.ai (paid fallback) ───────────────────────────────
+    // ── 2. HuggingFace free image inference ($0 fallback) ────────
+    if (process.env.HF_TOKEN) {
+      try {
+        console.log('[imagine] Trying HuggingFace FLUX.1-schnell (free inference)...');
+        const hfRes = await fetch(
+          'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.HF_TOKEN}`,
+              'Content-Type': 'application/json',
+              'Accept': 'image/*',
+            },
+            body: JSON.stringify({ inputs: enhancedPrompt }),
+            signal: AbortSignal.timeout(90_000),
+          }
+        );
+        if (hfRes.ok) {
+          const ct = hfRes.headers.get('content-type') || '';
+          if (ct.startsWith('image/')) {
+            const buffer = await hfRes.arrayBuffer();
+            if (buffer.byteLength > 10_000) {
+              const base64 = Buffer.from(buffer).toString('base64');
+              console.log(`[imagine] ✓ HuggingFace success (${buffer.byteLength} bytes)`);
+              return NextResponse.json({
+                image: `data:${ct};base64,${base64}`,
+                sceneId,
+                model: 'flux-schnell',
+                provider: 'huggingface',
+              });
+            }
+            errors.push('HuggingFace: image too small');
+          } else {
+            const text = await hfRes.text();
+            errors.push(`HuggingFace: unexpected CT ${ct} — ${text.slice(0, 100)}`);
+          }
+        } else {
+          const errText = await hfRes.text().catch(() => '');
+          console.warn(`[imagine] HuggingFace failed (HTTP ${hfRes.status}): ${errText.slice(0, 200)}`);
+          errors.push(`HuggingFace: HTTP ${hfRes.status}`);
+        }
+      } catch (hfErr: unknown) {
+        const msg = hfErr instanceof Error ? hfErr.message : String(hfErr);
+        console.warn('[imagine] HuggingFace image error:', msg);
+        errors.push(`HuggingFace: ${msg}`);
+      }
+    }
+
+    // ── 3. fal.ai (paid fallback) ───────────────────────────────
     const falModel = FAL_IMAGE_MODELS[model];
 
     if (falModel && process.env.FAL_KEY) {
