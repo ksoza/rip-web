@@ -4,7 +4,8 @@
 // Fallback chain (lowest cost first):
 //   1. Self-hosted GPU (Wan 2.1 on Colab/Kaggle) -- $0.00
 //   2. Pollinations video (free, no key, no audio sync) -- $0.00
-//   3. fal.ai (Veo 3.1 / Seedance 2) -- paid, best quality + audio sync
+//   3. HuggingFace free inference (Wan 2.1 1.3B, needs HF_TOKEN) -- $0.00
+//   4. fal.ai (Veo 3.1 / Seedance 2) -- paid, best quality + audio sync
 //
 // Self-hosted: Wan 2.1 via free Google Colab T4 or Kaggle P100
 // fal.ai: Veo 3.1 (primary) or Seedance 2 (fallback) for synchronized output
@@ -13,6 +14,53 @@ import { falGenerate, FAL_VIDEO_MODELS, type FalModel } from './fal';
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
 import { pollinationsGenerateVideo } from './pollinations';
+
+// ── HuggingFace free inference for video (Wan 2.1 1.3B) ────────
+// Uses the free-tier inference API with HF_TOKEN.
+// Returns a video blob URL. $0 for free-tier users.
+async function hfFreeVideoGenerate(
+  prompt: string,
+): Promise<{ url: string } | null> {
+  const token = process.env.HF_TOKEN;
+  if (!token) return null;
+
+  const model = 'Wan-AI/Wan2.1-T2V-1.3B-Diffusers';
+  const url = `https://router.huggingface.co/hf-inference/models/${model}`;
+
+  try {
+    console.log('[scene-pipeline] Trying HuggingFace free inference (Wan 2.1 1.3B)...');
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs: prompt }),
+      signal: AbortSignal.timeout(180_000), // Video gen takes time
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.warn(`[scene-pipeline] HF free inference failed (HTTP ${res.status}): ${errText.slice(0, 200)}`);
+      return null;
+    }
+
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('video') || ct.includes('mp4')) {
+      // Convert blob to data URL
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const b64 = buffer.toString('base64');
+      const dataUrl = `data:video/mp4;base64,${b64}`;
+      console.log(`[scene-pipeline] ✓ HF free video generated (${buffer.byteLength} bytes)`);
+      return { url: dataUrl };
+    }
+    console.warn(`[scene-pipeline] HF free inference returned unexpected content-type: ${ct}`);
+    return null;
+  } catch (err) {
+    console.warn('[scene-pipeline] HF free inference error:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
 import { generateDialogueAudio } from './kokoro-tts';
 import {
   isSelfHostedConfigured,
@@ -319,6 +367,40 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
     }
   }
 
+  // -- Try HuggingFace free inference (Wan 2.1 1.3B, $0 with HF_TOKEN) ---
+  if (provider === 'auto') {
+    const hfResult = await hfFreeVideoGenerate(prompt);
+    if (hfResult?.url) {
+      // Generate dialogue audio via Kokoro TTS
+      let dialogueResult: SceneResult['dialogueAudio'] = undefined;
+      let mainAudioUrl: string | undefined = undefined;
+      if (dialogue.length > 0) {
+        try {
+          const ttsResult = await generateDialogueAudio(dialogue);
+          if (ttsResult.lines.some(l => l.audioUrl)) {
+            dialogueResult = { lines: ttsResult.lines, totalDuration: ttsResult.totalDuration };
+            mainAudioUrl = ttsResult.audioUrl;
+          }
+        } catch {
+          // TTS optional
+        }
+      }
+
+      return {
+        success: true,
+        videoUrl: hfResult.url,
+        audioUrl: mainAudioUrl,
+        model: 'wan2.1-1.3b',
+        audioSynced: false,
+        prompt,
+        ragContext: ragContext || undefined,
+        providerUsed: 'huggingface',
+        cost: 0,
+        dialogueAudio: dialogueResult,
+      };
+    }
+  }
+
   // -- Fall back to fal.ai (paid, best quality + audio sync) ---
   try {
     // Generate via fal.ai - audio-capable models return video with baked-in audio
@@ -411,7 +493,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
           model: modelKey,
           audioSynced: false,
           prompt,
-          error: `All providers failed. Self-hosted: unavailable. Pollinations: unavailable. Veo: ${errorMsg}. Seedance: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+          error: `All providers failed. Self-hosted: unavailable. Pollinations: unavailable. HuggingFace: ${process.env.HF_TOKEN ? 'unavailable' : 'no HF_TOKEN set'}. Veo: ${errorMsg}. Seedance: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
           providerUsed: 'fal',
         };
       }
