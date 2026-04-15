@@ -15,11 +15,22 @@ import { SHOW_PROFILES, getStylePrompt, type ArtStyleId } from '@/lib/shows';
 
 export const maxDuration = 60;
 
+// Simple string hash for deterministic seed generation
+function hashCode(s: string): number {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    const chr = s.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
 // ── Pick the best Pollinations model for the show category ──────
-function pollinationsModel(category?: string): string {
+function pollinationsModel(category?: string, isFlatShow?: boolean): string {
   switch (category) {
     case 'Anime':   return 'flux-anime';
-    case 'Cartoon': return 'flux';          // default FLUX handles cartoon style prompts best
+    case 'Cartoon': return isFlatShow ? 'turbo' : 'flux';  // turbo avoids over-detailing flat styles
     case 'Movie':   return 'flux-realism';
     case 'TV Show': return 'flux-realism';
     default:        return 'flux';
@@ -47,25 +58,70 @@ const FLAT_STYLE_SHOWS: Record<string, string> = {
 //   - Default (source-faithful): 1:1 recreation of the original show
 //   - Most styles: 1:1 show look AS THE BASE + art style layered ON TOP
 //   - claymation & 3d_render: FULL transformation (replaces original look)
+//
+// Prompt structure for flat-style shows (South Park, Bob's Burgers, etc.):
+//   INSTRUCTION → STYLE ATTRIBUTES → CHARACTER DETAILS → SCENE → ANTI-DRIFT
+// This front-loads the visual constraints so FLUX prioritizes them.
 function enrichPrompt(
   basePrompt: string,
   showTitle?: string,
   artStyle?: ArtStyleId,
   characters?: string[],
+  characterRefDescriptions?: Record<string, string>,
 ): string {
-  const parts: string[] = [];
   const show = showTitle ? SHOW_PROFILES[showTitle] : undefined;
   const isFullTransform = artStyle && FULL_TRANSFORM_STYLES.includes(artStyle);
+  const isFaithful = !artStyle || artStyle === 'source-faithful';
+  const isFlatShow = !!(showTitle && FLAT_STYLE_SHOWS[showTitle]);
+
+  // ── Flat-style shows in source-faithful mode get a specialized prompt ──
+  // Standard comma-separated prompts dilute the style. Instead we use
+  // a structured instruction that FLUX models follow more reliably.
+  if (isFaithful && isFlatShow && show?.visualStyle) {
+    const parts: string[] = [];
+
+    // 1. Lead with an explicit drawing instruction
+    parts.push(`Draw this scene in the EXACT art style of the TV show ${show.title}`);
+
+    // 2. Visual attributes as constraints (not suggestions)
+    parts.push(show.visualStyle);
+
+    // 3. Character descriptions with ref anchors
+    if (show.characters && characters?.length) {
+      const charDescs = characters
+        .map(name => {
+          const c = show.characters.find(ch =>
+            ch.name.toLowerCase() === name.toLowerCase()
+          );
+          if (!c) return null;
+          // Use pre-generated reference description if available
+          const ref = characterRefDescriptions?.[name];
+          return ref
+            ? `${c.name} (${c.visualDesc}, ${ref})`
+            : `${c.name}: ${c.visualDesc}`;
+        })
+        .filter(Boolean)
+        .join('. ');
+      if (charDescs) parts.push(charDescs);
+    }
+
+    // 4. Scene description
+    parts.push(basePrompt);
+
+    // 5. Anti-drift: remind the model what NOT to do
+    parts.push(`2D cartoon, flat colors, simple lines, NOT photorealistic, NOT 3D, NOT anime`);
+
+    return parts.join('. ');
+  }
+
+  // ── Standard prompt path (non-flat shows, or non-faithful styles) ──
+  const parts: string[] = [];
 
   // 1. Show visual style — the 1:1 faithful base
-  //    Always included UNLESS it's a full-transform style (claymation, 3D)
   if (!isFullTransform) {
     if (show?.visualStyle) {
-      // Known show — use the detailed visual style from SHOW_PROFILES
       parts.push(show.visualStyle);
     } else if (showTitle) {
-      // Show not in SHOW_PROFILES — generate a faithful prompt from the title.
-      // getStylePrompt('source-faithful') returns a generic faithful description.
       const faithfulPrompt = getStylePrompt(showTitle, 'source-faithful' as ArtStyleId);
       if (faithfulPrompt) parts.push(faithfulPrompt);
     }
@@ -76,37 +132,43 @@ function enrichPrompt(
     const stylePrompt = getStylePrompt(showTitle || '', artStyle);
     if (stylePrompt) {
       if (isFullTransform) {
-        // Full transform: style IS the base, but keep show title for context
         parts.push(stylePrompt);
         if (showTitle) parts.push(`based on ${showTitle}`);
       } else {
-        // Layered: style applied ON TOP of the 1:1 base
         parts.push(`with ${stylePrompt} applied as visual effect`);
       }
     }
   }
 
-  // 3. Inject character visual descriptions for named characters
+  // 3. Inject character visual descriptions (with optional ref anchors)
   if (show?.characters && characters?.length) {
     const charDescs = characters
-      .map(name => show.characters.find(c =>
-        c.name.toLowerCase() === name.toLowerCase()
-      ))
+      .map(name => {
+        const c = show.characters.find(ch =>
+          ch.name.toLowerCase() === name.toLowerCase()
+        );
+        if (!c) return null;
+        const ref = characterRefDescriptions?.[name];
+        return ref
+          ? `${c.name} (${c.visualDesc}, ${ref})`
+          : `${c.name}: ${c.visualDesc}`;
+      })
       .filter(Boolean)
-      .map(c => `${c!.name}: ${c!.visualDesc}`)
       .join('. ');
     if (charDescs) parts.push(charDescs);
   }
 
-  // 4. The scene-specific prompt from storyboard
+  // 4. Scene description
   parts.push(basePrompt);
 
   // 5. Quality + faithfulness boosters
   if (!isFullTransform && showTitle) {
     const title = show?.title || showTitle;
-    parts.push(`exact screenshot from the TV show ${title}, identical to original animation frames, perfectly matching ${title} art direction`);
+    parts.push(`matching ${title} art direction exactly`);
   }
-  parts.push('professional quality');
+  if (!isFlatShow) {
+    parts.push('professional quality');
+  }
 
   return parts.join('. ');
 }
@@ -124,19 +186,25 @@ export async function POST(req: NextRequest) {
       showTitle,
       artStyle,
       characters,
+      // Character reference descriptions from pre-generation step
+      characterRefDescriptions,
+      // Seed for visual consistency across scenes
+      seed,
     } = await req.json();
 
     if (!prompt) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
+    // ── Time budget — track elapsed to avoid Vercel 60s gateway timeout ──────
+    const startTime = Date.now();
+    const TIME_BUDGET_MS = 52_000; // bail at 52s, leaving 8s buffer for response
+    const timeLeft = () => TIME_BUDGET_MS - (Date.now() - startTime);
+
     // ── Stagger concurrent scene requests to avoid Pollinations rate-limiting ──
-    // When the wizard generates 5 scenes at once, all 5 hit Pollinations
-    // simultaneously → rate-limited → failures. Stagger by scene index.
-    // sceneId format: "scene-1", "scene-2", etc. or any string with a number.
     const sceneNum = parseInt(String(sceneId).replace(/\D/g, '') || '0', 10);
     if (sceneNum > 0) {
-      const staggerMs = (sceneNum - 1) * 3000; // 0s, 3s, 6s, 9s, 12s
+      const staggerMs = (sceneNum - 1) * 2000; // 0s, 2s, 4s, 6s, 8s (reduced from 3s)
       if (staggerMs > 0) {
         console.log(`[imagine] Staggering scene ${sceneNum} by ${staggerMs}ms to avoid rate-limiting`);
         await new Promise(r => setTimeout(r, staggerMs));
@@ -149,7 +217,11 @@ export async function POST(req: NextRequest) {
       showTitle,
       artStyle as ArtStyleId | undefined,
       characters,
+      characterRefDescriptions,
     );
+
+    // Use provided seed or generate a consistent one from show title
+    const imageSeed = seed ?? (showTitle ? hashCode(showTitle) : undefined);
 
     const show = showTitle ? SHOW_PROFILES[showTitle] : undefined;
     const errors: string[] = [];
@@ -159,13 +231,13 @@ export async function POST(req: NextRequest) {
     try {
       const imgWidth = width ? Math.min(Math.max(width, 64), 2048) : 1024;
       const imgHeight = height ? Math.min(Math.max(height, 64), 2048) : 1024;
-      const polModel = pollinationsModel(show?.category);
+      const isFaithful = !artStyle || artStyle === 'source-faithful';
+      const isFlatShow = !!(showTitle && FLAT_STYLE_SHOWS[showTitle]);
+      const polModel = pollinationsModel(show?.category, isFlatShow && isFaithful);
 
       // Disable Pollinations "enhance" for source-faithful and flat-style shows.
       // "Enhance" rewrites the prompt via AI — this ruins crude/simple styles
       // like South Park, Simpsons, etc. by adding smooth shading and realism.
-      const isFaithful = !artStyle || artStyle === 'source-faithful';
-      const isFlatShow = !!(showTitle && FLAT_STYLE_SHOWS[showTitle]);
       const shouldEnhance = !(isFaithful && isFlatShow);
 
       const params = new URLSearchParams({
@@ -176,6 +248,9 @@ export async function POST(req: NextRequest) {
         enhance: shouldEnhance ? 'true' : 'false',
       });
 
+      // Seed for visual consistency across all scenes in the same episode
+      if (imageSeed !== undefined) params.set('seed', String(imageSeed));
+
       // Auto-inject negative prompts for flat-style shows to prevent AI "realism"
       const autoNeg = isFaithful && isFlatShow ? FLAT_STYLE_SHOWS[showTitle!] : '';
       const finalNegative = [negative_prompt, autoNeg].filter(Boolean).join(', ');
@@ -184,23 +259,31 @@ export async function POST(req: NextRequest) {
       const encodedPrompt = encodeURIComponent(enhancedPrompt);
       const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?${params}`;
 
-      console.log(`[imagine] Trying Pollinations (model=${polModel}, $0 cost)...`);
-      console.log(`[imagine] Enriched prompt: ${enhancedPrompt.slice(0, 200)}...`);
+      console.log(`[imagine] Trying Pollinations (model=${polModel}, seed=${imageSeed ?? 'none'}, $0 cost)...`);
+      console.log(`[imagine] Enriched prompt: ${enhancedPrompt.slice(0, 300)}...`);
 
-      // Pollinations requires a browser-like User-Agent header for server-side
-      // requests — without it the API returns 403 Forbidden.
       const POL_HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept': 'image/*, */*',
         'Referer': 'https://rip-web.vercel.app/',
       };
 
-      const MAX_POL_RETRIES = 4;
+      // Reduced from 4 retries × 90s → 3 retries × 35s with time budget check
+      const MAX_POL_RETRIES = 3;
+      const POL_TIMEOUT_MS = 35_000;
+
       for (let attempt = 1; attempt <= MAX_POL_RETRIES; attempt++) {
+        // Bail if we're running out of time
+        if (timeLeft() < POL_TIMEOUT_MS + 3000) {
+          console.warn(`[imagine] Time budget exhausted (${Math.round(timeLeft() / 1000)}s left), skipping Pollinations attempt ${attempt}`);
+          errors.push(`Pollinations: time budget exhausted after ${attempt - 1} attempts`);
+          break;
+        }
+
         try {
           const polRes = await fetch(url, {
             headers: POL_HEADERS,
-            signal: AbortSignal.timeout(90_000),
+            signal: AbortSignal.timeout(POL_TIMEOUT_MS),
           });
 
           if (polRes.ok) {
@@ -210,7 +293,7 @@ export async function POST(req: NextRequest) {
               if (buffer.byteLength > 500) {
                 const contentType = ct.split(';')[0].trim() || 'image/jpeg';
                 const base64 = Buffer.from(buffer).toString('base64');
-                console.log(`[imagine] ✓ Pollinations success (${polModel}, ${buffer.byteLength} bytes, attempt ${attempt})`);
+                console.log(`[imagine] ✓ Pollinations success (${polModel}, ${buffer.byteLength} bytes, attempt ${attempt}, seed=${imageSeed ?? 'none'})`);
                 return NextResponse.json({
                   image: `data:${contentType};base64,${base64}`,
                   sceneId,
@@ -233,8 +316,8 @@ export async function POST(req: NextRequest) {
           console.warn(`[imagine] Pollinations attempt ${attempt} error:`, msg);
           if (attempt === MAX_POL_RETRIES) errors.push(`Pollinations: ${msg}`);
         }
-        // Increasing pause before retry (2s, 4s, 6s)
-        if (attempt < MAX_POL_RETRIES) await new Promise(r => setTimeout(r, 2000 * attempt));
+        // Shorter retry pauses (1.5s, 3s) to fit within time budget
+        if (attempt < MAX_POL_RETRIES) await new Promise(r => setTimeout(r, 1500 * attempt));
       }
     } catch (polErr: unknown) {
       const msg = polErr instanceof Error ? polErr.message : String(polErr);
@@ -243,7 +326,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 2. HuggingFace free image inference ($0 fallback) ────────
-    if (process.env.HF_TOKEN) {
+    if (process.env.HF_TOKEN && timeLeft() > 15_000) {
       try {
         console.log('[imagine] Trying HuggingFace FLUX.1-schnell (free inference)...');
         const hfRes = await fetch(
