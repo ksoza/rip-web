@@ -105,7 +105,7 @@ function enrichPrompt(
     const title = show?.title || showTitle;
     parts.push(`exact screenshot from the TV show ${title}, identical to original animation frames, perfectly matching ${title} art direction`);
   }
-  parts.push('professional quality');
+  parts.push('professional quality, correct anatomy, properly drawn hands and fingers');
 
   return parts.join('. ');
 }
@@ -181,12 +181,12 @@ export async function POST(req: NextRequest) {
         'Referer': 'https://rip-web.vercel.app/',
       };
 
-      const MAX_POL_RETRIES = 3;
+      const MAX_POL_RETRIES = 4;
       for (let attempt = 1; attempt <= MAX_POL_RETRIES; attempt++) {
         try {
           const polRes = await fetch(url, {
             headers: POL_HEADERS,
-            signal: AbortSignal.timeout(45_000),
+            signal: AbortSignal.timeout(90_000),
           });
 
           if (polRes.ok) {
@@ -219,8 +219,8 @@ export async function POST(req: NextRequest) {
           console.warn(`[imagine] Pollinations attempt ${attempt} error:`, msg);
           if (attempt === MAX_POL_RETRIES) errors.push(`Pollinations: ${msg}`);
         }
-        // Brief pause before retry
-        if (attempt < MAX_POL_RETRIES) await new Promise(r => setTimeout(r, 1500));
+        // Increasing pause before retry (2s, 4s, 6s)
+        if (attempt < MAX_POL_RETRIES) await new Promise(r => setTimeout(r, 2000 * attempt));
       }
     } catch (polErr: unknown) {
       const msg = polErr instanceof Error ? polErr.message : String(polErr);
