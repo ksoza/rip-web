@@ -374,6 +374,52 @@ export const SHOW_PROFILES: Record<string, ShowProfile> = {
     ],
   },
 
+  "Bob's Burgers": {
+    id: 'bobs-burgers', title: "Bob's Burgers", category: 'Cartoon',
+    visualStyle: "Bob's Burgers animation style, Loren Bouchard character design, tall narrow bodies, large round eyes, simple line art, warm earthy color palette with yellows and browns, small seaside town setting, hand-drawn feel, restaurant interior with grill and counter",
+    audioTone: 'quirky acoustic guitar, lighthearted ukulele, burger sizzling ambient, family banter warm tone',
+    characters: [
+      { id: 'bb1', name: 'Bob Belcher', role: 'Dad / Chef', emoji: '\u{1F373}', visualDesc: 'stocky man with thick black mustache, white t-shirt under grey short-sleeve button-up, receding black hair, always slightly sweaty, behind the grill', voiceDesc: 'dry deadpan delivery, exasperated sighs, talks to food, H. Jon Benjamin voice, mutters under breath' },
+      { id: 'bb2', name: 'Linda Belcher', role: 'Mom / Enthusiast', emoji: '\u{1F3A4}', visualDesc: 'woman with black hair in bob cut, red glasses, red long-sleeve shirt, always animated expression, big smile', voiceDesc: 'loud enthusiastic nasally voice, "alriiiight!", sing-songy, supportive but chaotic, New Jersey-ish accent' },
+      { id: 'bb3', name: 'Tina Belcher', role: 'Eldest Daughter', emoji: '\u{1F4D3}', visualDesc: 'teenage girl with glasses, blue shirt, blue skirt, black hair in low ponytail, awkward posture, expressionless face', voiceDesc: 'monotone awkward delivery, long groans "uhhhhh", boy-crazy rambling, erotic friend fiction references' },
+      { id: 'bb4', name: 'Gene Belcher', role: 'Son / Musician', emoji: '\u{1F3B9}', visualDesc: 'chubby boy in yellow t-shirt, stocky build like Bob, always holding keyboard or megaphone', voiceDesc: 'loud hyperactive, fart jokes, keyboard sound effects, non-sequiturs, "LINDA! LINDA! LISTEN!"' },
+      { id: 'bb5', name: 'Louise Belcher', role: 'Youngest / Schemer', emoji: '\u{1F430}', visualDesc: 'small girl in green dress with iconic pink bunny ears hat, mischievous grin, never without the hat', voiceDesc: 'scheming fast-talking, chaotic energy, manipulative but lovable, "oh my god", Kristen Schaal voice' },
+    ],
+  },
+
+  'Futurama': {
+    id: 'futurama', title: 'Futurama', category: 'Cartoon',
+    visualStyle: "Futurama animation style, Matt Groening character design, rounded simple features similar to Simpsons but sci-fi, bold outlines, retro-futuristic New New York cityscape, flying cars, tubes, alien species, bright neon colors against dark space backgrounds",
+    audioTone: 'retro sci-fi synths, spaceship hums, alien sound effects, Christopher Tyng orchestral theme',
+    characters: [
+      { id: 'fu1', name: 'Fry', role: 'Delivery Boy', emoji: '\u{1F355}', visualDesc: 'orange-red spiky hair, red jacket, white t-shirt, blue jeans, perpetually confused expression', voiceDesc: 'dopey optimistic voice, 20th century references nobody gets, Billy West voice, earnest and clueless' },
+      { id: 'fu2', name: 'Bender', role: 'Robot', emoji: '\u{1F916}', visualDesc: 'grey cylindrical robot with antenna, visor eyes, door-chest compartment, cigar in mouth, shiny metal body', voiceDesc: 'gravelly sarcastic, "bite my shiny metal ass", self-centered, John DiMaggio voice, kleptomaniac' },
+      { id: 'fu3', name: 'Leela', role: 'Captain', emoji: '\u{1F4AA}', visualDesc: 'purple-haired woman with single large eye (cyclops), white tank top, grey pants, athletic build, wrist device', voiceDesc: 'competent assertive leader voice, occasional vulnerability, Katey Sagal voice, eye-related puns annoy her' },
+    ],
+  },
+
+  'Adventure Time': {
+    id: 'adventure-time', title: 'Adventure Time', category: 'Cartoon',
+    visualStyle: "Adventure Time animation style, Pendleton Ward character design, simple rubbery noodle-arm characters, candy-colored Land of Ooo landscape, surreal pastel backgrounds, thin clean outlines, whimsical and psychedelic environments, post-apocalyptic candy kingdom",
+    audioTone: 'chiptune adventure music, ukulele strumming, magical sparkle sounds, Jake stretching noises',
+    characters: [
+      { id: 'at1', name: 'Finn', role: 'Human Hero', emoji: '\u2694\uFE0F', visualDesc: 'boy in white bear-ear hat (covers all hair), blue shirt, green backpack, simple dot eyes, noodle arms', voiceDesc: 'enthusiastic heroic boy voice, battle cries, "algebraic!", "mathematical!", righteous adventurer' },
+      { id: 'at2', name: 'Jake', role: 'Magic Dog', emoji: '\u{1F436}', visualDesc: 'orange-yellow stretchy bulldog, can shapeshift to any size/shape, simple jowly face, relaxed posture', voiceDesc: 'laid-back stoner-ish wisdom, stretching sound effects, "dude", calm philosophical, John DiMaggio voice' },
+      { id: 'at3', name: 'Princess Bubblegum', role: 'Ruler / Scientist', emoji: '\u{1F451}', visualDesc: 'pink skin and long pink bubblegum hair, crown, purple dress, made entirely of bubblegum, regal posture', voiceDesc: 'polite but secretly intense, science obsessed, authoritarian tendencies, Hynden Walch voice' },
+    ],
+  },
+
+  'SpongeBob SquarePants': {
+    id: 'spongebob', title: 'SpongeBob SquarePants', category: 'Cartoon',
+    visualStyle: "SpongeBob SquarePants animation style, Stephen Hillenburg character design, underwater Bikini Bottom setting, bright saturated tropical colors, detailed painted ocean floor backgrounds, squash-and-stretch expressions, pineapple house, Krusty Krab restaurant, coral and sand textures",
+    audioTone: 'steel guitar Hawaiian surf music, bubbling underwater ambience, "are you ready kids?", nautical nonsense',
+    characters: [
+      { id: 'sb1', name: 'SpongeBob', role: 'Fry Cook', emoji: '\u{1F9FD}', visualDesc: 'yellow square sea sponge with holes, big blue eyes, buck teeth, brown square pants with belt, white shirt, red tie, black shoes', voiceDesc: 'high-pitched enthusiastic nasally voice, infectious laugh "ahahahaha!", "I\'m ready!", Tom Kenny voice' },
+      { id: 'sb2', name: 'Patrick Star', role: 'Best Friend', emoji: '\u2B50', visualDesc: 'fat pink starfish, green shorts with purple flowers, pointy head, vacant happy expression, lives under a rock', voiceDesc: 'deep dumb lovable voice, "is mayonnaise an instrument?", Bill Fagerbakke voice, oblivious genius moments' },
+      { id: 'sb3', name: 'Squidward', role: 'Neighbor / Cashier', emoji: '\u{1F3B7}', visualDesc: 'teal octopus (4 legs), large bulbous nose, brown shirt, perpetually annoyed expression, Easter Island head house', voiceDesc: 'nasally pretentious irritated voice, clarinet torture, "I hate all of you", Rodger Bumpass voice' },
+    ],
+  },
+
   // ---------------------------------------------------------------
   // ANIME
   // ---------------------------------------------------------------
