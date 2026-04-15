@@ -78,7 +78,7 @@ import {
 // -- Audio-capable model detection -------------------------------
 
 /** Models that generate video WITH synchronized audio in a single pass */
-const AUDIO_CAPABLE_MODELS = ['veo', 'seedance-2'] as const;
+const AUDIO_CAPABLE_MODELS = ['ltx-2.3', 'veo', 'seedance-2'] as const;
 type AudioCapableModel = typeof AUDIO_CAPABLE_MODELS[number];
 
 export function isAudioCapable(modelKey: string): boolean {
@@ -175,7 +175,12 @@ function selectModel(preferred?: string): { key: string; model: FalModel } {
     return { key: preferred, model: FAL_VIDEO_MODELS[preferred] };
   }
 
-  // Default: Veo 3.1 (best audio-video sync)
+  // Default: LTX 2.3 (open-source, cheapest, native audio sync)
+  if (FAL_VIDEO_MODELS['ltx-2.3']) {
+    return { key: 'ltx-2.3', model: FAL_VIDEO_MODELS['ltx-2.3'] };
+  }
+
+  // Fallback: Veo 3.1 (best quality audio-video sync)
   if (FAL_VIDEO_MODELS['veo']) {
     return { key: 'veo', model: FAL_VIDEO_MODELS['veo'] };
   }
@@ -418,10 +423,11 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
     });
 
     if (!result.video?.url) {
-      // If primary model failed or returned no video, try fallback
-      if (modelKey === 'veo' && FAL_VIDEO_MODELS['seedance-2']) {
-        console.log('[scene-pipeline] Veo 3.1 returned no video, falling back to Seedance 2');
-        const fallback = await falGenerate(FAL_VIDEO_MODELS['seedance-2'].id, {
+      // If primary model failed or returned no video, try next audio-capable model
+      const fallbackKey = AUDIO_CAPABLE_MODELS.find(k => k !== modelKey && FAL_VIDEO_MODELS[k]);
+      if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
+        console.log(`[scene-pipeline] ${modelKey} returned no video, falling back to ${fallbackKey}`);
+        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, {
           prompt,
           duration: String(duration),
           aspect_ratio: input.aspectRatio || '16:9',
@@ -433,7 +439,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
             success: true,
             videoUrl: fallback.video.url,
             audioUrl: (fallback as any).audio?.url,
-            model: 'seedance-2',
+            model: fallbackKey,
             audioSynced: true,
             prompt,
             requestId: fallback.request_id,
@@ -468,11 +474,12 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
 
-    // Auto-fallback: if primary model fails, try the other audio-capable model
-    if (modelKey === 'veo' && FAL_VIDEO_MODELS['seedance-2']) {
+    // Auto-fallback: try next audio-capable model in the chain
+    const fallbackKey = AUDIO_CAPABLE_MODELS.find(k => k !== modelKey && FAL_VIDEO_MODELS[k]);
+    if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
       try {
-        console.log(`[scene-pipeline] Veo 3.1 failed (${errorMsg}), falling back to Seedance 2`);
-        const fallback = await falGenerate(FAL_VIDEO_MODELS['seedance-2'].id, {
+        console.log(`[scene-pipeline] ${modelKey} failed (${errorMsg}), falling back to ${fallbackKey}`);
+        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, {
           prompt,
           duration: String(duration),
           aspect_ratio: input.aspectRatio || '16:9',
@@ -484,7 +491,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
             success: true,
             videoUrl: fallback.video.url,
             audioUrl: (fallback as any).audio?.url,
-            model: 'seedance-2',
+            model: fallbackKey,
             audioSynced: true,
             prompt,
             requestId: fallback.request_id,
@@ -493,13 +500,12 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
           };
         }
       } catch (fallbackErr) {
-        // Both models failed
         return {
           success: false,
           model: modelKey,
           audioSynced: false,
           prompt,
-          error: `All providers failed. Self-hosted: unavailable. Pollinations: unavailable. HuggingFace: ${process.env.HF_TOKEN ? 'unavailable' : 'no HF_TOKEN set'}. Veo: ${errorMsg}. Seedance: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+          error: `All providers failed. Self-hosted: unavailable. Pollinations: unavailable. HuggingFace: ${process.env.HF_TOKEN ? 'unavailable' : 'no HF_TOKEN set'}. ${modelKey}: ${errorMsg}. ${fallbackKey}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
           providerUsed: 'fal',
         };
       }
