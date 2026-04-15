@@ -20,9 +20,8 @@ import { pollinationsGenerateVideo } from './pollinations';
 // Tries multiple HF models that support inference API. $0 with HF_TOKEN.
 // Falls through model list until one succeeds.
 const HF_VIDEO_MODELS = [
-  { id: 'tencent/HunyuanVideo', label: 'HunyuanVideo' },
+  { id: 'Wan-AI/Wan2.1-T2V-1.3B', label: 'Wan 2.1 1.3B' },
   { id: 'genmo/mochi-1-preview', label: 'Mochi' },
-  { id: 'Wan-AI/Wan2.1-T2V-1.3B-Diffusers', label: 'Wan 2.1 1.3B' },
 ];
 
 async function hfFreeVideoGenerate(
