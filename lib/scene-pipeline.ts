@@ -15,51 +15,57 @@ import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
 import { pollinationsGenerateVideo } from './pollinations';
 
-// ── HuggingFace free inference for video (Wan 2.1 1.3B) ────────
-// Uses the free-tier inference API with HF_TOKEN.
-// Returns a video blob URL. $0 for free-tier users.
+// ── HuggingFace free inference for video ────────────────────────
+// Tries multiple HF models that support inference API. $0 with HF_TOKEN.
+// Falls through model list until one succeeds.
+const HF_VIDEO_MODELS = [
+  { id: 'tencent/HunyuanVideo', label: 'HunyuanVideo' },
+  { id: 'genmo/mochi-1-preview', label: 'Mochi' },
+  { id: 'Wan-AI/Wan2.1-T2V-1.3B-Diffusers', label: 'Wan 2.1 1.3B' },
+];
+
 async function hfFreeVideoGenerate(
   prompt: string,
 ): Promise<{ url: string } | null> {
   const token = process.env.HF_TOKEN;
   if (!token) return null;
 
-  const model = 'Wan-AI/Wan2.1-T2V-1.3B-Diffusers';
-  const url = `https://router.huggingface.co/hf-inference/models/${model}`;
+  for (const model of HF_VIDEO_MODELS) {
+    const url = `https://router.huggingface.co/hf-inference/models/${model.id}`;
+    try {
+      console.log(`[scene-pipeline] Trying HuggingFace ${model.label} (free inference)...`);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ inputs: prompt }),
+        signal: AbortSignal.timeout(180_000), // Video gen takes time
+      });
 
-  try {
-    console.log('[scene-pipeline] Trying HuggingFace free inference (Wan 2.1 1.3B)...');
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ inputs: prompt }),
-      signal: AbortSignal.timeout(180_000), // Video gen takes time
-    });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.warn(`[scene-pipeline] HF ${model.label} failed (HTTP ${res.status}): ${errText.slice(0, 200)}`);
+        continue; // Try next model
+      }
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.warn(`[scene-pipeline] HF free inference failed (HTTP ${res.status}): ${errText.slice(0, 200)}`);
-      return null;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('video') || ct.includes('mp4')) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const b64 = buffer.toString('base64');
+        const dataUrl = `data:video/mp4;base64,${b64}`;
+        console.log(`[scene-pipeline] ✓ HF ${model.label} video generated (${buffer.byteLength} bytes)`);
+        return { url: dataUrl };
+      }
+      console.warn(`[scene-pipeline] HF ${model.label} unexpected content-type: ${ct}`);
+    } catch (err) {
+      console.warn(`[scene-pipeline] HF ${model.label} error:`, err instanceof Error ? err.message : err);
     }
-
-    const ct = res.headers.get('content-type') || '';
-    if (ct.includes('video') || ct.includes('mp4')) {
-      // Convert blob to data URL
-      const buffer = Buffer.from(await res.arrayBuffer());
-      const b64 = buffer.toString('base64');
-      const dataUrl = `data:video/mp4;base64,${b64}`;
-      console.log(`[scene-pipeline] ✓ HF free video generated (${buffer.byteLength} bytes)`);
-      return { url: dataUrl };
-    }
-    console.warn(`[scene-pipeline] HF free inference returned unexpected content-type: ${ct}`);
-    return null;
-  } catch (err) {
-    console.warn('[scene-pipeline] HF free inference error:', err instanceof Error ? err.message : err);
-    return null;
   }
+
+  console.warn('[scene-pipeline] All HuggingFace video models failed');
+  return null;
 }
 import { generateDialogueAudio } from './kokoro-tts';
 import {
