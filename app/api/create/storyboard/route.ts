@@ -72,15 +72,20 @@ OUTPUT FORMAT: Return a JSON object:
 }
 
 VISUAL PROMPT RULES (these prompts go DIRECTLY to AI image/video generation models):
+- **1:1 FAITHFUL** to the original show/movie/anime/cartoon's visual style is the #1 priority
+- For cartoons (Simpsons, South Park, Family Guy, Rick and Morty, etc.): MATCH the show's exact animation style, character proportions, line weight, color palette, and art direction
+- For anime (Naruto, One Piece, DBZ, etc.): MATCH the anime's specific art style, shading, eye style, and visual identity
+- For live-action (Breaking Bad, Game of Thrones, etc.): MATCH the show's cinematography, color grading, and visual atmosphere
 - Describe a single continuous shot per scene
 - Include: subject, action/pose, setting, lighting, camera angle/movement
 - Camera terms: pan, tilt, dolly, tracking shot, aerial, close-up, wide shot, medium shot, Dutch angle, bird's eye, over-the-shoulder
-- Lighting: golden hour, dramatic shadows, soft diffused, neon glow, silhouette, natural, moody, high-key, rim lighting
-- Style keywords: cinematic, photorealistic, film grain, shallow depth of field, anamorphic
+- Lighting: match the show's typical lighting (e.g., harsh desert sun for Breaking Bad, dim candlelight for GoT)
+- Always START the visual prompt with the show's specific art style description
 - Composition: describe foreground/background elements, depth layers
-- Keep each prompt to 2-4 sentences — specific but concise
+- Keep each prompt to 3-5 sentences — specific and style-accurate
 - Do NOT mention text overlays, UI elements, charts, or programming concepts
 - Do NOT use vague terms like "a scene showing" — describe what the CAMERA SEES
+- Characters MUST match their canonical appearance from the source material
 
 DIALOGUE RULES:
 - NO narration or voiceover — characters speak as THEMSELVES
@@ -166,13 +171,17 @@ ${scriptContext}
 
 ${artStyle ? `MANDATORY ART STYLE for all scenes: ${artStyle}. Include "${artStylePrompt || artStyle}" styling in every visual description.` : ''}
 
-The "visual" field is the MOST IMPORTANT — it will be fed directly to an AI image/video generation model. Be extremely specific about:
-- Art style (use the ${artStyle || 'cinematic'} style consistently across ALL scenes)
+The "visual" field is the MOST IMPORTANT — it will be fed directly to an AI image/video generation model.
+
+CRITICAL: Every "visual" prompt MUST start with "${mediaTitle || 'original'} visual style" so the image model knows to match the original show's exact look. For cartoons/anime, include the specific animation style (e.g., "South Park paper cutout animation style" or "Naruto anime art style with Masashi Kishimoto character designs"). For live-action shows, include the show's cinematography style and color grading.
+
+Be extremely specific about:
+- Art style: match the source material's EXACT visual identity — this is non-negotiable
 - Camera angle and movement
-- Lighting setup and mood
-- Character appearance, pose, expression, clothing
-- Setting details (textures, weather, time of day, objects)
-- Color palette and atmosphere
+- Lighting: match the show's typical lighting (harsh desert sun for Breaking Bad, dim candlelight for GoT, bright flat colors for Simpsons)
+- Character appearance: describe EXACTLY how they look in the original show — canonical clothing, hair, body type, features
+- Setting details: use locations and environments from the actual show
+- Color palette: use the show's real color palette (Simpsons = bright yellow/blue, Breaking Bad = amber/teal, South Park = construction paper colors)
 - Foreground/background composition
 
 ${scriptScenes?.length ? 'Create ONE storyboard panel per script scene. Match the script closely. Carry over each scene\'s transition.' : 'Include a transition type (cut, fade, dissolve, wipe, or smash_cut) for each scene.'}
