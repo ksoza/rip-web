@@ -1,10 +1,92 @@
 // app/api/create/imagine/route.ts
-// Scene image generation — Pollinations primary, Novita AI fallback 1, fal.ai + HuggingFace fallbacks
-// Supports multiple models, aspect ratios, negative prompts
+// Scene image generation — show-faithful by default
+//
+// Fallback chain (lowest cost first):
+//   1. Pollinations (FREE, no key needed) — auto-selects model per show category
+//   2. fal.ai FLUX (paid fallback)
+//   3. HuggingFace Inference (free tier, may be slow)
+//
+// Injects show-specific visual style + character descriptions from SHOW_PROFILES
+// so generated images match the original show's look 1:1.
 import { NextRequest, NextResponse } from 'next/server';
 import { falGenerate, FAL_IMAGE_MODELS } from '@/lib/fal';
+import { SHOW_PROFILES, getStylePrompt, type ArtStyleId } from '@/lib/shows';
 
 export const maxDuration = 60;
+
+// ── Pick the best Pollinations model for the show category ──────
+function pollinationsModel(category?: string): string {
+  switch (category) {
+    case 'Anime':   return 'flux-anime';
+    case 'Cartoon': return 'flux';          // default FLUX handles cartoon style prompts best
+    case 'Movie':   return 'flux-realism';
+    case 'TV Show': return 'flux-realism';
+    default:        return 'flux';
+  }
+}
+
+// ── Styles that FULLY REPLACE the show's look (not layered) ─────
+const FULL_TRANSFORM_STYLES: ArtStyleId[] = ['claymation', '3d_render'];
+
+// ── Enrich prompt with show style + character visuals ───────────
+// Design rule:
+//   - Default (source-faithful): 1:1 recreation of the original show
+//   - Most styles: 1:1 show look AS THE BASE + art style layered ON TOP
+//   - claymation & 3d_render: FULL transformation (replaces original look)
+function enrichPrompt(
+  basePrompt: string,
+  showTitle?: string,
+  artStyle?: ArtStyleId,
+  characters?: string[],
+): string {
+  const parts: string[] = [];
+  const show = showTitle ? SHOW_PROFILES[showTitle] : undefined;
+  const isFullTransform = artStyle && FULL_TRANSFORM_STYLES.includes(artStyle);
+
+  // 1. Show visual style — the 1:1 faithful base
+  //    Always included UNLESS it's a full-transform style (claymation, 3D)
+  if (show?.visualStyle && !isFullTransform) {
+    parts.push(show.visualStyle);
+  }
+
+  // 2. Art style layer
+  if (artStyle && artStyle !== 'source-faithful') {
+    const stylePrompt = getStylePrompt(showTitle || '', artStyle);
+    if (stylePrompt) {
+      if (isFullTransform) {
+        // Full transform: style IS the base, but keep show title for context
+        parts.push(stylePrompt);
+        if (show) parts.push(`based on ${show.title}`);
+      } else {
+        // Layered: style applied ON TOP of the 1:1 base
+        parts.push(`with ${stylePrompt} applied as visual effect`);
+      }
+    }
+  }
+
+  // 3. Inject character visual descriptions for named characters
+  if (show?.characters && characters?.length) {
+    const charDescs = characters
+      .map(name => show.characters.find(c =>
+        c.name.toLowerCase() === name.toLowerCase()
+      ))
+      .filter(Boolean)
+      .map(c => `${c!.name}: ${c!.visualDesc}`)
+      .join('. ');
+    if (charDescs) parts.push(charDescs);
+  }
+
+  // 4. The scene-specific prompt from storyboard
+  parts.push(basePrompt);
+
+  // 5. Quality + faithfulness boosters
+  if (!isFullTransform && show) {
+    parts.push(`matching ${show.title} original art direction exactly, faithful to source material`);
+  }
+  parts.push('high detail, professional quality');
+
+  return parts.join('. ');
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,159 +97,85 @@ export async function POST(req: NextRequest) {
       negative_prompt,
       width,
       height,
+      // New fields for show-accurate generation
+      showTitle,
+      artStyle,
+      characters,
     } = await req.json();
 
     if (!prompt) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
-    const enhancedPrompt = `${prompt}, high detail, professional quality, 4k`;
+    // Build the enriched prompt with show style + character visuals
+    const enhancedPrompt = enrichPrompt(
+      prompt,
+      showTitle,
+      artStyle as ArtStyleId | undefined,
+      characters,
+    );
+
+    const show = showTitle ? SHOW_PROFILES[showTitle] : undefined;
     const errors: string[] = [];
 
-    // ── 1. Try Pollinations.ai FLUX (primary — cheapest) ────────
-    const pollinationsKey = process.env.POLLINATIONS_API_KEY || '';
-    if (pollinationsKey) {
-      try {
-        const imgWidth = width ? Math.min(Math.max(width, 64), 2048) : 1024;
-        const imgHeight = height ? Math.min(Math.max(height, 64), 2048) : 1024;
+    // ── 1. Pollinations (FREE — no API key needed) ──────────────
+    // Uses the public URL-based API from lib/pollinations.ts
+    try {
+      const imgWidth = width ? Math.min(Math.max(width, 64), 2048) : 1024;
+      const imgHeight = height ? Math.min(Math.max(height, 64), 2048) : 1024;
+      const polModel = pollinationsModel(show?.category);
 
-        const encodedPrompt = encodeURIComponent(enhancedPrompt);
-        const params = new URLSearchParams({
-          model: 'flux',
-          width: String(imgWidth),
-          height: String(imgHeight),
-          nologo: 'true',
-          quality: 'medium',
-        });
-        if (negative_prompt) params.set('negative_prompt', negative_prompt);
+      const params = new URLSearchParams({
+        model: polModel,
+        width: String(imgWidth),
+        height: String(imgHeight),
+        nologo: 'true',
+        enhance: 'true',
+      });
+      if (negative_prompt) params.set('negative', negative_prompt);
 
-        const url = `https://gen.pollinations.ai/image/${encodedPrompt}?${params}`;
-        console.log('[imagine] Trying Pollinations.ai FLUX...');
+      const encodedPrompt = encodeURIComponent(enhancedPrompt);
+      const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?${params}`;
 
-        const polRes = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${pollinationsKey.trim()}` },
-        });
+      console.log(`[imagine] Trying Pollinations (model=${polModel}, $0 cost)...`);
+      console.log(`[imagine] Enriched prompt: ${enhancedPrompt.slice(0, 200)}...`);
 
-        if (polRes.ok) {
-          const ct = polRes.headers.get('content-type') || '';
-          if (ct.includes('image')) {
-            const buffer = await polRes.arrayBuffer();
-            if (buffer.byteLength > 500) {
-              const contentType = ct.split(';')[0].trim() || 'image/jpeg';
-              const base64 = Buffer.from(buffer).toString('base64');
-              return NextResponse.json({
-                image: `data:${contentType};base64,${base64}`,
-                sceneId,
-                model: 'pollinations-flux',
-                provider: 'pollinations',
-              });
-            }
-            errors.push('Pollinations: image too small / empty');
-          } else {
-            const text = await polRes.text();
-            errors.push(`Pollinations: unexpected content-type ${ct} — ${text.slice(0, 100)}`);
+      const polRes = await fetch(url, {
+        signal: AbortSignal.timeout(45_000),
+      });
+
+      if (polRes.ok) {
+        const ct = polRes.headers.get('content-type') || '';
+        if (ct.includes('image')) {
+          const buffer = await polRes.arrayBuffer();
+          if (buffer.byteLength > 500) {
+            const contentType = ct.split(';')[0].trim() || 'image/jpeg';
+            const base64 = Buffer.from(buffer).toString('base64');
+            console.log(`[imagine] ✓ Pollinations success (${polModel}, ${buffer.byteLength} bytes)`);
+            return NextResponse.json({
+              image: `data:${contentType};base64,${base64}`,
+              sceneId,
+              model: `pollinations-${polModel}`,
+              provider: 'pollinations',
+            });
           }
+          errors.push('Pollinations: image too small / empty');
         } else {
-          const errText = await polRes.text();
-          console.warn(`[imagine] Pollinations failed (HTTP ${polRes.status}): ${errText.slice(0, 200)}`);
-          errors.push(`Pollinations: HTTP ${polRes.status}`);
+          const text = await polRes.text();
+          errors.push(`Pollinations: unexpected content-type ${ct} — ${text.slice(0, 100)}`);
         }
-      } catch (polErr: unknown) {
-        const msg = polErr instanceof Error ? polErr.message : String(polErr);
-        console.warn('[imagine] Pollinations error:', msg);
-        errors.push(`Pollinations: ${msg}`);
+      } else {
+        const errText = await polRes.text().catch(() => '');
+        console.warn(`[imagine] Pollinations failed (HTTP ${polRes.status}): ${errText.slice(0, 200)}`);
+        errors.push(`Pollinations: HTTP ${polRes.status}`);
       }
+    } catch (polErr: unknown) {
+      const msg = polErr instanceof Error ? polErr.message : String(polErr);
+      console.warn('[imagine] Pollinations error:', msg);
+      errors.push(`Pollinations: ${msg}`);
     }
 
-    // ── 2. Try Novita AI FLUX Schnell (fallback 1) ──────────────
-    const novitaKey = process.env.NOVITA_API_KEY || '';
-    if (novitaKey) {
-      try {
-        const novitaWidth = width ? Math.min(Math.max(width, 64), 2048) : 1024;
-        const novitaHeight = height ? Math.min(Math.max(height, 64), 2048) : 1024;
-
-        const novitaBody: Record<string, unknown> = {
-          prompt: enhancedPrompt,
-          width: novitaWidth,
-          height: novitaHeight,
-          steps: 4,
-          image_num: 1,
-        };
-
-        console.log('[imagine] Trying Novita AI FLUX Schnell...');
-        const novitaRes = await fetch('https://api.novita.ai/v3beta/flux-1-schnell', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${novitaKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(novitaBody),
-        });
-
-        if (novitaRes.ok) {
-          const novitaData = await novitaRes.json();
-
-          // FLUX Schnell returns images directly (sync endpoint)
-          let imageUrl: string | undefined = novitaData?.images?.[0]?.image_url;
-
-          // Fallback: if only task_id returned, poll for result
-          if (!imageUrl && novitaData?.task?.task_id) {
-            const taskId = novitaData.task.task_id;
-            console.log(`[imagine] Novita: polling task ${taskId}...`);
-            const deadline = Date.now() + 45_000;
-            while (Date.now() < deadline) {
-              await new Promise(r => setTimeout(r, 2000));
-              const pollRes = await fetch(
-                `https://api.novita.ai/v3/async/task-result?task_id=${taskId}`,
-                { headers: { 'Authorization': `Bearer ${novitaKey.trim()}` } }
-              );
-              if (!pollRes.ok) continue;
-              const pollData = await pollRes.json();
-              const status = pollData?.task?.status;
-              if (status === 'TASK_STATUS_SUCCEED') {
-                imageUrl = pollData?.images?.[0]?.image_url;
-                break;
-              }
-              if (status === 'TASK_STATUS_FAILED') {
-                throw new Error(`Novita task failed: ${pollData?.task?.reason || 'unknown'}`);
-              }
-            }
-          }
-
-          if (imageUrl) {
-            const imgRes = await fetch(imageUrl);
-            if (imgRes.ok) {
-              const buffer = await imgRes.arrayBuffer();
-              const contentType = imgRes.headers.get('content-type') || 'image/png';
-              const base64 = Buffer.from(buffer).toString('base64');
-
-              return NextResponse.json({
-                image: `data:${contentType};base64,${base64}`,
-                imageUrl,
-                sceneId,
-                model: 'novita-flux-schnell',
-                provider: 'novita',
-              });
-            }
-          }
-          errors.push('Novita: no image URL in response');
-        } else {
-          const errText = await novitaRes.text();
-          console.warn(`[imagine] Novita AI failed (HTTP ${novitaRes.status}): ${errText.slice(0, 200)}`);
-          if (errText.includes('NOT_ENOUGH_BALANCE')) {
-            errors.push('Novita: insufficient balance — top up at novita.ai/billing');
-          } else {
-            errors.push(`Novita: HTTP ${novitaRes.status}`);
-          }
-        }
-      } catch (novitaErr: unknown) {
-        const msg = novitaErr instanceof Error ? novitaErr.message : String(novitaErr);
-        console.warn('[imagine] Novita AI error:', msg);
-        errors.push(`Novita: ${msg}`);
-      }
-    }
-
-    // ── 3. Try fal.ai (fallback 2) ──────────────────────────────
+    // ── 2. fal.ai (paid fallback) ───────────────────────────────
     const falModel = FAL_IMAGE_MODELS[model];
 
     if (falModel && process.env.FAL_KEY) {
@@ -214,14 +222,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 4. Fallback: HuggingFace ────────────────────────────────
+    // ── 3. HuggingFace Inference (free tier fallback) ───────────
     const HF_MODELS: Record<string, string> = {
       'flux-schnell':  'black-forest-labs/FLUX.1-schnell',
       'flux-dev':      'black-forest-labs/FLUX.1-dev',
       'sdxl':          'stabilityai/stable-diffusion-xl-base-1.0',
     };
 
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    const apiKey = process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY;
     if (apiKey) {
       try {
         const modelId = HF_MODELS[model] || HF_MODELS['flux-schnell'];
