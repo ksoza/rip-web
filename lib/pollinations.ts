@@ -5,6 +5,15 @@
 //
 // Used as the DEFAULT provider for $0 operation.
 // Paid providers (fal.ai, Anthropic, etc.) are optional upgrades.
+//
+// IMPORTANT: Pollinations requires a browser-like User-Agent header for
+// server-side requests — without it the API returns 403 Forbidden.
+
+const POL_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept': '*/*',
+  'Referer': 'https://rip-web.vercel.app/',
+};
 
 // ── Image Generation ────────────────────────────────────────────
 
@@ -51,6 +60,7 @@ export async function pollinationsGenerateImage(
   // Ping the URL to trigger generation (it generates on first request)
   const res = await fetch(url, {
     method: 'HEAD',
+    headers: POL_HEADERS,
     signal: AbortSignal.timeout(60_000),
   });
 
@@ -147,6 +157,7 @@ export async function pollinationsGenerateVideo(
   // Trigger generation
   const res = await fetch(url, {
     method: 'HEAD',
+    headers: POL_HEADERS,
     signal: AbortSignal.timeout(120_000),
   });
 
