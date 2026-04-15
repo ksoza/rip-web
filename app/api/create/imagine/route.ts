@@ -45,8 +45,16 @@ function enrichPrompt(
 
   // 1. Show visual style — the 1:1 faithful base
   //    Always included UNLESS it's a full-transform style (claymation, 3D)
-  if (show?.visualStyle && !isFullTransform) {
-    parts.push(show.visualStyle);
+  if (!isFullTransform) {
+    if (show?.visualStyle) {
+      // Known show — use the detailed visual style from SHOW_PROFILES
+      parts.push(show.visualStyle);
+    } else if (showTitle) {
+      // Show not in SHOW_PROFILES — generate a faithful prompt from the title.
+      // getStylePrompt('source-faithful') returns a generic faithful description.
+      const faithfulPrompt = getStylePrompt(showTitle, 'source-faithful' as ArtStyleId);
+      if (faithfulPrompt) parts.push(faithfulPrompt);
+    }
   }
 
   // 2. Art style layer
@@ -56,7 +64,7 @@ function enrichPrompt(
       if (isFullTransform) {
         // Full transform: style IS the base, but keep show title for context
         parts.push(stylePrompt);
-        if (show) parts.push(`based on ${show.title}`);
+        if (showTitle) parts.push(`based on ${showTitle}`);
       } else {
         // Layered: style applied ON TOP of the 1:1 base
         parts.push(`with ${stylePrompt} applied as visual effect`);
@@ -80,8 +88,9 @@ function enrichPrompt(
   parts.push(basePrompt);
 
   // 5. Quality + faithfulness boosters
-  if (!isFullTransform && show) {
-    parts.push(`matching ${show.title} original art direction exactly, faithful to source material`);
+  if (!isFullTransform && showTitle) {
+    const title = show?.title || showTitle;
+    parts.push(`matching ${title} original art direction exactly, faithful to source material`);
   }
   parts.push('high detail, professional quality');
 
