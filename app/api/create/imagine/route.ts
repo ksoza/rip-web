@@ -140,34 +140,54 @@ export async function POST(req: NextRequest) {
       console.log(`[imagine] Trying Pollinations (model=${polModel}, $0 cost)...`);
       console.log(`[imagine] Enriched prompt: ${enhancedPrompt.slice(0, 200)}...`);
 
-      const polRes = await fetch(url, {
-        signal: AbortSignal.timeout(45_000),
-      });
+      // Pollinations requires a browser-like User-Agent header for server-side
+      // requests — without it the API returns 403 Forbidden.
+      const POL_HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'image/*, */*',
+        'Referer': 'https://rip-web.vercel.app/',
+      };
 
-      if (polRes.ok) {
-        const ct = polRes.headers.get('content-type') || '';
-        if (ct.includes('image')) {
-          const buffer = await polRes.arrayBuffer();
-          if (buffer.byteLength > 500) {
-            const contentType = ct.split(';')[0].trim() || 'image/jpeg';
-            const base64 = Buffer.from(buffer).toString('base64');
-            console.log(`[imagine] ✓ Pollinations success (${polModel}, ${buffer.byteLength} bytes)`);
-            return NextResponse.json({
-              image: `data:${contentType};base64,${base64}`,
-              sceneId,
-              model: `pollinations-${polModel}`,
-              provider: 'pollinations',
-            });
+      const MAX_POL_RETRIES = 2;
+      for (let attempt = 1; attempt <= MAX_POL_RETRIES; attempt++) {
+        try {
+          const polRes = await fetch(url, {
+            headers: POL_HEADERS,
+            signal: AbortSignal.timeout(45_000),
+          });
+
+          if (polRes.ok) {
+            const ct = polRes.headers.get('content-type') || '';
+            if (ct.includes('image')) {
+              const buffer = await polRes.arrayBuffer();
+              if (buffer.byteLength > 500) {
+                const contentType = ct.split(';')[0].trim() || 'image/jpeg';
+                const base64 = Buffer.from(buffer).toString('base64');
+                console.log(`[imagine] ✓ Pollinations success (${polModel}, ${buffer.byteLength} bytes, attempt ${attempt})`);
+                return NextResponse.json({
+                  image: `data:${contentType};base64,${base64}`,
+                  sceneId,
+                  model: `pollinations-${polModel}`,
+                  provider: 'pollinations',
+                });
+              }
+              if (attempt === MAX_POL_RETRIES) errors.push('Pollinations: image too small / empty');
+            } else {
+              const text = await polRes.text();
+              if (attempt === MAX_POL_RETRIES) errors.push(`Pollinations: unexpected content-type ${ct} — ${text.slice(0, 100)}`);
+            }
+          } else {
+            const errText = await polRes.text().catch(() => '');
+            console.warn(`[imagine] Pollinations attempt ${attempt} failed (HTTP ${polRes.status}): ${errText.slice(0, 200)}`);
+            if (attempt === MAX_POL_RETRIES) errors.push(`Pollinations: HTTP ${polRes.status}`);
           }
-          errors.push('Pollinations: image too small / empty');
-        } else {
-          const text = await polRes.text();
-          errors.push(`Pollinations: unexpected content-type ${ct} — ${text.slice(0, 100)}`);
+        } catch (retryErr: unknown) {
+          const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          console.warn(`[imagine] Pollinations attempt ${attempt} error:`, msg);
+          if (attempt === MAX_POL_RETRIES) errors.push(`Pollinations: ${msg}`);
         }
-      } else {
-        const errText = await polRes.text().catch(() => '');
-        console.warn(`[imagine] Pollinations failed (HTTP ${polRes.status}): ${errText.slice(0, 200)}`);
-        errors.push(`Pollinations: HTTP ${polRes.status}`);
+        // Brief pause before retry
+        if (attempt < MAX_POL_RETRIES) await new Promise(r => setTimeout(r, 1500));
       }
     } catch (polErr: unknown) {
       const msg = polErr instanceof Error ? polErr.message : String(polErr);
