@@ -28,6 +28,19 @@ function pollinationsModel(category?: string): string {
 // ── Styles that FULLY REPLACE the show's look (not layered) ─────
 const FULL_TRANSFORM_STYLES: ArtStyleId[] = ['claymation', '3d_render'];
 
+// ── Shows with FLAT / SIMPLE art that must NOT be "enhanced" or smoothed ──
+// These need negative prompts to stop AI from adding realism, shading, gradients
+const FLAT_STYLE_SHOWS: Record<string, string> = {
+  'South Park': 'realistic, smooth lines, shading, gradients, 3D rendering, detailed faces, realistic proportions, complex lighting, shadows, photorealistic',
+  'The Simpsons': 'realistic, photorealistic, 3D, complex shading, realistic proportions, live action',
+  "Bob's Burgers": 'realistic, photorealistic, 3D, complex shading, realistic proportions, live action, anime style',
+  'Adventure Time': 'realistic, photorealistic, 3D, complex shading, realistic proportions, live action',
+  'SpongeBob SquarePants': 'realistic, photorealistic, 3D, complex shading, realistic proportions, live action',
+  'Family Guy': 'realistic, photorealistic, 3D, complex shading, realistic proportions, live action',
+  'Futurama': 'realistic, photorealistic, 3D, complex shading, realistic proportions, live action',
+  'Rick and Morty': 'realistic, photorealistic, 3D, complex shading, realistic proportions, live action',
+};
+
 // ── Enrich prompt with show style + character visuals ───────────
 // Design rule:
 //   - Default (source-faithful): 1:1 recreation of the original show
@@ -90,9 +103,9 @@ function enrichPrompt(
   // 5. Quality + faithfulness boosters
   if (!isFullTransform && showTitle) {
     const title = show?.title || showTitle;
-    parts.push(`matching ${title} original art direction exactly, faithful to source material`);
+    parts.push(`exact screenshot from the TV show ${title}, identical to original animation frames, perfectly matching ${title} art direction`);
   }
-  parts.push('high detail, professional quality');
+  parts.push('professional quality');
 
   return parts.join('. ');
 }
@@ -134,14 +147,25 @@ export async function POST(req: NextRequest) {
       const imgHeight = height ? Math.min(Math.max(height, 64), 2048) : 1024;
       const polModel = pollinationsModel(show?.category);
 
+      // Disable Pollinations "enhance" for source-faithful and flat-style shows.
+      // "Enhance" rewrites the prompt via AI — this ruins crude/simple styles
+      // like South Park, Simpsons, etc. by adding smooth shading and realism.
+      const isFaithful = !artStyle || artStyle === 'source-faithful';
+      const isFlatShow = !!(showTitle && FLAT_STYLE_SHOWS[showTitle]);
+      const shouldEnhance = !(isFaithful && isFlatShow);
+
       const params = new URLSearchParams({
         model: polModel,
         width: String(imgWidth),
         height: String(imgHeight),
         nologo: 'true',
-        enhance: 'true',
+        enhance: shouldEnhance ? 'true' : 'false',
       });
-      if (negative_prompt) params.set('negative', negative_prompt);
+
+      // Auto-inject negative prompts for flat-style shows to prevent AI "realism"
+      const autoNeg = isFaithful && isFlatShow ? FLAT_STYLE_SHOWS[showTitle!] : '';
+      const finalNegative = [negative_prompt, autoNeg].filter(Boolean).join(', ');
+      if (finalNegative) params.set('negative', finalNegative);
 
       const encodedPrompt = encodeURIComponent(enhancedPrompt);
       const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?${params}`;
@@ -157,7 +181,7 @@ export async function POST(req: NextRequest) {
         'Referer': 'https://rip-web.vercel.app/',
       };
 
-      const MAX_POL_RETRIES = 2;
+      const MAX_POL_RETRIES = 3;
       for (let attempt = 1; attempt <= MAX_POL_RETRIES; attempt++) {
         try {
           const polRes = await fetch(url, {
