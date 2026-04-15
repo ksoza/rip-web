@@ -335,7 +335,7 @@ export const SHOW_PROFILES: Record<string, ShowProfile> = {
 
   'The Simpsons': {
     id: 'the-simpsons', title: 'The Simpsons', category: 'Cartoon',
-    visualStyle: 'The Simpsons animation style, yellow-skinned characters, overbite, four fingers, bold black outlines, bright flat colors, simple round eyes, Matt Groening character design',
+    visualStyle: '2D cartoon, The Simpsons TV show style, characters have bright YELLOW skin, overbite mouths, four-fingered hands, bold thick black outlines, flat solid colors with NO gradients, simple round eyes with black pupils, Matt Groening character proportions with round heads and cylindrical bodies, Springfield suburban backgrounds, clean vector-like line art',
     audioTone: 'sitcom-style ambient, Danny Elfman theme style, Springfield town sounds, comedic timing beats',
     characters: [
       { id: 'sm1', name: 'Homer Simpson', role: 'Nuclear Safety Inspector', emoji: '\u{1F369}', visualDesc: 'overweight yellow man, bald with two curved hairs, white shirt, blue pants', voiceDesc: 'deep dopey voice, says "D\'oh!", loves donuts and beer, enthusiastic but dim' },
@@ -345,7 +345,7 @@ export const SHOW_PROFILES: Record<string, ShowProfile> = {
   },
   'South Park': {
     id: 'south-park', title: 'South Park', category: 'Cartoon',
-    visualStyle: 'South Park animation style, crude paper cutout aesthetic, simple geometric shapes, flat colors, minimal detail, small round heads, dot eyes, construction paper look',
+    visualStyle: '2D cartoon, South Park TV show style, extremely crude construction paper cutout aesthetic, characters are simple geometric shapes with small round heads and dot eyes, stick-like arms, flat solid colors with ZERO shading, minimal background detail, intentionally low-quality childlike drawing, paper texture, NO smooth lines, NO realism',
     audioTone: 'crude humor sounds, muffled Kenny speech, satirical tone, small-town Colorado ambient',
     characters: [
       { id: 'sp1', name: 'Eric Cartman', role: 'The Manipulator', emoji: '\u{1F621}', visualDesc: 'overweight kid, red jacket, yellow pom-pom hat, angry eyebrows', voiceDesc: 'whiny, demanding, high-pitched, says "respect my authoritah!", manipulative and bratty' },
@@ -365,7 +365,7 @@ export const SHOW_PROFILES: Record<string, ShowProfile> = {
   },
   'Family Guy': {
     id: 'family-guy', title: 'Family Guy', category: 'Cartoon',
-    visualStyle: 'Family Guy animation style, Seth MacFarlane character design, round heads, simple features, bright flat colors, Quahog Rhode Island suburb, cutaway gag visual style',
+    visualStyle: '2D cartoon, Family Guy TV show style, Seth MacFarlane character design, characters have large round heads with simple oval eyes and prominent chins, flat solid colors with minimal shading, clean bold black outlines, bright saturated color palette, Quahog Rhode Island suburban setting, standard adult cartoon animation quality',
     audioTone: 'sitcom ambient, cutaway gag musical stings, "it\'s worse than that time..." transitions, random musical numbers',
     characters: [
       { id: 'fg1', name: 'Peter Griffin', role: 'Family Man', emoji: '\u{1F37A}', visualDesc: 'obese white man, glasses, white shirt, green pants, round chin, always smiling dumbly', voiceDesc: 'dopey deep voice, "hehehehe" laugh, Rhode Island accent, random tangents, "oh my god who cares"' },
@@ -376,7 +376,7 @@ export const SHOW_PROFILES: Record<string, ShowProfile> = {
 
   "Bob's Burgers": {
     id: 'bobs-burgers', title: "Bob's Burgers", category: 'Cartoon',
-    visualStyle: "Bob's Burgers animation style, Loren Bouchard character design, tall narrow bodies, large round eyes, simple line art, warm earthy color palette with yellows and browns, small seaside town setting, hand-drawn feel, restaurant interior with grill and counter",
+    visualStyle: "2D hand-drawn cartoon, Bob's Burgers TV show style, thin wobbly black outlines, flat solid colors with NO shading or gradients, characters have tall narrow rectangular bodies with large oval eyes and wide mouths, skin tones are pale peach, warm earthy color palette dominated by yellows and browns and beige, simple backgrounds with minimal detail, small seaside town, restaurant interior with red counter and grill, crude but charming animation quality",
     audioTone: 'quirky acoustic guitar, lighthearted ukulele, burger sizzling ambient, family banter warm tone',
     characters: [
       { id: 'bb1', name: 'Bob Belcher', role: 'Dad / Chef', emoji: '\u{1F373}', visualDesc: 'stocky man with thick black mustache, white t-shirt under grey short-sleeve button-up, receding black hair, always slightly sweaty, behind the grill', voiceDesc: 'dry deadpan delivery, exasperated sighs, talks to food, H. Jon Benjamin voice, mutters under breath' },
