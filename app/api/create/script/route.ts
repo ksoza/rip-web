@@ -1,9 +1,11 @@
 // app/api/create/script/route.ts
 // AI-powered screenplay generation — Groq (free) → Anthropic (paid) fallback
-// Uses Show Genome for TV/cartoon scripts, Director Genome for movie scripts
+// Uses Show Genome for TV/cartoon scripts, Director Genome for movie scripts,
+// and Music Video Genome for music video treatments
 import { NextRequest, NextResponse } from 'next/server';
 import { SHOW_GENOME_DATABASE, buildNarrativeGenome, buildShowWriterPrompt } from '@/lib/show-genome';
 import { DIRECTOR_GENOME_DATABASE, buildDirectorialGenome, buildMovieWriterPrompt, findDirectorGenome } from '@/lib/director-genome';
+import { MV_DIRECTOR_DATABASE, buildMVDirectorialGenome, buildMVWriterPrompt, findMVDirectorGenome } from '@/lib/music-video-genome';
 
 export const maxDuration = 60;
 
@@ -74,38 +76,52 @@ function findShowGenome(mediaTitle: string): string | null {
   return null;
 }
 
-// ── Detect if creation is a movie (vs TV show) ──────────────────
-function detectMovieMode(body: any): { isMovie: boolean; directorName: string | null } {
-  const { format, mediaTitle, director, prompt } = body;
+// ── Detect creation mode: TV / Movie / Music Video ──────────────
+type CreationMode =
+  | { type: 'music_video'; mvDirectorName: string | null }
+  | { type: 'movie'; directorName: string | null }
+  | { type: 'tv' };
 
-  // Explicit: user selected "movie" format or provided a director name
+function detectCreationMode(body: any): CreationMode {
+  const { format, mediaTitle, director, mvDirector, prompt } = body;
+
+  // ── Music Video mode ──────────────────────────────────────
+  if (format === 'music_vid' || format === 'music_video' || format === 'mv') {
+    const mvDir = mvDirector || director;
+    const mvMatch = mvDir ? findMVDirectorGenome(mvDir) : null;
+    return { type: 'music_video', mvDirectorName: mvMatch };
+  }
+
+  // ── Movie mode ────────────────────────────────────────────
   if (format === 'movie' || format === 'film' || format === 'short_film') {
     const dirMatch = director ? findDirectorGenome(director) : null;
-    return { isMovie: true, directorName: dirMatch };
+    return { type: 'movie', directorName: dirMatch };
   }
 
-  // Explicit: director field provided
+  // Explicit: director field provided → check MV directors first, then film directors
   if (director) {
+    const mvMatch = findMVDirectorGenome(director);
+    if (mvMatch) return { type: 'music_video', mvDirectorName: mvMatch };
     const dirMatch = findDirectorGenome(director);
-    if (dirMatch) return { isMovie: true, directorName: dirMatch };
+    if (dirMatch) return { type: 'movie', directorName: dirMatch };
   }
 
-  // Heuristic: check if mediaTitle is a known movie/director reference
+  // Heuristic: check if mediaTitle is a known director reference
   if (mediaTitle) {
     const dirMatch = findDirectorGenome(mediaTitle);
-    if (dirMatch) return { isMovie: true, directorName: dirMatch };
+    if (dirMatch) return { type: 'movie', directorName: dirMatch };
   }
 
-  // Check if prompt mentions a director
+  // Check if prompt mentions a film director
   const combined = `${mediaTitle || ''} ${prompt || ''}`.toLowerCase();
   for (const key of Object.keys(DIRECTOR_GENOME_DATABASE)) {
     const lastName = key.split(' ').pop()!.toLowerCase();
     if (combined.includes(lastName) && lastName.length > 3) {
-      return { isMovie: true, directorName: key };
+      return { type: 'movie', directorName: key };
     }
   }
 
-  return { isMovie: false, directorName: null };
+  return { type: 'tv' };
 }
 
 export async function POST(req: NextRequest) {
@@ -118,7 +134,9 @@ export async function POST(req: NextRequest) {
       crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
       personalCharacter, character: characterRaw,
       characterImageUrl, hasMusicUpload,
-      director, sceneType, era, actors,
+      director, mvDirector, sceneType, era, actors,
+      // Music Video specific
+      songGenre, songMood, artistType, lyricalTheme, visualRefs,
     } = body;
 
     // Normalize character — accept string or object { name, role }
@@ -138,14 +156,16 @@ export async function POST(req: NextRequest) {
     const userIdea = prompt || `A story about ${charName}`;
 
     const durationGuide: Record<string, string> = {
-      short:      '60 seconds (3-4 scenes, punchy)',
-      scene:      '2-3 minutes (4-5 scenes)',
-      episode:    '10-15 minutes (6-8 scenes)',
-      music_vid:  '3-4 minutes (5-6 visual scenes with music cues)',
-      trailer:    '90 seconds (5-6 quick cuts)',
-      movie:      '5-10 minutes (8-12 scenes, full arc)',
-      film:       '5-10 minutes (8-12 scenes, full arc)',
-      short_film: '3-5 minutes (6-8 scenes)',
+      short:       '60 seconds (3-4 scenes, punchy)',
+      scene:       '2-3 minutes (4-5 scenes)',
+      episode:     '10-15 minutes (6-8 scenes)',
+      music_vid:   '3-4 minutes (5-6 visual scenes synced to music)',
+      music_video: '3-4 minutes (5-6 visual scenes synced to music)',
+      mv:          '3-4 minutes (5-6 visual scenes synced to music)',
+      trailer:     '90 seconds (5-6 quick cuts)',
+      movie:       '5-10 minutes (8-12 scenes, full arc)',
+      film:        '5-10 minutes (8-12 scenes, full arc)',
+      short_film:  '3-5 minutes (6-8 scenes)',
     };
 
     const qaContext = qaAnswers?.length
@@ -154,18 +174,55 @@ export async function POST(req: NextRequest) {
         ).join('\n')
       : '';
 
-    // ── Detect: TV Show genome vs Movie/Director genome ──────
-    const { isMovie, directorName } = detectMovieMode(body);
-    const matchedShow = !isMovie ? findShowGenome(mediaTitle) : null;
+    // ── Detect: TV Show / Movie / Music Video mode ───────────
+    const mode = detectCreationMode(body);
+    const matchedShow = mode.type === 'tv' ? findShowGenome(mediaTitle) : null;
     const genomeData = matchedShow ? buildNarrativeGenome(matchedShow) : null;
     const genome = matchedShow ? SHOW_GENOME_DATABASE[matchedShow] : null;
-    const dirGenome = directorName ? buildDirectorialGenome(directorName) : null;
 
     let systemPrompt: string;
+    let genomeTag: string | false = false;
+    let detectedDirector: string | undefined;
 
-    if (isMovie && directorName && dirGenome) {
+    if (mode.type === 'music_video') {
+      // ✅ MUSIC VIDEO MODE — MV Director Genome
+      const mvDirName = mode.mvDirectorName;
+      detectedDirector = mvDirName || undefined;
+      const mvGenome = mvDirName ? buildMVDirectorialGenome(mvDirName) : null;
+      const mvConfig = mvDirName ? MV_DIRECTOR_DATABASE[mvDirName] : null;
+      genomeTag = mvDirName ? 'mv_director' : false;
+
+      if (mvDirName && mvGenome && mvConfig) {
+        systemPrompt = `SYSTEM ROLE: You are a visionary music video director who has apprenticed under ${mvDirName}. Create a music video treatment/screenplay that captures their signature visual language, editing psychology, and approach to translating sound into image.
+
+${mvGenome}
+
+CRITICAL RULES:
+- Every scene must reflect ${mvDirName}'s visual signature, rhythm, and symbolic layer
+- Treatment titles: ${mvConfig.title_style}
+- Visual breakdown: ${mvConfig.visual_section_style}
+- Choreography: ${mvConfig.choreo_style}
+- Editing rhythm: ${mvConfig.editing_section_style}
+- Color palette: ${mvConfig.palette_description}
+- Iconic moment: ${mvConfig.moment_description}
+${character ? `\n## ARTIST/CHARACTER\nFeature "${charName}" (${charRole}) as the performance anchor.` : ''}
+
+Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON.`;
+      } else {
+        systemPrompt = `You are a professional music video director and screenwriter. Create a vivid, visual music video treatment with scene-by-scene breakdowns. Each scene should describe what the camera sees, how it moves, lighting, color, and how the visuals sync to the music.
+${director || mvDirector ? `\nDirect this video in the style of ${director || mvDirector}.` : ''}
+
+CRITICAL: Respond with valid JSON only.`;
+      }
+
+    } else if (mode.type === 'movie' && mode.directorName) {
       // ✅ MOVIE MODE — Director Genome
+      const directorName = mode.directorName;
+      detectedDirector = directorName;
+      const dirGenome = buildDirectorialGenome(directorName);
       const dirConfig = DIRECTOR_GENOME_DATABASE[directorName];
+      genomeTag = 'director';
+
       systemPrompt = `SYSTEM ROLE: You are a master cinematographer and screenwriter who has studied ${directorName}'s complete filmography. Generate a screenplay that perfectly replicates their directorial DNA. The script must feel INDISTINGUISHABLE from a real ${directorName} film.
 
 ${dirGenome}
@@ -184,6 +241,8 @@ Respond with valid JSON only — no markdown, no code fences, no explanation out
 
     } else if (genome && genomeData) {
       // ✅ TV SHOW MODE — Narrative Genome
+      genomeTag = 'show';
+
       systemPrompt = `SYSTEM ROLE: You are a master narrative architect specializing in ${genome.medium_type}. Your task is to generate scripts that perfectly replicate the formulaic DNA of ${matchedShow}. The script must feel INDISTINGUISHABLE from the real show.
 
 ${genomeData}
@@ -199,9 +258,12 @@ Respond with valid JSON only — no markdown, no code fences, no explanation out
 
     } else {
       // Generic fallback
+      const dirName = mode.type === 'movie' ? mode.directorName : null;
+      detectedDirector = dirName || undefined;
+
       systemPrompt = `You are a professional screenwriter creating fan-made remix scripts. You write vivid, cinematic screenplays with proper formatting: scene headings (INT./EXT.), action lines, character dialogue with parenthetical direction, and camera notes.
 ${mediaTitle ? `\nYou are writing in the style of "${mediaTitle}". Match its tone, pacing, dialogue style, and character voices as closely as possible. The script should feel like it belongs in the actual show/movie.` : ''}
-${directorName ? `\nDirect this scene in the style of ${directorName}.` : ''}
+${dirName ? `\nDirect this scene in the style of ${dirName}.` : ''}
 
 CRITICAL: Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON structure.`;
     }
@@ -209,15 +271,83 @@ CRITICAL: Respond with valid JSON only — no markdown, no code fences, no expla
     // ── Build user prompt ─────────────────────────────────────
     const sceneCount = genome
       ? genome.scene_count
-      : isMovie ? '8-12' : format === 'short' ? '3-4' : format === 'episode' ? '6-8' : '4-6';
+      : mode.type === 'movie' ? '8-12'
+      : mode.type === 'music_video' ? '5-6'
+      : format === 'short' ? '3-4'
+      : format === 'episode' ? '6-8'
+      : '4-6';
 
-    const userPrompt = `Write a screenplay for this fan-made creation:
+    let userPrompt: string;
+
+    if (mode.type === 'music_video') {
+      // Music video specific user prompt
+      userPrompt = `Create a music video treatment/screenplay:
+
+${mode.mvDirectorName ? `MV Director Style: ${mode.mvDirectorName}` : ''}
+Artist / Performer: ${charName} (${charRole})
+Song Genre: ${songGenre || 'Not specified — infer from the mood and theme'}
+Song Mood: ${songMood || tone || 'Anthemic'}
+Artist Type: ${artistType || 'solo'}
+Lyrical Theme: ${lyricalTheme || userIdea}
+${era ? `Career Era: ${era}` : ''}
+${visualRefs ? `Visual References: ${visualRefs}` : ''}
+${mediaTitle ? `Source IP / Inspiration: ${mediaTitle}` : ''}
+Format: Music video — ${durationGuide[format] || '3-4 minutes (5-6 visual scenes synced to music)'}
+${characterImageUrl ? `Character reference image provided — incorporate visual details.` : ''}
+${hasMusicUpload ? `User is providing their own music track — write scenes that sync to music beats.` : ''}
+
+${qaContext ? `Additional context from creator Q&A:\n${qaContext}` : ''}
+
+Generate a music video treatment as JSON with this EXACT structure:
+{
+  "title": "Treatment title",
+  "logline": "One-line concept summary",
+  "concept": "2-3 sentence creative concept",
+  "scenes": [
+    {
+      "sceneNum": 1,
+      "heading": "VISUAL: LOCATION / SETUP",
+      "description": "Brief scene summary — what we see",
+      "action": "Detailed visual breakdown — what the camera captures, lighting, movement, how it syncs to the music. 3-5 sentences.",
+      "dialogue": [
+        {
+          "character": "PERFORMER NAME or LYRIC",
+          "line": "Sung/performed lyric or action note",
+          "direction": "performance direction"
+        }
+      ],
+      "duration": "0:00-0:30",
+      "mood": "euphoric/melancholy/aggressive/dreamy/etc",
+      "cameraNote": "Camera direction — movement, lens, angle",
+      "transition": "cut | fade | dissolve | wipe | smash_cut",
+      "musicSync": "How this scene syncs to the music — verse/chorus/bridge/drop/outro"
+    }
+  ],
+  "colorPalette": "Overall color direction for the video",
+  "iconicMoment": "The one shot/moment that defines the video"
+}
+
+Requirements:
+- Each scene syncs to a section of the song (verse, chorus, bridge, drop, outro)
+- Camera notes must be specific and cinematic${mode.mvDirectorName ? ` — match ${mode.mvDirectorName}'s camera choreography` : ''}
+- Include musicSync field showing how visuals relate to audio
+- Generate ${sceneCount} scenes
+- Performance/lip-sync sections should be intercut with visual narrative
+- This is a FAN-MADE remix — be creative
+
+Respond with ONLY the JSON object.`;
+
+    } else {
+      // Standard screenplay user prompt (TV show / movie / generic)
+      const dirName = mode.type === 'movie' ? mode.directorName : null;
+
+      userPrompt = `Write a screenplay for this fan-made creation:
 
 IP / Source: ${mediaTitle || 'Original Creation'}
-${directorName ? `Director Style: ${directorName}` : ''}
+${dirName ? `Director Style: ${dirName}` : ''}
 Main Character: ${charName} (${charRole})
 User's Vision: ${userIdea}
-Tone: ${tone || (genome ? "Match the show's natural tone" : directorName ? `Match ${directorName}'s signature tone` : 'Dramatic')}
+Tone: ${tone || (genome ? "Match the show's natural tone" : dirName ? `Match ${dirName}'s signature tone` : 'Dramatic')}
 Format: ${format || 'short'} — ${durationGuide[format] || '60 seconds total'}
 ${sceneType ? `Scene type: ${sceneType}` : ''}
 ${crossover ? `Crossover with: ${crossover}` : ''}
@@ -255,9 +385,9 @@ Generate a screenplay as JSON with this EXACT structure:
 
 Requirements:
 - Each scene MUST have a proper INT./EXT. heading
-- Dialogue must feel 100% authentic to ${matchedShow || directorName || mediaTitle || 'the source material'} — use the characters' real speech patterns
+- Dialogue must feel 100% authentic to ${matchedShow || dirName || mediaTitle || 'the source material'} — use the characters' real speech patterns
 - Action lines must be vivid and visual — describe what the CAMERA sees
-- Camera notes should be specific and cinematic${directorName ? ` — match ${directorName}'s camera psychology` : ''}
+- Camera notes should be specific and cinematic${dirName ? ` — match ${dirName}'s camera psychology` : ''}
 - Duration timestamps should be sequential and match the format
 - Each scene MUST include a "transition" field (cut, fade, dissolve, wipe, or smash_cut)
 - This is a FAN-MADE remix — be creative but respect the source material's spirit
@@ -265,6 +395,7 @@ Requirements:
 - The dialogue section is where characters TALK to each other — NO narrator unless the user specifically requested narration
 
 Respond with ONLY the JSON object.`;
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 50000);
@@ -301,10 +432,13 @@ Respond with ONLY the JSON object.`;
     return NextResponse.json({
       title: script.title || `${charName}: ${userIdea.slice(0, 50)}`,
       logline: script.logline || '',
+      concept: script.concept || undefined,
       scenes: script.scenes || [],
+      colorPalette: script.colorPalette || undefined,
+      iconicMoment: script.iconicMoment || undefined,
       model: result.model,
-      genome: matchedShow ? 'show' : directorName ? 'director' : false,
-      director: directorName || undefined,
+      genome: genomeTag,
+      director: detectedDirector,
     });
 
   } catch (error: any) {
