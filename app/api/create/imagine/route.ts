@@ -105,7 +105,7 @@ function enrichPrompt(
     const title = show?.title || showTitle;
     parts.push(`exact screenshot from the TV show ${title}, identical to original animation frames, perfectly matching ${title} art direction`);
   }
-  parts.push('professional quality, correct anatomy, properly drawn hands and fingers');
+  parts.push('professional quality');
 
   return parts.join('. ');
 }
@@ -127,6 +127,19 @@ export async function POST(req: NextRequest) {
 
     if (!prompt) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
+    }
+
+    // ── Stagger concurrent scene requests to avoid Pollinations rate-limiting ──
+    // When the wizard generates 5 scenes at once, all 5 hit Pollinations
+    // simultaneously → rate-limited → failures. Stagger by scene index.
+    // sceneId format: "scene-1", "scene-2", etc. or any string with a number.
+    const sceneNum = parseInt(String(sceneId).replace(/\D/g, '') || '0', 10);
+    if (sceneNum > 0) {
+      const staggerMs = (sceneNum - 1) * 3000; // 0s, 3s, 6s, 9s, 12s
+      if (staggerMs > 0) {
+        console.log(`[imagine] Staggering scene ${sceneNum} by ${staggerMs}ms to avoid rate-limiting`);
+        await new Promise(r => setTimeout(r, staggerMs));
+      }
     }
 
     // Build the enriched prompt with show style + character visuals
