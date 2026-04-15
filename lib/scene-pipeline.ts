@@ -2,13 +2,14 @@
 // Unified scene generation pipeline - video and audio generated together
 //
 // Fallback chain (lowest cost first):
-//   1. Self-hosted GPU (Wan 2.1 on Colab/Kaggle) -- $0.00
+//   1. Self-hosted GPU (LTX-2.3 or Wan 2.1) -- $0.00 (local) or ~$0.00036/sec (RunPod)
 //   2. Pollinations video (free, no key, no audio sync) -- $0.00
 //   3. HuggingFace free inference (Wan 2.1 1.3B, needs HF_TOKEN) -- $0.00
-//   4. fal.ai (Veo 3.1 / Seedance 2) -- paid, best quality + audio sync
+//   4. fal.ai LTX-2.3 (cheapest paid, native audio sync) -- ~$0.05/sec
+//   5. fal.ai Veo 3.1 / Seedance 2 (best quality + audio sync) -- paid
 //
-// Self-hosted: Wan 2.1 via free Google Colab T4 or Kaggle P100
-// fal.ai: Veo 3.1 (primary) or Seedance 2 (fallback) for synchronized output
+// Self-hosted: LTX-2.3 via RunPod Serverless (Option A) or local GPU (Option C)
+// fal.ai: LTX-2.3 (default) → Veo 3.1 → Seedance 2 (fallback chain)
 
 import { falGenerate, FAL_VIDEO_MODELS, type FalModel } from './fal';
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
@@ -73,6 +74,7 @@ import {
   checkSelfHostedHealth,
   selfHostedGenerateVideo,
   selfHostedDownloadUrl,
+  selfHostedHasAudio,
 } from './self-hosted';
 
 // -- Audio-capable model detection -------------------------------
@@ -198,7 +200,8 @@ function selectModel(preferred?: string): { key: string; model: FalModel } {
 // -- Self-hosted generation attempt ------------------------------
 
 /**
- * Try generating via self-hosted GPU (Wan 2.1 on Colab/Kaggle).
+ * Try generating via self-hosted GPU (LTX-2.3 or Wan 2.1).
+ * Supports both local server (Option C) and RunPod serverless (Option A).
  * Returns null if self-hosted is not available or fails.
  */
 async function trySelfHosted(
@@ -216,23 +219,42 @@ async function trySelfHosted(
     return null;
   }
 
+  const hasAudio = health.has_audio === true;
+  const modelName = health.model_id || health.models.video || 'self-hosted';
+  const isLTX = modelName.toLowerCase().includes('ltx');
+
   try {
-    console.log('[scene-pipeline] Trying self-hosted GPU (Wan 2.1, $0 cost)...');
+    console.log(`[scene-pipeline] Trying self-hosted GPU (${modelName}, $0 cost)...`);
     const result = await selfHostedGenerateVideo({
       prompt,
-      width: 512,
-      height: 512,
-      num_frames: Math.min(48, Math.max(16, duration * 8)),
-      num_inference_steps: 25,
+      width: isLTX ? 768 : 512,
+      height: isLTX ? 512 : 512,
+      num_frames: isLTX ? Math.min(257, Math.max(24, duration * 24)) : Math.min(48, Math.max(16, duration * 8)),
+      num_inference_steps: isLTX ? 30 : 25,
+      fps: isLTX ? 24 : undefined,
       seed,
     });
 
-    if (result.success && result.download_url) {
+    // Handle RunPod base64 response (convert to data URL)
+    const videoUrl = result.video_base64
+      ? `data:video/mp4;base64,${result.video_base64}`
+      : result.download_url
+        ? selfHostedDownloadUrl(result.download_url)
+        : null;
+
+    const audioUrl = result.audio_base64
+      ? `data:audio/wav;base64,${result.audio_base64}`
+      : result.audio_download_url
+        ? selfHostedDownloadUrl(result.audio_download_url)
+        : undefined;
+
+    if (result.success && videoUrl) {
       return {
         success: true,
-        videoUrl: selfHostedDownloadUrl(result.download_url),
-        model: result.model || 'wan-2.1-self-hosted',
-        audioSynced: false, // Wan 2.1 does not generate audio
+        videoUrl,
+        audioUrl,
+        model: result.model || modelName,
+        audioSynced: hasAudio && (result.has_audio === true),
         prompt,
         ragContext: ragContext || undefined,
         providerUsed: 'self-hosted',
@@ -243,7 +265,7 @@ async function trySelfHosted(
     console.log('[scene-pipeline] Self-hosted generation returned no video');
     return null;
   } catch (err) {
-    console.warn('[scene-pipeline] Self-hosted failed, will fall back to fal.ai:', err);
+    console.warn('[scene-pipeline] Self-hosted failed, will fall back:', err);
     return null;
   }
 }
