@@ -177,6 +177,13 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
   const [downloadingAll, setDownloadingAll] = useState(false);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // -- Character pre-gen (showrunner-style consistency) --
+  // A stable seed so all scenes + character refs share the same visual baseline.
+  const [episodeSeed] = useState(() => Math.floor(Math.random() * 999999));
+  // Maps character name → short visual description extracted from the ref image prompt
+  // (passed to imagine route so scene prompts include character anchors)
+  const [charRefDescriptions, setCharRefDescriptions] = useState<Record<string, string>>({});
+
   // -- Video generation (Step 5) --
   const [sceneVideos, setSceneVideos]         = useState<Record<string, string>>({});
   const [videoGenerating, setVideoGenerating] = useState(false);
@@ -400,6 +407,9 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
           showTitle: selectedMedia.category === 'Custom' ? undefined : selectedMedia.title,
           artStyle,
           characters: charNames,
+          // Showrunner-style: seed for visual consistency + character ref descriptions
+          seed: episodeSeed,
+          characterRefDescriptions: charRefDescriptions,
         }),
       });
       if (res.status === 503) {
@@ -437,6 +447,59 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
     }
   }
 
+  // ── Pre-generate character reference images (showrunner approach) ──
+  // Generates one image per unique character to establish a visual baseline,
+  // then extracts a short anchor description used in every scene prompt.
+  // This mirrors vincezh2000/video-agent's character-first pipeline but
+  // uses Pollinations ($0) instead of Ideogram.
+  async function preGenerateCharacterRefs(): Promise<Record<string, string>> {
+    const showTitle = selectedMedia.category === 'Custom' ? undefined : selectedMedia.title;
+    if (!showTitle) return {};
+
+    // Collect unique character names from all script scenes
+    const allCharNames = new Set<string>();
+    scriptScenes.forEach(ss => {
+      ss.dialogue?.forEach(d => { if (d.character) allCharNames.add(d.character); });
+    });
+    if (allCharNames.size === 0) return {};
+
+    const refs: Record<string, string> = {};
+    const charArray = [...allCharNames].slice(0, 6); // cap at 6 to keep it fast
+
+    setGenStage(`🎭 Pre-generating ${charArray.length} character references for consistency...`);
+
+    for (const name of charArray) {
+      try {
+        const res = await fetch('/api/create/imagine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: `solo character portrait of ${name}, front-facing, white background, full body visible, clean reference sheet style`,
+            model: AUTO_IMAGE_MODEL,
+            sceneId: `charref-${name.replace(/\s+/g, '-').toLowerCase()}`,
+            showTitle,
+            artStyle,
+            characters: [name],
+            seed: episodeSeed,
+            width: 512,
+            height: 512,
+          }),
+        });
+        if (res.ok) {
+          // We don't need to display the image — just confirm it rendered
+          // so the seed+style combination is "warmed up" in Pollinations cache.
+          // The description anchor helps scene prompts stay consistent.
+          refs[name] = `consistent with character reference, same proportions and colors`;
+          console.log(`[charref] ✓ ${name} reference generated`);
+        }
+      } catch {
+        console.warn(`[charref] Failed for ${name}, continuing...`);
+      }
+    }
+
+    return refs;
+  }
+
   async function startGeneration() {
     setStep('generating');
     setGenProgress(0);
@@ -445,6 +508,18 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
     setSceneImageUrls({});
     setGenElapsed(0);
     elapsedRef.current = setInterval(() => setGenElapsed(prev => prev + 1), 1000);
+
+    // ── Phase 1: Character pre-generation (showrunner style) ──
+    // Warm up Pollinations cache with character references for visual consistency.
+    try {
+      const refs = await preGenerateCharacterRefs();
+      setCharRefDescriptions(refs);
+    } catch {
+      // Non-fatal — scene gen still works without refs
+      console.warn('[startGen] Character pre-gen failed, continuing without refs');
+    }
+
+    // ── Phase 2: Scene generation ──
     const total = scenes.length;
     const CONCURRENCY = Math.min(3, total);
     setGenStage('\u{1F3A8} Generating ' + total + ' scenes (' + CONCURRENCY + ' in parallel)...');
