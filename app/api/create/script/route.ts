@@ -1,8 +1,9 @@
 // app/api/create/script/route.ts
 // AI-powered screenplay generation — Groq (free) → Anthropic (paid) fallback
-// Uses Show Genome system for show-specific writing DNA when available
+// Uses Show Genome for TV/cartoon scripts, Director Genome for movie scripts
 import { NextRequest, NextResponse } from 'next/server';
 import { SHOW_GENOME_DATABASE, buildNarrativeGenome, buildShowWriterPrompt } from '@/lib/show-genome';
+import { DIRECTOR_GENOME_DATABASE, buildDirectorialGenome, buildMovieWriterPrompt, findDirectorGenome } from '@/lib/director-genome';
 
 export const maxDuration = 60;
 
@@ -73,6 +74,40 @@ function findShowGenome(mediaTitle: string): string | null {
   return null;
 }
 
+// ── Detect if creation is a movie (vs TV show) ──────────────────
+function detectMovieMode(body: any): { isMovie: boolean; directorName: string | null } {
+  const { format, mediaTitle, director, prompt } = body;
+
+  // Explicit: user selected "movie" format or provided a director name
+  if (format === 'movie' || format === 'film' || format === 'short_film') {
+    const dirMatch = director ? findDirectorGenome(director) : null;
+    return { isMovie: true, directorName: dirMatch };
+  }
+
+  // Explicit: director field provided
+  if (director) {
+    const dirMatch = findDirectorGenome(director);
+    if (dirMatch) return { isMovie: true, directorName: dirMatch };
+  }
+
+  // Heuristic: check if mediaTitle is a known movie/director reference
+  if (mediaTitle) {
+    const dirMatch = findDirectorGenome(mediaTitle);
+    if (dirMatch) return { isMovie: true, directorName: dirMatch };
+  }
+
+  // Check if prompt mentions a director
+  const combined = `${mediaTitle || ''} ${prompt || ''}`.toLowerCase();
+  for (const key of Object.keys(DIRECTOR_GENOME_DATABASE)) {
+    const lastName = key.split(' ').pop()!.toLowerCase();
+    if (combined.includes(lastName) && lastName.length > 3) {
+      return { isMovie: true, directorName: key };
+    }
+  }
+
+  return { isMovie: false, directorName: null };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -83,6 +118,7 @@ export async function POST(req: NextRequest) {
       crossover, qaAnswers, isCustomIP, isMashup, customIPDesc,
       personalCharacter, character: characterRaw,
       characterImageUrl, hasMusicUpload,
+      director, sceneType, era, actors,
     } = body;
 
     // Normalize character — accept string or object { name, role }
@@ -102,11 +138,14 @@ export async function POST(req: NextRequest) {
     const userIdea = prompt || `A story about ${charName}`;
 
     const durationGuide: Record<string, string> = {
-      short:     '60 seconds (3-4 scenes, punchy)',
-      scene:     '2-3 minutes (4-5 scenes)',
-      episode:   '10-15 minutes (6-8 scenes)',
-      music_vid: '3-4 minutes (5-6 visual scenes with music cues)',
-      trailer:   '90 seconds (5-6 quick cuts)',
+      short:      '60 seconds (3-4 scenes, punchy)',
+      scene:      '2-3 minutes (4-5 scenes)',
+      episode:    '10-15 minutes (6-8 scenes)',
+      music_vid:  '3-4 minutes (5-6 visual scenes with music cues)',
+      trailer:    '90 seconds (5-6 quick cuts)',
+      movie:      '5-10 minutes (8-12 scenes, full arc)',
+      film:       '5-10 minutes (8-12 scenes, full arc)',
+      short_film: '3-5 minutes (6-8 scenes)',
     };
 
     const qaContext = qaAnswers?.length
@@ -115,15 +154,36 @@ export async function POST(req: NextRequest) {
         ).join('\n')
       : '';
 
-    // ── Build system prompt — genome-aware or generic ─────────
-    const matchedShow = findShowGenome(mediaTitle);
+    // ── Detect: TV Show genome vs Movie/Director genome ──────
+    const { isMovie, directorName } = detectMovieMode(body);
+    const matchedShow = !isMovie ? findShowGenome(mediaTitle) : null;
     const genomeData = matchedShow ? buildNarrativeGenome(matchedShow) : null;
     const genome = matchedShow ? SHOW_GENOME_DATABASE[matchedShow] : null;
+    const dirGenome = directorName ? buildDirectorialGenome(directorName) : null;
 
     let systemPrompt: string;
 
-    if (genome && genomeData) {
-      // ✅ Show has Narrative Genome — use show-specific DNA
+    if (isMovie && directorName && dirGenome) {
+      // ✅ MOVIE MODE — Director Genome
+      const dirConfig = DIRECTOR_GENOME_DATABASE[directorName];
+      systemPrompt = `SYSTEM ROLE: You are a master cinematographer and screenwriter who has studied ${directorName}'s complete filmography. Generate a screenplay that perfectly replicates their directorial DNA. The script must feel INDISTINGUISHABLE from a real ${directorName} film.
+
+${dirGenome}
+
+CRITICAL RULES:
+- Every scene must reflect ${directorName}'s visual signature, rhythm, and thematic obsessions
+- Dialogue style: ${dirConfig.dialogue_style}
+- Camera work: ${dirConfig.camera_direction_style}
+- Sound design: ${dirConfig.audio_cue_style}
+- Emotional beats: ${dirConfig.beat_description}
+${character ? `\n## CUSTOM CHARACTER INTEGRATION\nIntegrate "${charName}" (${charRole}) into the story naturally, written through ${directorName}'s character lens (${dirConfig.description_style}).` : ''}
+${era ? `\n## ERA\nWrite in the style of ${directorName}'s ${era} career period.` : ''}
+${actors ? `\n## MENTAL CAST\nMentally cast: ${actors}` : ''}
+
+Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON.`;
+
+    } else if (genome && genomeData) {
+      // ✅ TV SHOW MODE — Narrative Genome
       systemPrompt = `SYSTEM ROLE: You are a master narrative architect specializing in ${genome.medium_type}. Your task is to generate scripts that perfectly replicate the formulaic DNA of ${matchedShow}. The script must feel INDISTINGUISHABLE from the real show.
 
 ${genomeData}
@@ -136,10 +196,12 @@ CRITICAL RULES:
 ${character ? `\n## CUSTOM CHARACTER INTEGRATION\n${genome.custom_character_rules}\nCharacter: ${charName} (${charRole})` : ''}
 
 Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON.`;
+
     } else {
-      // Generic fallback for shows without a genome
+      // Generic fallback
       systemPrompt = `You are a professional screenwriter creating fan-made remix scripts. You write vivid, cinematic screenplays with proper formatting: scene headings (INT./EXT.), action lines, character dialogue with parenthetical direction, and camera notes.
 ${mediaTitle ? `\nYou are writing in the style of "${mediaTitle}". Match its tone, pacing, dialogue style, and character voices as closely as possible. The script should feel like it belongs in the actual show/movie.` : ''}
+${directorName ? `\nDirect this scene in the style of ${directorName}.` : ''}
 
 CRITICAL: Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON structure.`;
     }
@@ -147,15 +209,17 @@ CRITICAL: Respond with valid JSON only — no markdown, no code fences, no expla
     // ── Build user prompt ─────────────────────────────────────
     const sceneCount = genome
       ? genome.scene_count
-      : format === 'short' ? '3-4' : format === 'episode' ? '6-8' : '4-6';
+      : isMovie ? '8-12' : format === 'short' ? '3-4' : format === 'episode' ? '6-8' : '4-6';
 
     const userPrompt = `Write a screenplay for this fan-made creation:
 
-IP / Show: ${mediaTitle || 'Original Creation'}
+IP / Source: ${mediaTitle || 'Original Creation'}
+${directorName ? `Director Style: ${directorName}` : ''}
 Main Character: ${charName} (${charRole})
 User's Vision: ${userIdea}
-Tone: ${tone || (genome ? 'Match the show\'s natural tone' : 'Dramatic')}
+Tone: ${tone || (genome ? "Match the show's natural tone" : directorName ? `Match ${directorName}'s signature tone` : 'Dramatic')}
 Format: ${format || 'short'} — ${durationGuide[format] || '60 seconds total'}
+${sceneType ? `Scene type: ${sceneType}` : ''}
 ${crossover ? `Crossover with: ${crossover}` : ''}
 ${isCustomIP ? `Original IP Description: ${customIPDesc}` : ''}
 ${isMashup ? `Mashup Mode: Combining multiple IPs` : ''}
@@ -191,9 +255,9 @@ Generate a screenplay as JSON with this EXACT structure:
 
 Requirements:
 - Each scene MUST have a proper INT./EXT. heading
-- Dialogue must feel 100% authentic to ${matchedShow || mediaTitle || 'the source material'} — use the characters' real speech patterns
+- Dialogue must feel 100% authentic to ${matchedShow || directorName || mediaTitle || 'the source material'} — use the characters' real speech patterns
 - Action lines must be vivid and visual — describe what the CAMERA sees
-- Camera notes should be specific and cinematic
+- Camera notes should be specific and cinematic${directorName ? ` — match ${directorName}'s camera psychology` : ''}
 - Duration timestamps should be sequential and match the format
 - Each scene MUST include a "transition" field (cut, fade, dissolve, wipe, or smash_cut)
 - This is a FAN-MADE remix — be creative but respect the source material's spirit
@@ -239,7 +303,8 @@ Respond with ONLY the JSON object.`;
       logline: script.logline || '',
       scenes: script.scenes || [],
       model: result.model,
-      genome: matchedShow ? true : false,
+      genome: matchedShow ? 'show' : directorName ? 'director' : false,
+      director: directorName || undefined,
     });
 
   } catch (error: any) {
