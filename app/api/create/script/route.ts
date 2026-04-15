@@ -1,6 +1,8 @@
 // app/api/create/script/route.ts
 // AI-powered screenplay generation — Groq (free) → Anthropic (paid) fallback
+// Uses Show Genome system for show-specific writing DNA when available
 import { NextRequest, NextResponse } from 'next/server';
+import { SHOW_GENOME_DATABASE, buildNarrativeGenome, buildShowWriterPrompt } from '@/lib/show-genome';
 
 export const maxDuration = 60;
 
@@ -14,7 +16,7 @@ async function callLLM(systemPrompt: string, userPrompt: string, signal: AbortSi
       headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-        max_tokens: 2048,
+        max_tokens: 3000,
         temperature: 0.8,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -38,7 +40,7 @@ async function callLLM(systemPrompt: string, userPrompt: string, signal: AbortSi
     const msg = await client.messages.create(
       {
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
+        max_tokens: 3000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       },
@@ -49,6 +51,26 @@ async function callLLM(systemPrompt: string, userPrompt: string, signal: AbortSi
   }
 
   throw new Error('No AI provider configured. Set GROQ_API_KEY or ANTHROPIC_API_KEY in Vercel.');
+}
+
+// ── Find matching show in genome database ───────────────────────
+function findShowGenome(mediaTitle: string): string | null {
+  if (!mediaTitle) return null;
+  const lower = mediaTitle.toLowerCase().trim();
+
+  // Direct match
+  for (const key of Object.keys(SHOW_GENOME_DATABASE)) {
+    if (key.toLowerCase() === lower) return key;
+  }
+
+  // Fuzzy match — "south park" matches "South Park", "simpsons" matches "The Simpsons"
+  for (const key of Object.keys(SHOW_GENOME_DATABASE)) {
+    const keyLower = key.toLowerCase().replace(/^the\s+/, '');
+    const titleLower = lower.replace(/^the\s+/, '');
+    if (keyLower.includes(titleLower) || titleLower.includes(keyLower)) return key;
+  }
+
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -75,7 +97,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt or character' }, { status: 400 });
     }
 
-    // Use prompt alone if no character, or character alone if no prompt
     const charName = character?.name || 'Original Character';
     const charRole = character?.role || 'main character';
     const userIdea = prompt || `A story about ${charName}`;
@@ -94,16 +115,46 @@ export async function POST(req: NextRequest) {
         ).join('\n')
       : '';
 
-    const systemPrompt = `You are a professional screenwriter creating fan-made remix scripts. You write vivid, cinematic screenplays with proper formatting: scene headings (INT./EXT.), action lines, character dialogue with parenthetical direction, and camera notes.
+    // ── Build system prompt — genome-aware or generic ─────────
+    const matchedShow = findShowGenome(mediaTitle);
+    const genomeData = matchedShow ? buildNarrativeGenome(matchedShow) : null;
+    const genome = matchedShow ? SHOW_GENOME_DATABASE[matchedShow] : null;
+
+    let systemPrompt: string;
+
+    if (genome && genomeData) {
+      // ✅ Show has Narrative Genome — use show-specific DNA
+      systemPrompt = `SYSTEM ROLE: You are a master narrative architect specializing in ${genome.medium_type}. Your task is to generate scripts that perfectly replicate the formulaic DNA of ${matchedShow}. The script must feel INDISTINGUISHABLE from the real show.
+
+${genomeData}
+
+CRITICAL RULES:
+- The dialogue MUST sound like the real show — use each character's exact speech patterns, catchphrases, and verbal tics
+- The structure MUST follow the show's proven formula (see narrative genome above)
+- ${genome.dialogue_style}
+- Resolution: ${genome.resolution_type}
+${character ? `\n## CUSTOM CHARACTER INTEGRATION\n${genome.custom_character_rules}\nCharacter: ${charName} (${charRole})` : ''}
+
+Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON.`;
+    } else {
+      // Generic fallback for shows without a genome
+      systemPrompt = `You are a professional screenwriter creating fan-made remix scripts. You write vivid, cinematic screenplays with proper formatting: scene headings (INT./EXT.), action lines, character dialogue with parenthetical direction, and camera notes.
+${mediaTitle ? `\nYou are writing in the style of "${mediaTitle}". Match its tone, pacing, dialogue style, and character voices as closely as possible. The script should feel like it belongs in the actual show/movie.` : ''}
 
 CRITICAL: Respond with valid JSON only — no markdown, no code fences, no explanation outside the JSON structure.`;
+    }
+
+    // ── Build user prompt ─────────────────────────────────────
+    const sceneCount = genome
+      ? genome.scene_count
+      : format === 'short' ? '3-4' : format === 'episode' ? '6-8' : '4-6';
 
     const userPrompt = `Write a screenplay for this fan-made creation:
 
 IP / Show: ${mediaTitle || 'Original Creation'}
 Main Character: ${charName} (${charRole})
 User's Vision: ${userIdea}
-Tone: ${tone || 'Dramatic'}
+Tone: ${tone || (genome ? 'Match the show\'s natural tone' : 'Dramatic')}
 Format: ${format || 'short'} — ${durationGuide[format] || '60 seconds total'}
 ${crossover ? `Crossover with: ${crossover}` : ''}
 ${isCustomIP ? `Original IP Description: ${customIPDesc}` : ''}
@@ -140,13 +191,14 @@ Generate a screenplay as JSON with this EXACT structure:
 
 Requirements:
 - Each scene MUST have a proper INT./EXT. heading
-- Dialogue should feel authentic to the characters from ${mediaTitle || 'the source material'}
-- Action lines should be vivid and visual — describe what the CAMERA sees
+- Dialogue must feel 100% authentic to ${matchedShow || mediaTitle || 'the source material'} — use the characters' real speech patterns
+- Action lines must be vivid and visual — describe what the CAMERA sees
 - Camera notes should be specific and cinematic
 - Duration timestamps should be sequential and match the format
 - Each scene MUST include a "transition" field (cut, fade, dissolve, wipe, or smash_cut)
 - This is a FAN-MADE remix — be creative but respect the source material's spirit
-- Generate ${format === 'short' ? '3-4' : format === 'episode' ? '6-8' : '4-6'} scenes
+- Generate ${sceneCount} scenes
+- The dialogue section is where characters TALK to each other — NO narrator unless the user specifically requested narration
 
 Respond with ONLY the JSON object.`;
 
@@ -187,6 +239,7 @@ Respond with ONLY the JSON object.`;
       logline: script.logline || '',
       scenes: script.scenes || [],
       model: result.model,
+      genome: matchedShow ? true : false,
     });
 
   } catch (error: any) {
