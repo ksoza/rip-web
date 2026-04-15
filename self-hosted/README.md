@@ -2,6 +2,41 @@
 
 Drop-in replacement for fal.ai — run LTX-2.3 on your own GPU for $0 video generation with native audio sync.
 
+## ⚡ Option L: Lightning AI (FREE — recommended)
+
+One command to set up everything on Lightning AI's free GPU tier:
+
+```bash
+# In your Lightning AI Studio terminal (make sure GPU is selected):
+curl -sL https://raw.githubusercontent.com/ksoza/rip-web/main/self-hosted/lightning-setup.sh | bash
+```
+
+This will:
+1. Clone rip-web
+2. Install all dependencies
+3. Install cloudflared tunnel
+4. Download LTX-2.3 model weights (~3.5GB, cached for next time)
+5. Start server + expose public URL
+6. Print the URL to set in Vercel
+
+**After a restart** (free tier restarts every 4hrs):
+```bash
+cd ~/rip-web-gpu && bash self-hosted/lightning-restart.sh
+```
+Model weights are cached — restart takes ~30 seconds.
+
+**Lightning AI free tier gives you:**
+- 22-80 GPU hrs/month (T4, L4, A10G, A100, H100)
+- Full terminal + VS Code environment
+- 50GB persistent storage (model weights survive restarts)
+- No credit card needed
+
+**Set in Vercel after each start:**
+```
+SELF_HOSTED_GPU_URL=https://<your-tunnel-url>.trycloudflare.com
+SELF_HOSTED_GPU_SECRET=remixip-free-gpu-2026
+```
+
 ## Option A: RunPod Serverless (~$0.00036/sec, scales to zero)
 
 ```bash
@@ -78,4 +113,4 @@ SELF_HOSTED_GPU_URL=https://<your-ngrok-url>
 - **Minimum:** NVIDIA GPU with 12GB VRAM (RTX 3060 12GB)
 - **Recommended:** RTX 4090 or A100 for fast generation
 - **RAM:** 16GB+
-- **Disk:** ~15GB for model weights
+- **Disk:** ~15GB for model weights (cached after first download)
