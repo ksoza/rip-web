@@ -14,7 +14,7 @@ import {
   StartAsyncInvokeCommand,
   GetAsyncInvokeCommand,
 } from '@aws-sdk/client-bedrock-runtime';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // ── Prompt sanitization for Amazon content filters ────────────
@@ -233,33 +233,65 @@ export async function checkBedrockVideo(
   }
 
   // Completed — find the output video in S3
+  // Nova Reel outputs to {s3Prefix}/{invocationId}/output.mp4
   const s3 = getS3Client();
+  const invocationId = invocationArn.split('/').pop() || '';
 
-  // Nova Reel outputs to {s3Prefix}/output.mp4
-  const videoKey = `${s3OutputPrefix}output.mp4`;
+  // Try the standard path first: {prefix}/{invocationId}/output.mp4
+  const possibleKeys = [
+    `${s3OutputPrefix}${invocationId}/output.mp4`,
+    `${s3OutputPrefix}output.mp4`,
+  ];
 
-  try {
-    const signedUrl = await getSignedUrl(
-      s3,
-      new GetObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: videoKey,
-      }),
-      { expiresIn: 86400 }, // 24 hours
-    );
+  for (const videoKey of possibleKeys) {
+    try {
+      // Verify the object exists
+      await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: videoKey }));
+      
+      const signedUrl = await getSignedUrl(
+        s3,
+        new GetObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: videoKey,
+        }),
+        { expiresIn: 86400 }, // 24 hours
+      );
 
-    return {
-      status: 'completed',
-      videoUrl: signedUrl,
-    };
-  } catch (err) {
-    // Try listing objects in the prefix to find the actual filename
-    console.error(`[bedrock-video] Could not get ${videoKey}:`, err);
-    return {
-      status: 'failed',
-      error: `Video generated but could not find output file at ${videoKey}`,
-    };
+      console.log(`[bedrock-video] Video found at: ${videoKey}`);
+      return {
+        status: 'completed',
+        videoUrl: signedUrl,
+      };
+    } catch {
+      console.log(`[bedrock-video] Video not at: ${videoKey}, trying next...`);
+      continue;
+    }
   }
+
+  // Last resort: list objects in the prefix to find any .mp4 file
+  try {
+    const listResp = await s3.send(new ListObjectsV2Command({
+      Bucket: S3_BUCKET,
+      Prefix: s3OutputPrefix,
+    }));
+    const mp4 = listResp.Contents?.find(obj => obj.Key?.endsWith('.mp4'));
+    if (mp4?.Key) {
+      const signedUrl = await getSignedUrl(
+        s3,
+        new GetObjectCommand({ Bucket: S3_BUCKET, Key: mp4.Key }),
+        { expiresIn: 86400 },
+      );
+      console.log(`[bedrock-video] Video found via listing: ${mp4.Key}`);
+      return { status: 'completed', videoUrl: signedUrl };
+    }
+  } catch (listErr) {
+    console.error('[bedrock-video] Failed to list S3 objects:', listErr);
+  }
+
+  return {
+    status: 'failed',
+    error: `Video generated but output.mp4 not found in S3 prefix: ${s3OutputPrefix}`,
+  };
 }
 
 /**
