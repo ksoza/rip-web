@@ -38,6 +38,7 @@ interface DialogueLine {
 
 interface SceneGenResult {
   success: boolean;
+  sceneImageUrl?: string;
   videoUrl?: string;
   audioUrl?: string;
   model: string;
@@ -45,6 +46,10 @@ interface SceneGenResult {
   prompt: string;
   requestId?: string;
   error?: string;
+  dialogueAudio?: {
+    lines: { character: string; line: string; audioUrl: string; voice: string; duration: number }[];
+    totalDuration: number;
+  };
 }
 
 // -- Helpers -----------------------------------------------------
@@ -442,22 +447,48 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
       </button>
 
       {/* -- Result ------------------------------------------- */}
-      {result?.success && result.videoUrl && (
+      {result?.success && (result.videoUrl || result.sceneImageUrl) && (
         <div className="bg-bg3 border border-bord2 rounded-xl overflow-hidden animate-slide-up">
-          <video src={result.videoUrl} controls autoPlay className="w-full" />
+          {/* Scene Image (generated first as visual reference) */}
+          {result.sceneImageUrl && (
+            <div className="relative">
+              <img src={result.sceneImageUrl} alt="Scene" className="w-full" />
+              <span className="absolute top-2 left-2 text-[9px] font-bold px-2 py-0.5 rounded bg-black/60 text-emerald-400 uppercase">
+                📸 Scene Image
+              </span>
+            </div>
+          )}
+          {/* Video (animated from the scene image) */}
+          {result.videoUrl && (
+            <video src={result.videoUrl} controls autoPlay className="w-full" />
+          )}
+          {/* Audio player (if separate TTS audio) */}
+          {result.audioUrl && !result.audioSynced && (
+            <div className="px-4 pt-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-orange-400/20 text-orange-400 uppercase">🔊 Dialogue Audio</span>
+              </div>
+              <audio src={result.audioUrl} controls className="w-full h-8" />
+            </div>
+          )}
           <div className="p-4">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-purple-400/20 text-purple-400 uppercase">Scene</span>
               {result.audioSynced && (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-green-400/20 text-green-400 uppercase"> Audio Synced</span>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-green-400/20 text-green-400 uppercase">🔊 Audio Synced</span>
+              )}
+              {result.audioUrl && !result.audioSynced && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-orange-400/20 text-orange-400 uppercase">🔊 TTS Audio</span>
               )}
               <span className="text-[10px] text-muted">via {result.model === 'veo' ? 'Veo 3.1' : result.model === 'seedance-2' ? 'Seedance 2' : result.model}</span>
             </div>
             <div className="flex gap-2">
-              <a href={result.videoUrl} download target="_blank" rel="noopener noreferrer"
-                className="flex-1 py-2 rounded-lg text-xs font-bold text-center text-cyan bg-cyan/10 border border-cyan/20 hover:bg-cyan/20 transition-all">
-                 Download
-              </a>
+              {result.videoUrl && (
+                <a href={result.videoUrl} download target="_blank" rel="noopener noreferrer"
+                  className="flex-1 py-2 rounded-lg text-xs font-bold text-center text-cyan bg-cyan/10 border border-cyan/20 hover:bg-cyan/20 transition-all">
+                  ⬇ Download
+                </a>
+              )}
               <button
                 onClick={() => {
                   if (result?.videoUrl) {

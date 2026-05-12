@@ -1,21 +1,19 @@
 // lib/scene-pipeline.ts
-// Unified scene generation pipeline - video and audio generated together
+// Unified scene generation pipeline — IMAGE → VIDEO → AUDIO
 //
-// Fallback chain (lowest cost first):
-//   1. Self-hosted GPU (LTX-2.3 or Wan 2.1) -- $0.00 (local) or ~$0.00036/sec (RunPod)
-//   2. Pollinations video (free, no key, no audio sync) -- $0.00
-//   3. HuggingFace free inference (Wan 2.1 1.3B, needs HF_TOKEN) -- $0.00
-//   4. fal.ai LTX-2.3 (cheapest paid, native audio sync) -- ~$0.05/sec
-//   5. fal.ai Veo 3.1 / Seedance 2 (best quality + audio sync) -- paid
+// Pipeline:
+//   1. Generate scene IMAGE from description (Pollinations FLUX, free)
+//   2. Animate image into VIDEO (HuggingFace SVD i2v / fal.ai / self-hosted)
+//   3. Generate dialogue AUDIO via TTS (Kokoro, free)
 //
-// Self-hosted: LTX-2.3 via RunPod Serverless (Option A) or local GPU (Option C)
-// fal.ai: LTX-2.3 (default) → Veo 3.1 → Seedance 2 (fallback chain)
+// The image is generated first so video accurately depicts the described scene.
+// Fallback video chain: HF SVD i2v → self-hosted GPU → fal.ai queue
 
 import { falGenerate, falSubmitToQueue, falCheckStatus, FAL_VIDEO_MODELS, type FalModel, type FalVideoInput, type FalQueueJob, type FalResult } from './fal';
-import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
+import { buildScenePrompt, getStylePrompt, SHOW_PROFILES, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
-import { pollinationsGenerateVideo } from './pollinations';
-import { submitBedrockVideo, checkBedrockVideo, isBedrockAvailable, type BedrockVideoJob } from './bedrock-video';
+import { pollinationsGenerateImage, type PollinationsImageOptions } from './pollinations';
+// Bedrock + Wan2.1 removed per user request — using IMAGE→VIDEO→AUDIO pipeline instead
 
 // ── HuggingFace free inference for video ────────────────────────
 // Tries multiple HF models that support inference API. $0 with HF_TOKEN.
@@ -116,11 +114,15 @@ export interface SceneInput {
   seed?: number;
   /** Force a specific provider: 'self-hosted' | 'pollinations' | 'fal' | 'auto' (default) */
   provider?: 'self-hosted' | 'pollinations' | 'fal' | 'auto';
+  /** Pre-generated scene image URL (skip step 1 if provided) */
+  sceneImageUrl?: string;
 }
 
 export interface SceneResult {
   /** Whether generation succeeded */
   success: boolean;
+  /** URL to the scene still image (generated in step 1) */
+  sceneImageUrl?: string;
   /** URL to the generated video (includes synced audio) */
   videoUrl?: string;
   /** URL to the audio track (if returned separately by the model) */
@@ -395,11 +397,25 @@ async function trySelfHosted(
  *
  * Override with input.provider: 'self-hosted' | 'pollinations' | 'fal' | 'auto'
  */
+
+// -- Main generation function ------------------------------------
+
+/**
+ * Generate a complete scene: IMAGE → VIDEO → AUDIO
+ *
+ * Pipeline:
+ *   Step 1: Generate scene IMAGE from description (Pollinations FLUX, free)
+ *   Step 2: Generate VIDEO — prefers image-to-video when image is available
+ *           Fallback chain: HuggingFace i2v → fal.ai queue (if key set)
+ *   Step 3: Generate dialogue AUDIO via Kokoro TTS (free)
+ *
+ * The scene image is ALWAYS generated first so the video matches the description.
+ */
 export async function generateScene(input: SceneInput, opts?: { asyncFal?: boolean }): Promise<SceneResult> {
   const { show, artStyle, sceneDescription, dialogue, characters } = input;
   const provider = input.provider || 'auto';
 
-  // Select fal.ai model (used if self-hosted not available)
+  // Select fal.ai model (used if free providers don't work)
   const { key: modelKey, model: selectedModel } = selectModel(input.model);
   const audioCapable = isAudioCapable(modelKey);
 
@@ -420,7 +436,6 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
       enrichedDescription = rag.enrichedPrompt;
       ragContext = rag.ragContext;
     } catch (err) {
-      // RAGflow is optional -- log and continue without it
       console.warn('[scene-pipeline] RAGflow enrichment failed, using base prompt:', err);
     }
   }
@@ -434,109 +449,87 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
     characters,
   });
 
-  // -- In async mode, skip slow free providers (they'd timeout the Lambda) --
-  // Jump straight to fal.ai queue submit which returns instantly
-  const skipFreeProviders = opts?.asyncFal && provider === 'auto';
+  // ══════════════════════════════════════════════════════════════
+  // STEP 1: Generate scene IMAGE (Pollinations FLUX, free)
+  // ══════════════════════════════════════════════════════════════
+  let sceneImageUrl = input.sceneImageUrl || '';
+  if (!sceneImageUrl && sceneDescription) {
+    try {
+      console.log('[scene-pipeline] Step 1: Generating scene image via Pollinations FLUX...');
+      const showProfile = SHOW_PROFILES[show];
+      const visualStyle = showProfile?.visualStyle || '';
+      const charNames = characters.join(', ');
 
-  // -- Try self-hosted first (FREE) ----------------------------
-  if (!skipFreeProviders && (provider === 'self-hosted' || provider === 'auto')) {
-    const selfHostedResult = await trySelfHosted(prompt, duration, input.seed, ragContext);
-    if (selfHostedResult) {
-      console.log('[scene-pipeline] Generated via self-hosted GPU ($0 cost)');
-      return selfHostedResult;
-    }
-    if (provider === 'self-hosted') {
-      return {
-        success: false,
-        model: 'wan-2.1-self-hosted',
-        audioSynced: false,
-        prompt,
-        error: 'Self-hosted GPU is not available. Check SELF_HOSTED_GPU_URL or start the Colab notebook.',
-        providerUsed: 'self-hosted',
-        cost: 0,
-      };
+      // Build image prompt: show style + scene description + characters
+      const imagePrompt = [
+        visualStyle ? `${show} visual style, ${visualStyle}` : `Scene from ${show}`,
+        enrichedDescription || sceneDescription,
+        charNames ? `Characters: ${charNames}` : '',
+        'cinematic composition, high detail, dramatic lighting',
+      ].filter(Boolean).join('. ');
+
+      const imgResult = await pollinationsGenerateImage(imagePrompt, {
+        width: 1280,
+        height: 720,
+        model: 'flux',
+        nologo: true,
+      });
+      sceneImageUrl = imgResult.url;
+      console.log(`[scene-pipeline] ✓ Scene image generated`);
+    } catch (imgErr) {
+      console.warn('[scene-pipeline] Scene image generation failed (continuing without):', imgErr);
     }
   }
 
-  // -- Try Pollinations video + Kokoro TTS (FREE, $0) ----------
-  if (!skipFreeProviders && (provider === 'pollinations' || provider === 'auto')) {
-    try {
-      console.log('[scene-pipeline] Trying Pollinations video ($0 cost)...');
-      const polResult = await pollinationsGenerateVideo(prompt);
-      if (polResult.url) {
-        console.log('[scene-pipeline] Video generated via Pollinations ($0 cost)');
+  // ══════════════════════════════════════════════════════════════
+  // STEP 2: Generate VIDEO (image-to-video preferred, text-to-video fallback)
+  // ══════════════════════════════════════════════════════════════
+  console.log(`[scene-pipeline] Step 2: Generating video (image available: ${!!sceneImageUrl})...`);
 
-        // Generate character dialogue audio via Kokoro TTS (free)
-        let dialogueResult: SceneResult['dialogueAudio'] = undefined;
-        let mainAudioUrl: string | undefined = undefined;
-        if (dialogue.length > 0) {
-          try {
-            console.log(`[scene-pipeline] Generating TTS audio for ${dialogue.length} dialogue lines via Kokoro...`);
-            const ttsResult = await generateDialogueAudio(dialogue);
-            if (ttsResult.lines.some(l => l.audioUrl)) {
-              dialogueResult = {
-                lines: ttsResult.lines,
-                totalDuration: ttsResult.totalDuration,
-              };
-              mainAudioUrl = ttsResult.audioUrl;
-              console.log(`[scene-pipeline] Kokoro TTS: ${ttsResult.lines.filter(l => l.audioUrl).length}/${dialogue.length} lines generated (${ttsResult.totalDuration.toFixed(1)}s total)`);
-            }
-          } catch (ttsErr) {
-            // TTS is optional — video still works without it
-            console.warn('[scene-pipeline] Kokoro TTS failed (video still usable):', ttsErr);
-          }
-        }
+  // -- In async mode, skip slow free providers (they'd timeout Lambda) --
+  const skipFreeProviders = opts?.asyncFal && provider === 'auto';
+
+  // -- 2a. Try HuggingFace image-to-video (SVD, free with HF_TOKEN) --
+  if (!skipFreeProviders && sceneImageUrl && process.env.HF_TOKEN && provider !== 'fal') {
+    try {
+      console.log('[scene-pipeline] Trying HuggingFace SVD image-to-video ($0 cost)...');
+      const svdResult = await hfImageToVideo(sceneImageUrl);
+      if (svdResult?.url) {
+        console.log('[scene-pipeline] ✓ Video generated via HuggingFace SVD');
+
+        // Step 3: TTS audio
+        const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
 
         return {
           success: true,
-          videoUrl: polResult.url,
+          sceneImageUrl,
+          videoUrl: svdResult.url,
           audioUrl: mainAudioUrl,
-          model: 'pollinations',
-          audioSynced: false, // Audio is separate, not baked into video
+          model: 'svd-i2v',
+          audioSynced: false,
           prompt,
           ragContext: ragContext || undefined,
-          providerUsed: 'pollinations',
+          providerUsed: 'huggingface',
           cost: 0,
           dialogueAudio: dialogueResult,
         };
       }
-    } catch (polErr) {
-      console.warn('[scene-pipeline] Pollinations video failed:', polErr);
-    }
-    if (provider === 'pollinations') {
-      return {
-        success: false,
-        model: 'pollinations',
-        audioSynced: false,
-        prompt,
-        error: 'Pollinations video generation failed. The service may be temporarily unavailable.',
-        providerUsed: 'pollinations',
-        cost: 0,
-      };
+    } catch (svdErr) {
+      console.warn('[scene-pipeline] HuggingFace SVD failed:', svdErr);
     }
   }
 
-  // -- Try HuggingFace free inference (Wan 2.1 1.3B, $0 with HF_TOKEN) ---
-  if (!skipFreeProviders && provider === 'auto') {
+  // -- 2b. Try HuggingFace text-to-video free models --
+  if (!skipFreeProviders && provider !== 'fal') {
     const hfResult = await hfFreeVideoGenerate(prompt);
     if (hfResult?.url) {
-      // Generate dialogue audio via Kokoro TTS
-      let dialogueResult: SceneResult['dialogueAudio'] = undefined;
-      let mainAudioUrl: string | undefined = undefined;
-      if (dialogue.length > 0) {
-        try {
-          const ttsResult = await generateDialogueAudio(dialogue);
-          if (ttsResult.lines.some(l => l.audioUrl)) {
-            dialogueResult = { lines: ttsResult.lines, totalDuration: ttsResult.totalDuration };
-            mainAudioUrl = ttsResult.audioUrl;
-          }
-        } catch {
-          // TTS optional
-        }
-      }
+      console.log('[scene-pipeline] ✓ Video generated via HuggingFace free inference');
+
+      const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
 
       return {
         success: true,
+        sceneImageUrl: sceneImageUrl || undefined,
         videoUrl: hfResult.url,
         audioUrl: mainAudioUrl,
         model: 'wan2.1-1.3b',
@@ -550,85 +543,26 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
     }
   }
 
-  // -- Try AWS Bedrock Nova Reel (free with AWS account, async) ---
-  let bedrockError = '';
-  if (opts?.asyncFal) {
-    const bedrockAvail = isBedrockAvailable();
-    console.log(`[scene-pipeline] Bedrock available: ${bedrockAvail}, asyncFal: ${opts?.asyncFal}`);
-    if (bedrockAvail) {
-      try {
-        console.log('[scene-pipeline] Trying AWS Bedrock Nova Reel (async, $0 extra cost)...');
-
-        // Retry with exponential backoff — Bedrock may throttle concurrent requests
-        const MAX_RETRIES = 3;
-        let lastErr: Error | null = null;
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          try {
-            if (attempt > 0) {
-              const delay = Math.min(5000 * Math.pow(2, attempt - 1), 20000); // 5s, 10s, 20s
-              console.log(`[scene-pipeline] Bedrock retry ${attempt}/${MAX_RETRIES} after ${delay}ms...`);
-              await new Promise(r => setTimeout(r, delay));
-            }
-            const bedrockJob = await submitBedrockVideo(prompt, {
-              durationSeconds: 6,
-              dimension: '1280x720',
-              seed: input.seed,
-              rawSceneDescription: enrichedDescription,
-              showTitle: show,
-              characterNames: characters,
-            });
-            console.log(`[scene-pipeline] Bedrock job submitted: ${bedrockJob.invocationArn}`);
-            return {
-              success: false, // Not done yet
-              model: 'nova-reel',
-              audioSynced: false,
-              prompt,
-              error: '__QUEUED__',
-              providerUsed: 'bedrock',
-              bedrockJob: {
-                invocationArn: bedrockJob.invocationArn,
-                s3OutputPrefix: bedrockJob.s3OutputPrefix,
-                modelId: bedrockJob.modelId,
-              },
-            };
-          } catch (retryErr) {
-            lastErr = retryErr instanceof Error ? retryErr : new Error(String(retryErr));
-            const msg = lastErr.message.toLowerCase();
-            // Only retry on throttling / transient errors
-            if (msg.includes('unable to process') || msg.includes('throttl') || msg.includes('too many') || msg.includes('limit')) {
-              console.warn(`[scene-pipeline] Bedrock transient error (attempt ${attempt + 1}): ${lastErr.message}`);
-              continue;
-            }
-            // Non-retryable error — break immediately
-            break;
-          }
-        }
-        throw lastErr || new Error('Bedrock submission failed after retries');
-      } catch (bedrockErr) {
-        const msg = bedrockErr instanceof Error ? bedrockErr.message : String(bedrockErr);
-        bedrockError = `Bedrock Nova Reel: ${msg}`;
-        console.error(`[scene-pipeline] Bedrock Nova Reel failed: ${msg}`);
-        // Fall through to fal.ai
-      }
-    } else {
-      bedrockError = 'Bedrock: credentials not configured';
-    }
-  }
-
-  // -- Fall back to fal.ai (paid, best quality + audio sync) ---
+  // -- 2c. Fall back to fal.ai (paid, best quality + audio sync) ---
+  let errorMsg = '';
   try {
-    // Build input with model-specific duration formatting
     const falInput: FalVideoInput = {
       prompt,
       aspect_ratio: input.aspectRatio || '16:9',
       seed: input.seed,
     };
+
+    // Pass scene image for image-to-video if available and model supports it
+    if (sceneImageUrl) {
+      falInput.image_url = sceneImageUrl;
+    }
+
     const formattedDuration = formatDurationForModel(modelKey, duration);
     if (formattedDuration !== undefined) {
       falInput.duration = formattedDuration;
     }
 
-    console.log(`[scene-pipeline] Trying fal.ai ${modelKey} (${selectedModel.id}), duration=${formattedDuration ?? 'default'}, async=${!!opts?.asyncFal}...`);
+    console.log(`[scene-pipeline] Trying fal.ai ${modelKey} (${selectedModel.id}), async=${!!opts?.asyncFal}...`);
 
     // ASYNC MODE: Submit to queue and return immediately for client-side polling
     if (opts?.asyncFal) {
@@ -638,16 +572,19 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
       if ('video' in submitResult || 'images' in submitResult) {
         const syncResult = submitResult as FalResult;
         if (syncResult.video?.url) {
+          const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
           return {
             success: true,
+            sceneImageUrl: sceneImageUrl || undefined,
             videoUrl: syncResult.video.url,
-            audioUrl: syncResult.audio?.url,
+            audioUrl: syncResult.audio?.url || mainAudioUrl,
             model: modelKey,
             audioSynced: audioCapable,
             prompt,
             requestId: syncResult.request_id,
             ragContext: ragContext || undefined,
             providerUsed: 'fal',
+            dialogueAudio: dialogueResult,
           };
         }
       }
@@ -656,6 +593,7 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
       const job = submitResult as FalQueueJob;
       return {
         success: false, // Not done yet
+        sceneImageUrl: sceneImageUrl || undefined,
         model: modelKey,
         audioSynced: false,
         prompt,
@@ -673,111 +611,228 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
       };
     }
 
-    // SYNC MODE: Submit and poll until done (for non-serverless environments)
+    // SYNC MODE: Submit and poll until done
     const result = await falGenerate(selectedModel.id, falInput);
 
-    if (!result.video?.url) {
-      // If primary model failed or returned no video, try next audio-capable model
-      const fallbackKey = AUDIO_CAPABLE_MODELS.find(k => k !== modelKey && FAL_VIDEO_MODELS[k]);
-      if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
-        console.log(`[scene-pipeline] ${modelKey} returned no video, falling back to ${fallbackKey}`);
-        const fbInput: FalVideoInput = {
-          prompt,
-          aspect_ratio: input.aspectRatio || '16:9',
-          seed: input.seed,
-        };
-        const fbDuration = formatDurationForModel(fallbackKey, duration);
-        if (fbDuration !== undefined) fbInput.duration = fbDuration;
-
-        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, fbInput);
-
-        if (fallback.video?.url) {
-          return {
-            success: true,
-            videoUrl: fallback.video.url,
-            audioUrl: (fallback as any).audio?.url,
-            model: fallbackKey,
-            audioSynced: true,
-            prompt,
-            requestId: fallback.request_id,
-            ragContext: ragContext || undefined,
-            providerUsed: 'fal',
-          };
-        }
-      }
-
+    if (result.video?.url) {
+      const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
       return {
-        success: false,
+        success: true,
+        sceneImageUrl: sceneImageUrl || undefined,
+        videoUrl: result.video.url,
+        audioUrl: result.audio?.url || mainAudioUrl,
         model: modelKey,
-        audioSynced: false,
+        audioSynced: audioCapable,
         prompt,
-        error: 'Model returned no video output',
+        requestId: result.request_id,
+        ragContext: ragContext || undefined,
         providerUsed: 'fal',
+        dialogueAudio: dialogueResult,
       };
     }
 
-    return {
-      success: true,
-      videoUrl: result.video.url,
-      audioUrl: (result as any).audio?.url,
-      model: modelKey,
-      audioSynced: audioCapable,
-      prompt,
-      requestId: result.request_id,
-      ragContext: ragContext || undefined,
-      providerUsed: 'fal',
-    };
+    // Primary model failed — try fallback audio-capable model
+    const fallbackKey = AUDIO_CAPABLE_MODELS.find(k => k !== modelKey && FAL_VIDEO_MODELS[k]);
+    if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
+      console.log(`[scene-pipeline] ${modelKey} returned no video, falling back to ${fallbackKey}`);
+      const fbInput: FalVideoInput = {
+        prompt,
+        aspect_ratio: input.aspectRatio || '16:9',
+        seed: input.seed,
+      };
+      if (sceneImageUrl) fbInput.image_url = sceneImageUrl;
+      const fbDuration = formatDurationForModel(fallbackKey, duration);
+      if (fbDuration !== undefined) fbInput.duration = fbDuration;
 
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+      const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, fbInput);
+      if (fallback.video?.url) {
+        const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
+        return {
+          success: true,
+          sceneImageUrl: sceneImageUrl || undefined,
+          videoUrl: fallback.video.url,
+          audioUrl: (fallback as any).audio?.url || mainAudioUrl,
+          model: fallbackKey,
+          audioSynced: isAudioCapable(fallbackKey),
+          prompt,
+          requestId: fallback.request_id,
+          ragContext: ragContext || undefined,
+          providerUsed: 'fal',
+          dialogueAudio: dialogueResult,
+        };
+      }
+    }
 
-    // Auto-fallback: try next audio-capable model in the chain
+    errorMsg = `${modelKey} returned no video data`;
+  } catch (falErr: any) {
+    errorMsg = falErr instanceof Error ? falErr.message : String(falErr);
+    console.error(`[scene-pipeline] fal.ai ${modelKey} error:`, errorMsg);
+
+    // Try a different fal model on failure
     const fallbackKey = AUDIO_CAPABLE_MODELS.find(k => k !== modelKey && FAL_VIDEO_MODELS[k]);
     if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
       try {
-        console.log(`[scene-pipeline] ${modelKey} failed (${errorMsg}), falling back to ${fallbackKey}`);
+        console.log(`[scene-pipeline] Trying fallback fal.ai model: ${fallbackKey}`);
         const fbInput: FalVideoInput = {
           prompt,
           aspect_ratio: input.aspectRatio || '16:9',
           seed: input.seed,
         };
+        if (sceneImageUrl) fbInput.image_url = sceneImageUrl;
         const fbDuration = formatDurationForModel(fallbackKey, duration);
         if (fbDuration !== undefined) fbInput.duration = fbDuration;
 
-        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, fbInput);
+        if (opts?.asyncFal) {
+          const job = await falSubmitToQueue(FAL_VIDEO_MODELS[fallbackKey].id, fbInput) as FalQueueJob;
+          return {
+            success: false,
+            sceneImageUrl: sceneImageUrl || undefined,
+            model: fallbackKey,
+            audioSynced: false,
+            prompt,
+            error: '__QUEUED__',
+            providerUsed: 'fal',
+            requestId: job.requestId,
+            falJob: {
+              requestId: job.requestId,
+              statusUrl: job.statusUrl,
+              responseUrl: job.responseUrl,
+              modelId: job.modelId,
+              modelKey: fallbackKey,
+              audioCapable: isAudioCapable(fallbackKey),
+            },
+          };
+        }
 
+        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, fbInput);
         if (fallback.video?.url) {
+          const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
           return {
             success: true,
+            sceneImageUrl: sceneImageUrl || undefined,
             videoUrl: fallback.video.url,
-            audioUrl: (fallback as any).audio?.url,
+            audioUrl: (fallback as any).audio?.url || mainAudioUrl,
             model: fallbackKey,
-            audioSynced: true,
+            audioSynced: isAudioCapable(fallbackKey),
             prompt,
             requestId: fallback.request_id,
             ragContext: ragContext || undefined,
             providerUsed: 'fal',
+            dialogueAudio: dialogueResult,
           };
         }
       } catch (fallbackErr) {
-        return {
-          success: false,
-          model: modelKey,
-          audioSynced: false,
-          prompt,
-          error: `All providers failed.${bedrockError ? ` ${bedrockError}.` : ''} Self-hosted: unavailable. Pollinations: unavailable. HuggingFace: ${process.env.HF_TOKEN ? 'unavailable' : 'no HF_TOKEN set'}. ${modelKey}: ${errorMsg}. ${fallbackKey}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
-          providerUsed: 'fal',
-        };
+        console.error(`[scene-pipeline] Fallback ${fallbackKey} also failed:`, fallbackErr);
       }
     }
-
-    return {
-      success: false,
-      model: modelKey,
-      audioSynced: false,
-      prompt,
-      error: errorMsg,
-      providerUsed: 'fal',
-    };
   }
+
+  // All providers failed
+  return {
+    success: false,
+    sceneImageUrl: sceneImageUrl || undefined,
+    model: modelKey,
+    audioSynced: false,
+    prompt,
+    error: `All video providers failed. HuggingFace: ${process.env.HF_TOKEN ? 'unavailable' : 'no HF_TOKEN set'}. fal.ai: ${errorMsg || 'not available'}`,
+    providerUsed: 'fal',
+  };
+}
+
+// ── HuggingFace Stable Video Diffusion — image-to-video (free) ──
+async function hfImageToVideo(imageUrl: string): Promise<{ url: string } | null> {
+  const token = process.env.HF_TOKEN;
+  if (!token) return null;
+
+  // Use HuggingFace Inference API for Stable Video Diffusion
+  // SVD takes an image and generates a short video from it
+  const models = [
+    'stabilityai/stable-video-diffusion-img2vid-xt',
+    'stabilityai/stable-video-diffusion-img2vid',
+  ];
+
+  for (const model of models) {
+    try {
+      console.log(`[scene-pipeline] Trying HF i2v model: ${model}`);
+
+      // First, download the image as bytes
+      const imgRes = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!imgRes.ok) {
+        console.warn(`[scene-pipeline] Failed to download scene image: ${imgRes.status}`);
+        continue;
+      }
+      const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+      // Send to HuggingFace Inference API
+      const res = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/octet-stream',
+        },
+        body: imgBuffer,
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (res.status === 503) {
+        // Model loading — could wait, but let's move on
+        console.log(`[scene-pipeline] HF model ${model} is loading, skipping`);
+        continue;
+      }
+
+      if (!res.ok) {
+        console.warn(`[scene-pipeline] HF i2v ${model} error: ${res.status} ${await res.text().catch(() => '')}`);
+        continue;
+      }
+
+      // Response is video bytes — convert to data URL
+      const videoBuffer = Buffer.from(await res.arrayBuffer());
+      if (videoBuffer.length < 1000) {
+        console.warn(`[scene-pipeline] HF i2v returned tiny response (${videoBuffer.length} bytes), skipping`);
+        continue;
+      }
+
+      const videoBase64 = videoBuffer.toString('base64');
+      const videoUrl = `data:video/mp4;base64,${videoBase64}`;
+      console.log(`[scene-pipeline] ✓ HF i2v ${model}: ${videoBuffer.length} bytes`);
+      return { url: videoUrl };
+    } catch (err) {
+      console.warn(`[scene-pipeline] HF i2v ${model} failed:`, err);
+    }
+  }
+  return null;
+}
+
+// ── Helper: generate TTS audio if dialogue exists ──────────────
+async function generateTTSIfNeeded(dialogue: { character: string; line: string }[]): Promise<{
+  dialogueResult: SceneResult['dialogueAudio'];
+  mainAudioUrl: string | undefined;
+}> {
+  if (dialogue.length === 0) {
+    return { dialogueResult: undefined, mainAudioUrl: undefined };
+  }
+
+  try {
+    console.log(`[scene-pipeline] Step 3: Generating TTS audio for ${dialogue.length} dialogue lines via Kokoro...`);
+    const ttsResult = await generateDialogueAudio(dialogue);
+    if (ttsResult.lines.some(l => l.audioUrl)) {
+      console.log(`[scene-pipeline] ✓ Kokoro TTS: ${ttsResult.lines.filter(l => l.audioUrl).length}/${dialogue.length} lines (${ttsResult.totalDuration.toFixed(1)}s)`);
+      return {
+        dialogueResult: {
+          lines: ttsResult.lines,
+          totalDuration: ttsResult.totalDuration,
+        },
+        mainAudioUrl: ttsResult.audioUrl,
+      };
+    }
+  } catch (ttsErr) {
+    console.warn('[scene-pipeline] Kokoro TTS failed (video still usable):', ttsErr);
+  }
+
+  return { dialogueResult: undefined, mainAudioUrl: undefined };
 }

@@ -1,54 +1,25 @@
 // app/api/generate/scene/poll/route.ts
-// Polls the status of a queued scene generation job (fal.ai or Bedrock).
+// Polls the status of a queued scene generation job (fal.ai).
 // Called by the client every 3-5 seconds until the job completes.
 //
 // POST /api/generate/scene/poll
-// Body (fal.ai):  { statusUrl, responseUrl, modelKey, audioCapable, prompt }
-// Body (Bedrock): { invocationArn, s3OutputPrefix, modelId }
+// Body (fal.ai): { statusUrl, responseUrl, modelKey, audioCapable, prompt, sceneImageUrl?, dialogue? }
 // Returns: { status: 'processing' | 'completed' | 'failed', ...result }
 
 import { NextRequest, NextResponse } from 'next/server';
 import { checkSceneJob } from '@/lib/scene-pipeline';
-import { checkBedrockVideo } from '@/lib/bedrock-video';
+import { generateDialogueAudio } from '@/lib/kokoro-tts';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // ── Bedrock Nova Reel job ──
-    if (body.invocationArn) {
-      const { invocationArn, s3OutputPrefix } = body;
-      const result = await checkBedrockVideo(invocationArn, s3OutputPrefix);
-
-      if (result.status === 'processing') {
-        return NextResponse.json({ status: 'processing' });
-      }
-
-      if (result.status === 'failed') {
-        return NextResponse.json({
-          status: 'failed',
-          error: result.error || 'Bedrock video generation failed',
-          model: 'nova-reel',
-        });
-      }
-
-      // Completed
-      return NextResponse.json({
-        status: 'completed',
-        success: true,
-        videoUrl: result.videoUrl,
-        model: 'nova-reel',
-        audioSynced: false,
-        prompt: body.prompt || '',
-      });
-    }
-
     // ── fal.ai job ──
-    const { statusUrl, responseUrl, modelKey, audioCapable, prompt } = body;
+    const { statusUrl, responseUrl, modelKey, audioCapable, prompt, sceneImageUrl, dialogue } = body;
 
     if (!statusUrl || !responseUrl) {
       return NextResponse.json(
-        { error: 'statusUrl and responseUrl are required (or invocationArn for Bedrock)' },
+        { error: 'statusUrl and responseUrl are required' },
         { status: 400 }
       );
     }
@@ -76,16 +47,39 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Completed!
+    // ── Completed! Now generate TTS audio if dialogue was provided ──
+    let audioUrl = result.audioUrl;
+    let dialogueAudio: any = undefined;
+    const dialogueLines = Array.isArray(dialogue) ? dialogue.filter((d: any) => d?.character && d?.line) : [];
+
+    if (!audioUrl && dialogueLines.length > 0) {
+      try {
+        console.log(`[poll] Generating TTS audio for ${dialogueLines.length} dialogue lines...`);
+        const ttsResult = await generateDialogueAudio(dialogueLines);
+        if (ttsResult.lines.some((l: any) => l.audioUrl)) {
+          dialogueAudio = {
+            lines: ttsResult.lines,
+            totalDuration: ttsResult.totalDuration,
+          };
+          audioUrl = ttsResult.audioUrl;
+          console.log(`[poll] ✓ TTS: ${ttsResult.lines.filter((l: any) => l.audioUrl).length}/${dialogueLines.length} lines`);
+        }
+      } catch (ttsErr) {
+        console.warn('[poll] TTS generation failed (video still usable):', ttsErr);
+      }
+    }
+
     return NextResponse.json({
       status: 'completed',
       success: true,
+      sceneImageUrl: sceneImageUrl || undefined,
       videoUrl: result.videoUrl,
-      audioUrl: result.audioUrl,
+      audioUrl,
       model: result.model,
       audioSynced: result.audioSynced,
       prompt: result.prompt,
       requestId: result.requestId,
+      dialogueAudio,
     });
 
   } catch (err) {

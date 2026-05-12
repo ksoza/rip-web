@@ -116,10 +116,17 @@ export async function POST(req: NextRequest) {
     const result = await submitScene(sceneInput);
 
     // If queued for async processing, return job info for client polling
+    // Include sceneImageUrl and dialogue so the poll endpoint can generate TTS + return image
     if (result.error === '__QUEUED__' && (result.falJob || result.bedrockJob)) {
+      const jobInfo = result.falJob || result.bedrockJob;
       return NextResponse.json({
         status: 'queued',
-        jobInfo: result.falJob || result.bedrockJob,
+        jobInfo: {
+          ...jobInfo,
+          sceneImageUrl: result.sceneImageUrl,
+          dialogue: dialogue.filter((d: any) => d.line?.trim()),
+        },
+        sceneImageUrl: result.sceneImageUrl,
         prompt: result.prompt,
         model: result.model,
       });
@@ -144,6 +151,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      sceneImageUrl: result.sceneImageUrl,
       videoUrl: result.videoUrl,
       audioUrl: result.audioUrl,
       model: result.model,
