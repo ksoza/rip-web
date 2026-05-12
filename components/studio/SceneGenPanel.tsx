@@ -1,11 +1,13 @@
 'use client';
 // components/studio/SceneGenPanel.tsx
 // Unified Scene Generation - video + audio generated together
-// Uses the /api/generate/scene endpoint (Veo 3.1 primary, Seedance 2 fallback)
-import { useState, useEffect, useCallback } from 'react';
+// Pipeline: IMAGE → VIDEO → AUDIO
+// Video providers: Google Veo → HuggingFace → fal.ai → Ken Burns (client-side fallback)
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useStudioStore, genId } from '@/lib/store';
 import type { Asset, TimelineTrack, TimelineClip } from '@/lib/store';
+import { createKenBurnsVideoUrl } from '@/lib/ken-burns';
 
 // -- Types -------------------------------------------------------
 interface ShowInfo {
@@ -228,17 +230,37 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
         return;
       }
 
+      // If we got a scene image but no video, create Ken Burns animation client-side
+      if (data.success && data.sceneImageUrl && !data.videoUrl) {
+        try {
+          console.log('[SceneGenPanel] No video from server — creating Ken Burns animation from scene image...');
+          const kenBurnsUrl = await createKenBurnsVideoUrl(data.sceneImageUrl, {
+            duration: 6,
+            width: 1280,
+            height: 720,
+          });
+          data = { ...data, videoUrl: kenBurnsUrl, model: 'ken-burns' };
+          console.log('[SceneGenPanel] ✓ Ken Burns video created');
+        } catch (kbErr) {
+          console.warn('[SceneGenPanel] Ken Burns failed:', kbErr);
+          // Still show the image even if Ken Burns fails
+        }
+      }
+
       setResult(data);
 
       // Save to asset library
       const showLabel = currentShow?.title || selectedShow;
-      saveAsset({
-        type: 'video' as const,
-        name: `${showLabel} \u2014 ${sceneDesc.slice(0, 30) || 'Scene'}`,
-        url: data.videoUrl,
-        provider: data.model,
-        prompt: data.prompt?.slice(0, 200),
-      });
+      const assetUrl = data.videoUrl || data.sceneImageUrl;
+      if (assetUrl) {
+        saveAsset({
+          type: data.videoUrl ? ('video' as const) : ('image' as const),
+          name: `${showLabel} \u2014 ${sceneDesc.slice(0, 30) || 'Scene'}`,
+          url: assetUrl,
+          provider: data.model,
+          prompt: data.prompt?.slice(0, 200),
+        });
+      }
     } catch {
       setError('Network error \u2014 check your connection');
     } finally {

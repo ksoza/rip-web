@@ -793,7 +793,24 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
     }
   }
 
-  // All providers failed
+  // All video providers failed — but if we have a scene image, return partial success
+  // The client can create a Ken Burns animation from the image
+  if (sceneImageUrl) {
+    const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
+    return {
+      success: true, // Partial success — image + audio available, client creates video
+      sceneImageUrl,
+      videoUrl: undefined, // No video — client will create Ken Burns animation
+      audioUrl: mainAudioUrl,
+      model: 'ken-burns',
+      audioSynced: false,
+      prompt,
+      providerUsed: 'client-kenburns',
+      cost: 0,
+      dialogueAudio: dialogueResult,
+    };
+  }
+
   return {
     success: false,
     sceneImageUrl: sceneImageUrl || undefined,
