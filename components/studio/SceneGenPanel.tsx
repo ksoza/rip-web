@@ -4,7 +4,8 @@
 // Uses the /api/generate/scene endpoint (Veo 3.1 primary, Seedance 2 fallback)
 import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
-import type { Asset } from '@/lib/store';
+import { useStudioStore, genId } from '@/lib/store';
+import type { Asset, TimelineTrack, TimelineClip } from '@/lib/store';
 
 // -- Types -------------------------------------------------------
 interface ShowInfo {
@@ -62,6 +63,45 @@ type Props = {
 };
 
 export function SceneGenPanel({ user, loading, setLoading, error, setError, saveAsset }: Props) {
+  const store = useStudioStore();
+
+  // -- Add result to timeline ----------------------------------
+  const addToTimeline = useCallback((videoUrl: string, name: string, duration?: number) => {
+    const { tracks, addTrack, addClipToTrack, setMode } = store;
+
+    // Find or create a video track
+    let videoTrack = tracks.find(t => t.type === 'video');
+    if (!videoTrack) {
+      videoTrack = {
+        id: genId('trk'),
+        type: 'video',
+        name: 'Video 1',
+        muted: false,
+        locked: false,
+        clips: [],
+      };
+      addTrack(videoTrack);
+    }
+
+    // Find the end of existing clips
+    const lastEnd = videoTrack.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+
+    const clip: TimelineClip = {
+      id: genId('clip'),
+      name,
+      startTime: lastEnd,
+      duration: duration || 6,
+      type: 'video',
+      url: videoUrl,
+      volume: 1,
+      opacity: 1,
+    };
+    addClipToTrack(videoTrack.id, clip);
+
+    // Switch to timeline mode
+    setMode('timeline');
+  }, [store]);
+
   // -- Config fetched from API ---------------------------------
   const [shows, setShows] = useState<ShowInfo[]>([]);
   const [artStyles, setArtStyles] = useState<ArtStyleInfo[]>([]);
@@ -419,8 +459,14 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
                  Download
               </a>
               <button
+                onClick={() => {
+                  if (result?.videoUrl) {
+                    const showLabel = currentShow?.title || selectedShow;
+                    addToTimeline(result.videoUrl, `${showLabel} — ${sceneDesc.slice(0, 30) || 'Scene'}`, 6);
+                  }
+                }}
                 className="flex-1 py-2 rounded-lg text-xs font-bold text-gold bg-gold/10 border border-gold/20 hover:bg-gold/20 transition-all">
-                 Add to Timeline
+                🎞 Add to Timeline
               </button>
             </div>
           </div>

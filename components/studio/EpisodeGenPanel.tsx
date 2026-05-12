@@ -4,7 +4,8 @@
 // Phase 1: Setup & write script  |  Phase 2: Generate all scenes via unified pipeline
 import { useState, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
-import type { Asset } from '@/lib/store';
+import { useStudioStore, genId } from '@/lib/store';
+import type { Asset, TimelineTrack, TimelineClip } from '@/lib/store';
 import { SHOW_PROFILES, ART_STYLES, type ArtStyleId } from '@/lib/shows';
 
 // -- Types -----------------------------------------------------
@@ -60,6 +61,52 @@ const SHOW_CATEGORIES = [...new Set(SHOW_LIST.map(s => s.category))];
 export function EpisodeGenPanel({
   user, loading, setLoading, error, setError, saveAsset, onPublish,
 }: EpisodeGenPanelProps) {
+
+  const store = useStudioStore();
+
+  // -- Add all completed scenes to timeline --------------------
+  const addAllToTimeline = useCallback(() => {
+    const { tracks, addTrack, addClipToTrack, setMode } = store;
+
+    // Create or find a video track
+    let videoTrack = tracks.find(t => t.type === 'video');
+    if (!videoTrack) {
+      videoTrack = {
+        id: genId('trk'),
+        type: 'video',
+        name: 'Video 1',
+        muted: false,
+        locked: false,
+        clips: [],
+      };
+      addTrack(videoTrack);
+    }
+
+    // Find end of existing clips on the video track
+    let cursor = videoTrack.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+
+    // Add each completed scene as a clip, sequentially
+    sceneVideos.forEach((sv, i) => {
+      if (sv.status !== 'done' || !sv.videoUrl) return;
+      const sceneName = script?.scenes[i]?.heading || `Scene ${i + 1}`;
+      const clipDuration = 6; // default scene duration
+      const clip: TimelineClip = {
+        id: genId('clip'),
+        name: `${script?.title || 'Episode'} — ${sceneName}`,
+        startTime: cursor,
+        duration: clipDuration,
+        type: 'video',
+        url: sv.videoUrl,
+        volume: 1,
+        opacity: 1,
+      };
+      addClipToTrack(videoTrack!.id, clip);
+      cursor += clipDuration;
+    });
+
+    // Switch to timeline view
+    setMode('timeline');
+  }, [store, sceneVideos, script]);
 
   /* -- Setup state ----------------------------------------- */
   const [show, setShow]                 = useState('');
@@ -566,12 +613,43 @@ export function EpisodeGenPanel({
 
                   <p className="text-[10px] text-muted">{scene.description}</p>
 
-                  {/* Video player */}
+                  {/* Video player + individual Add to Timeline */}
                   {sv?.status === 'done' && sv.videoUrl && (
-                    <video src={sv.videoUrl} controls
-                      className="w-full rounded-lg border border-border mt-2"
-                      style={{ maxHeight: 240 }}
-                    />
+                    <div className="mt-2">
+                      <video src={sv.videoUrl} controls
+                        className="w-full rounded-lg border border-border"
+                        style={{ maxHeight: 240 }}
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <a href={sv.videoUrl} download target="_blank" rel="noopener noreferrer"
+                          className="px-3 py-1 rounded-lg text-[10px] font-bold text-cyan bg-cyan/10 border border-cyan/20 hover:bg-cyan/20 transition-all">
+                          ⬇ Download
+                        </a>
+                        <button onClick={() => {
+                          const sceneName = scene.heading || `Scene ${i + 1}`;
+                          const { tracks, addTrack, addClipToTrack, setMode: _setMode } = store;
+                          let vTrack = tracks.find(t => t.type === 'video');
+                          if (!vTrack) {
+                            vTrack = { id: genId('trk'), type: 'video', name: 'Video 1', muted: false, locked: false, clips: [] };
+                            addTrack(vTrack);
+                          }
+                          const lastEnd = vTrack.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+                          addClipToTrack(vTrack.id, {
+                            id: genId('clip'),
+                            name: `${script?.title || 'Episode'} — ${sceneName}`,
+                            startTime: lastEnd,
+                            duration: 6,
+                            type: 'video',
+                            url: sv.videoUrl!,
+                            volume: 1,
+                            opacity: 1,
+                          });
+                        }}
+                          className="px-3 py-1 rounded-lg text-[10px] font-bold text-gold bg-gold/10 border border-gold/20 hover:bg-gold/20 transition-all">
+                          🎞 Add to Timeline
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {/* Generating skeleton */}
@@ -620,6 +698,14 @@ export function EpisodeGenPanel({
                   </button>
                 )}
 
+                {doneCount > 0 && (
+                  <button onClick={addAllToTimeline}
+                    className="flex-[2] py-3 rounded-xl font-display text-sm tracking-wider text-white shadow-lg shadow-violet-500/20 transition hover:brightness-110"
+                    style={{ background: 'linear-gradient(90deg,#ff6b35,#ffcc00)' }}>
+                    🎞️ Open in Timeline
+                  </button>
+                )}
+
                 {onPublish && doneCount > 0 && (
                   <button onClick={() => {
                     const firstDone = sceneVideos.find(s => s.status === 'done');
@@ -635,7 +721,7 @@ export function EpisodeGenPanel({
                   }}
                     className="flex-[2] py-3 rounded-xl font-display text-sm tracking-wider text-white shadow-lg shadow-rip/20 transition hover:brightness-110"
                     style={{ background: 'linear-gradient(90deg,#ff2d78,#a855f7)' }}>
-                     Publish to Feeds
+                    📺 Publish to Feeds
                   </button>
                 )}
               </>
