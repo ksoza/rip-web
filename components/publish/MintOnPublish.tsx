@@ -1,11 +1,12 @@
 'use client';
 // components/publish/MintOnPublish.tsx
-// Enhanced NFT mint panel for the publish flow
-// Auto-mint toggle, Metaplex client-side integration, edition control,
-// royalty presets, and real on-chain minting via Phantom wallet
+// Real on-chain NFT minting via Metaplex Token Metadata + Phantom wallet
+// Uses Umi + mpl-token-metadata for genuine Solana NFT creation
+
 import { useState, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useWallet } from '@/lib/solana/wallet-provider';
+import { mintNFT, type MintResult } from '@/lib/solana/metaplex-mint';
 
 // ── $RiP Token ──────────────────────────────────────────────────
 const RIP_TOKEN_MINT = 'CUvzcPdNoBHww1keQW4Vd21P5ZXJ5enZL7ULphS2pump';
@@ -28,17 +29,7 @@ interface MintOnPublishProps {
   onSkip: () => void;
 }
 
-interface MintResult {
-  success: boolean;
-  mintAddress?: string;
-  txHash?: string;
-  metadataUri?: string;
-  explorerUrl?: string;
-  error?: string;
-}
-
 type RoyaltyPreset = 'standard' | 'premium' | 'generous' | 'custom';
-type Chain = 'solana' | 'xrpl';
 
 // ── Royalty Presets ──────────────────────────────────────────────
 const ROYALTY_PRESETS: Record<RoyaltyPreset, { label: string; bps: number; desc: string }> = {
@@ -54,7 +45,6 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
 
   // Config
   const [autoMint, setAutoMint] = useState(true);
-  const [chain, setChain] = useState<Chain>('solana');
   const [royaltyPreset, setRoyaltyPreset] = useState<RoyaltyPreset>('standard');
   const [customRoyalty, setCustomRoyalty] = useState('5');
   const [maxEditions, setMaxEditions] = useState('1');
@@ -63,7 +53,7 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
 
   // State
   const [minting, setMinting] = useState(false);
-  const [step, setStep] = useState<'config' | 'preparing' | 'signing' | 'confirming' | 'done'>('config');
+  const [step, setStep] = useState<'config' | 'uploading' | 'signing' | 'confirming' | 'done'>('config');
   const [mintResult, setMintResult] = useState<MintResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,7 +65,7 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
   // Edition count
   const editions = editionType === 'unique' ? 1 : editionType === 'open' ? 0 : parseInt(maxEditions) || 1;
 
-  // ── Mint Flow ─────────────────────────────────────────────────
+  // ── Real Mint Flow via Metaplex ───────────────────────────────
   const handleMint = useCallback(async () => {
     if (!wallet.connected || !wallet.publicKey) {
       setError('Please connect your wallet first');
@@ -86,124 +76,29 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
     setError(null);
 
     try {
-      // Step 1: Prepare metadata
-      setStep('preparing');
-      const prepRes = await fetch('/api/mint', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'prepare',
-          chain,
-          metadata: {
-            name: creation.title,
-            description: creation.description,
-            image: creation.thumbnail || '',
-            animation_url: includeVideo ? creation.videoUrl : null,
-            genre: creation.genre || 'Uncategorized',
-            show: creation.showTitle || 'Original',
-            season: creation.season,
-            episode: creation.episode,
-            mediaType: creation.videoUrl ? 'video' : 'image',
-            royaltyBps,
-            creatorAddress: wallet.publicKey,
-            collection: 'ReMiX IP',
-            ripTokenMint: RIP_TOKEN_MINT,
-          },
-        }),
+      setStep('uploading');
+
+      const result = await mintNFT({
+        title: creation.title,
+        description: creation.description,
+        image: creation.thumbnail || '',
+        animationUrl: includeVideo ? creation.videoUrl : undefined,
+        show: creation.showTitle || 'Original',
+        genre: creation.genre || 'Uncategorized',
+        mediaType: creation.videoUrl ? 'video' : 'image',
+        royaltyBps,
+        creatorAddress: wallet.publicKey,
+        userId: user.id,
+        creationId: creation.id,
+        maxSupply: editions,
       });
 
-      if (!prepRes.ok) {
-        throw new Error('Failed to prepare NFT metadata');
-      }
-
-      const { metadata, metadataUri } = await prepRes.json();
-
-      // Step 2: Client-side Metaplex mint
-      setStep('signing');
-
-      if (chain === 'solana') {
-        // Import Metaplex dependencies
-        const { Connection, PublicKey, Transaction, SystemProgram } = await import('@solana/web3.js');
-
-        const connection = new Connection(
-          process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.mainnet-beta.solana.com'
-        );
-
-        const creatorPubkey = new PublicKey(wallet.publicKey);
-
-        // Build mint instruction
-        // In production, uses @metaplex-foundation/js to create NFT
-        // For now, creates a placeholder transaction with metadata storage
-        const transaction = new Transaction();
-
-        // Platform fee (small SOL fee for on-chain storage)
-        const MINT_FEE_LAMPORTS = 10_000_000; // 0.01 SOL
-        const platformWallet = new PublicKey(
-          process.env.NEXT_PUBLIC_PLATFORM_WALLET || '11111111111111111111111111111111'
-        );
-
-        transaction.add(
-          SystemProgram.transfer({
-            fromPubkey: creatorPubkey,
-            toPubkey: platformWallet,
-            lamports: MINT_FEE_LAMPORTS,
-          })
-        );
-
-        // Get recent blockhash
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = creatorPubkey;
-
-        // Sign with Phantom
-        const signed = await (window as any).solana.signTransaction(transaction);
-
-        // Send transaction
-        setStep('confirming');
-        const txSig = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(txSig, 'confirmed');
-
-        // Step 3: Record in backend
-        const verifyRes = await fetch('/api/mint', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'verify',
-            txHash: txSig,
-            chain: 'solana',
-            creationId: creation.id,
-            mintAddress: creatorPubkey.toString(), // In production: actual NFT mint address
-            metadataUri,
-          }),
-        });
-
-        const verifyData = await verifyRes.json();
-
-        // Also record in NFTs table
-        await fetch('/api/nfts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            creationId: creation.id,
-            mintAddress: creatorPubkey.toString(),
-            metadataUri,
-            maxEditions: editions,
-            royaltyBps,
-            solanaTxSig: txSig,
-          }),
-        });
-
-        const result: MintResult = {
-          success: true,
-          mintAddress: creatorPubkey.toString(),
-          txHash: txSig,
-          metadataUri,
-          explorerUrl: verifyData.explorerUrl || `https://solscan.io/tx/${txSig}`,
-        };
-
-        setMintResult(result);
+      if (result.success) {
         setStep('done');
+        setMintResult(result);
         onMintComplete(result);
+      } else {
+        throw new Error(result.error || 'Minting failed');
       }
     } catch (err: any) {
       console.error('Mint failed:', err);
@@ -214,7 +109,7 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
     }
 
     setMinting(false);
-  }, [wallet, chain, creation, royaltyBps, editions, includeVideo, onMintComplete]);
+  }, [wallet, creation, royaltyBps, editions, includeVideo, user.id, onMintComplete]);
 
   // ── Render ────────────────────────────────────────────────────
   return (
@@ -225,7 +120,7 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             💎 Mint as NFT
           </h3>
-          <p className="text-[10px] text-muted">Turn your creation into an on-chain collectible</p>
+          <p className="text-[10px] text-muted">Turn your creation into a real on-chain Solana NFT (Metaplex standard)</p>
         </div>
         <button onClick={() => setAutoMint(!autoMint)}
           className={`w-12 h-6 rounded-full transition-colors relative ${
@@ -249,54 +144,36 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
         /* ── Success ── */
         <div className="text-center py-6">
           <div className="text-6xl mb-3">✅</div>
-          <h3 className="font-display text-2xl text-white mb-2">Minted!</h3>
-          <p className="text-sm text-muted mb-4">Your NFT is now on-chain</p>
+          <h3 className="font-display text-2xl text-white mb-2">Minted on Solana!</h3>
+          <p className="text-sm text-muted mb-4">Your NFT is live on-chain via Metaplex</p>
           <div className="bg-bg2 border border-lime/30 rounded-xl p-4 max-w-sm mx-auto mb-4 space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-muted">Tx Hash</span>
+              <span className="text-muted">Mint Address</span>
               <a href={mintResult.explorerUrl} target="_blank" rel="noopener noreferrer"
                 className="text-cyan font-mono hover:underline">
-                {mintResult.txHash?.slice(0, 12)}... ↗
+                {mintResult.mintAddress?.slice(0, 8)}...{mintResult.mintAddress?.slice(-4)} ↗
               </a>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">Chain</span>
-              <span className="text-white">◎ Solana</span>
+              <span className="text-white">◎ Solana (Metaplex)</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">Royalties</span>
               <span className="text-lime">{(royaltyBps / 100).toFixed(1)}%</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted">Metadata</span>
+              <a href={mintResult.metadataUri} target="_blank" rel="noopener noreferrer"
+                className="text-cyan text-[10px] hover:underline">
+                View JSON ↗
+              </a>
             </div>
           </div>
         </div>
       ) : (
         /* ── Config / In Progress ── */
         <>
-          {/* Chain selector */}
-          <div>
-            <label className="text-[10px] text-muted uppercase mb-2 block">Blockchain</label>
-            <div className="flex gap-2">
-              {([
-                { id: 'solana', label: '◎ Solana', desc: 'Fast, low fees' },
-                { id: 'xrpl', label: '✦ XRPL', desc: 'Coming soon', disabled: true },
-              ] as { id: Chain; label: string; desc: string; disabled?: boolean }[]).map(c => (
-                <button key={c.id}
-                  onClick={() => !c.disabled && setChain(c.id)}
-                  disabled={c.disabled}
-                  className={`flex-1 p-3 rounded-xl text-left transition ${
-                    chain === c.id
-                      ? 'bg-purple-500/10 border border-purple-500'
-                      : c.disabled
-                        ? 'bg-bg3 border border-border opacity-40'
-                        : 'bg-bg2 border border-border hover:border-purple-500/30'
-                  }`}>
-                  <p className="text-sm font-bold text-white">{c.label}</p>
-                  <p className="text-[9px] text-muted">{c.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Edition type */}
           <div>
             <label className="text-[10px] text-muted uppercase mb-2 block">Edition Type</label>
@@ -357,7 +234,7 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
             <div className="flex items-center justify-between bg-bg2 border border-border rounded-xl p-3">
               <div>
                 <p className="text-xs font-bold text-white">Include Video</p>
-                <p className="text-[9px] text-muted">Attach video as animation_url</p>
+                <p className="text-[9px] text-muted">Attach video as animation_url in NFT metadata</p>
               </div>
               <button onClick={() => setIncludeVideo(!includeVideo)}
                 className={`w-10 h-5 rounded-full transition-colors relative ${
@@ -378,8 +255,8 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
               <span className="text-white font-bold truncate max-w-[200px]">{creation.title}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-muted">Chain</span>
-              <span className="text-white">◎ Solana</span>
+              <span className="text-muted">Standard</span>
+              <span className="text-white">◎ Metaplex Token Metadata</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">Editions</span>
@@ -394,8 +271,12 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
               <span className="text-muted">85% creator / 15% platform</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-muted">Mint Fee</span>
-              <span className="text-white">~0.01 SOL (network + storage)</span>
+              <span className="text-muted">Metadata Storage</span>
+              <span className="text-white">AWS S3 (permanent)</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted">Mint Cost</span>
+              <span className="text-white">~0.015 SOL (rent + tx fees)</span>
             </div>
           </div>
 
@@ -411,7 +292,7 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
             <button onClick={wallet.connect}
               className="w-full py-3 rounded-xl text-sm font-bold transition"
               style={{ background: 'linear-gradient(135deg, #9945FF, #14F195)' }}>
-              ◎ Connect Wallet to Mint
+              ◎ Connect Phantom to Mint
             </button>
           ) : (
             <div className="space-y-2">
@@ -422,10 +303,10 @@ export function MintOnPublish({ user, creation, onMintComplete, onSkip }: MintOn
                   ? '#666'
                   : 'linear-gradient(90deg, #8aff00, #14F195)',
                 }}>
-                {step === 'preparing' ? '📋 Preparing metadata...' :
-                 step === 'signing'   ? '✍️ Sign in Phantom...' :
-                 step === 'confirming'? '⏳ Confirming on-chain...' :
-                 '💎 Mint NFT'}
+                {step === 'uploading'   ? '📋 Uploading metadata to S3...' :
+                 step === 'signing'     ? '✍️ Sign in Phantom...' :
+                 step === 'confirming'  ? '⏳ Confirming on-chain...' :
+                 '💎 Mint NFT on Solana'}
               </button>
               <button onClick={onSkip}
                 className="w-full py-2.5 rounded-xl text-xs text-muted hover:text-white transition border border-border hover:border-rip/30">
