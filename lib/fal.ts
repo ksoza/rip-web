@@ -182,7 +182,7 @@ interface FalImageInput {
   [key: string]: any;
 }
 
-interface FalVideoInput {
+export interface FalVideoInput {
   prompt: string;
   image_url?: string;
   duration?: number | string;

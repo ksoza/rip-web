@@ -11,7 +11,7 @@
 // Self-hosted: LTX-2.3 via RunPod Serverless (Option A) or local GPU (Option C)
 // fal.ai: LTX-2.3 (default) → Veo 3.1 → Seedance 2 (fallback chain)
 
-import { falGenerate, FAL_VIDEO_MODELS, type FalModel } from './fal';
+import { falGenerate, FAL_VIDEO_MODELS, type FalModel, type FalVideoInput } from './fal';
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
 import { pollinationsGenerateVideo } from './pollinations';
@@ -463,7 +463,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
   // -- Fall back to fal.ai (paid, best quality + audio sync) ---
   try {
     // Build input with model-specific duration formatting
-    const falInput: Record<string, any> = {
+    const falInput: FalVideoInput = {
       prompt,
       aspect_ratio: input.aspectRatio || '16:9',
       seed: input.seed,
@@ -483,7 +483,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
       const fallbackKey = AUDIO_CAPABLE_MODELS.find(k => k !== modelKey && FAL_VIDEO_MODELS[k]);
       if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
         console.log(`[scene-pipeline] ${modelKey} returned no video, falling back to ${fallbackKey}`);
-        const fbInput: Record<string, any> = {
+        const fbInput: FalVideoInput = {
           prompt,
           aspect_ratio: input.aspectRatio || '16:9',
           seed: input.seed,
@@ -538,7 +538,7 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
     if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
       try {
         console.log(`[scene-pipeline] ${modelKey} failed (${errorMsg}), falling back to ${fallbackKey}`);
-        const fbInput: Record<string, any> = {
+        const fbInput: FalVideoInput = {
           prompt,
           aspect_ratio: input.aspectRatio || '16:9',
           seed: input.seed,
