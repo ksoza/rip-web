@@ -551,32 +551,43 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
   }
 
   // -- Try AWS Bedrock Nova Reel (free with AWS account, async) ---
-  if (opts?.asyncFal && isBedrockAvailable()) {
-    try {
-      console.log('[scene-pipeline] Trying AWS Bedrock Nova Reel (async, $0 extra cost)...');
-      const bedrockJob = await submitBedrockVideo(prompt, {
-        durationSeconds: 6,
-        dimension: '1280x720',
-        seed: input.seed,
-      });
-      console.log(`[scene-pipeline] Bedrock job submitted: ${bedrockJob.invocationArn}`);
-      return {
-        success: false, // Not done yet
-        model: 'nova-reel',
-        audioSynced: false,
-        prompt,
-        error: '__QUEUED__',
-        providerUsed: 'bedrock',
-        bedrockJob: {
-          invocationArn: bedrockJob.invocationArn,
-          s3OutputPrefix: bedrockJob.s3OutputPrefix,
-          modelId: bedrockJob.modelId,
-        },
-      };
-    } catch (bedrockErr) {
-      const msg = bedrockErr instanceof Error ? bedrockErr.message : String(bedrockErr);
-      console.warn(`[scene-pipeline] Bedrock Nova Reel failed: ${msg}`);
-      // Fall through to fal.ai
+  let bedrockError = '';
+  if (opts?.asyncFal) {
+    const bedrockAvail = isBedrockAvailable();
+    console.log(`[scene-pipeline] Bedrock available: ${bedrockAvail}, asyncFal: ${opts?.asyncFal}`);
+    if (bedrockAvail) {
+      try {
+        console.log('[scene-pipeline] Trying AWS Bedrock Nova Reel (async, $0 extra cost)...');
+        console.log(`[scene-pipeline] BEDROCK_ACCESS_KEY_ID: ${process.env.BEDROCK_ACCESS_KEY_ID ? 'SET' : 'NOT SET'}`);
+        console.log(`[scene-pipeline] BEDROCK_REGION: ${process.env.BEDROCK_REGION || 'NOT SET'}`);
+        console.log(`[scene-pipeline] BEDROCK_VIDEO_BUCKET: ${process.env.BEDROCK_VIDEO_BUCKET || 'NOT SET'}`);
+        const bedrockJob = await submitBedrockVideo(prompt, {
+          durationSeconds: 6,
+          dimension: '1280x720',
+          seed: input.seed,
+        });
+        console.log(`[scene-pipeline] Bedrock job submitted: ${bedrockJob.invocationArn}`);
+        return {
+          success: false, // Not done yet
+          model: 'nova-reel',
+          audioSynced: false,
+          prompt,
+          error: '__QUEUED__',
+          providerUsed: 'bedrock',
+          bedrockJob: {
+            invocationArn: bedrockJob.invocationArn,
+            s3OutputPrefix: bedrockJob.s3OutputPrefix,
+            modelId: bedrockJob.modelId,
+          },
+        };
+      } catch (bedrockErr) {
+        const msg = bedrockErr instanceof Error ? bedrockErr.message : String(bedrockErr);
+        bedrockError = `Bedrock Nova Reel: ${msg}`;
+        console.error(`[scene-pipeline] Bedrock Nova Reel failed: ${msg}`);
+        // Fall through to fal.ai
+      }
+    } else {
+      bedrockError = 'Bedrock: credentials not configured';
     }
   }
 
@@ -730,7 +741,7 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
           model: modelKey,
           audioSynced: false,
           prompt,
-          error: `All providers failed. Self-hosted: unavailable. Pollinations: unavailable. HuggingFace: ${process.env.HF_TOKEN ? 'unavailable' : 'no HF_TOKEN set'}. ${modelKey}: ${errorMsg}. ${fallbackKey}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+          error: `All providers failed.${bedrockError ? ` ${bedrockError}.` : ''} Self-hosted: unavailable. Pollinations: unavailable. HuggingFace: ${process.env.HF_TOKEN ? 'unavailable' : 'no HF_TOKEN set'}. ${modelKey}: ${errorMsg}. ${fallbackKey}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
           providerUsed: 'fal',
         };
       }
