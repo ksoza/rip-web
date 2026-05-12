@@ -25,6 +25,9 @@ import { RxMoviesFeed } from './discover/RxMoviesFeed';
 // Publish (Phase 3)
 import { PublishFlow } from './publish/PublishFlow';
 
+// Community (Discord Hub)
+import { DiscordHub } from './community/DiscordHub';
+
 // Referral (Phase 6)
 import { ReferralBanner } from './referral/ReferralBanner';
 
@@ -308,6 +311,13 @@ export function AppShell({ user }: { user: User | null }) {
             user={user}
             onNavigateToStudio={handleNavigateToStudio}
           />
+        );
+      case 'community':
+        return user ? <DiscordHub user={user} /> : (
+          <div className="text-center py-20">
+            <p className="text-2xl mb-2">💬</p>
+            <p className="text-muted">Sign in to access the community hub</p>
+          </div>
         );
       case 'wallet':
         return user ? <WalletTab user={user} /> : null;

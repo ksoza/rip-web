@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { createPortal } from 'react-dom';
 import type { User } from '@supabase/supabase-js';
 
-export type PageId = 'remixr' | 'studio' | 'rxtv' | 'rxmovies' | 'wallet' | 'settings';
+export type PageId = 'remixr' | 'studio' | 'rxtv' | 'rxmovies' | 'community' | 'wallet' | 'settings';
 
 export interface NavPage {
   id: PageId;
@@ -23,6 +23,7 @@ export const PAGES: NavPage[] = [
   { id: 'studio',    label: 'ReMix Studio',  icon: '🎨', color: '#a855f7', requiresAuth: true,  description: 'Your creation workspace' },
   { id: 'rxtv',      label: 'RxTV',          icon: '📺', color: '#00d4ff', requiresAuth: false, description: 'Remixed TV content' },
   { id: 'rxmovies',  label: 'RxMovies',      icon: '🎥', color: '#facc15', requiresAuth: false, description: 'Remixed movie content' },
+  { id: 'community', label: 'Community',      icon: '💬', color: '#5865F2', requiresAuth: false, description: 'Discord hub & social' },
   { id: 'wallet',    label: 'Wallet',        icon: '💎', color: '#8aff00', requiresAuth: true,  description: 'NFTs, $RIP & transactions' },
   { id: 'settings',  label: 'Settings',      icon: '⚙️', color: '#888',    requiresAuth: true,  description: 'Profile & preferences' },
 ];
