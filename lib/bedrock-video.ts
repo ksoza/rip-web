@@ -1,18 +1,18 @@
 // lib/bedrock-video.ts
 // AWS Bedrock Nova Reel — async text-to-video generation
-// Free with AWS account, billed to AWS (not a separate vendor)
 //
-// Flow:
-//   1. submitBedrockVideo() → starts async invoke → returns invocation ARN
-//   2. checkBedrockVideo() → polls status → returns video URL when done
+// Content-filter strategy (v4):
+//   The assembled prompt from buildScenePrompt() includes show metadata
+//   (visual style, audio tone, character descriptions) that is PACKED with
+//   filter-trigger words like "horror", "armed", "bloodied", "infection".
+//   We pre-process the prompt to strip show boilerplate and keep only the
+//   actual scene-specific visuals, then try a multi-level fallback.
 //
-// Nova Reel generates 6-second videos at 1280x720 or 1920x1080, 24fps.
-// Output is stored in S3.
-//
-// Content-filter strategy (v3):
-//   1. Try raw prompt first — most scenes DON'T actually get blocked
-//   2. On content-filter rejection → LLM rewrite via Groq (preserves visual uniqueness)
-//   3. If LLM rewrite also blocked → ultra-safe extraction with scene fingerprint
+//   1. Pre-process: strip show metadata, keep scene description + safe char details
+//   2. Try cleaned prompt raw
+//   3. On block → LLM rewrite via Groq (preserves visual uniqueness)
+//   4. On block → basicSanitize the LLM rewrite
+//   5. On block → safe cinematic fallback with scene-specific color/setting cues
 
 import {
   BedrockRuntimeClient,
@@ -22,35 +22,114 @@ import {
 import { S3Client, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-// ── LLM-based prompt rewriting for Amazon content filters ────────────
+// ── Prompt pre-processing ────────────────────────────────────────
+// Strip show-profile boilerplate that's packed with filter triggers.
+// Keep the actual scene description and safe character visual details.
+
+function preProcessPrompt(prompt: string): string {
+  let cleaned = prompt;
+
+  // 1. Strip "X visual style, ..." prefix (show visualStyle)
+  //    Matches: "Breaking Bad visual style, desaturated desert..." etc.
+  cleaned = cleaned.replace(
+    /^[A-Za-z\s':.-]+visual style,?\s*[^.]*\.\s*/i,
+    '',
+  );
+  // Also handle "faithful recreation of X visual style..."
+  cleaned = cleaned.replace(
+    /faithful recreation of [^,]+,?\s*matching[^.]*\.\s*/i,
+    '',
+  );
+
+  // 2. Strip "Ambient audio: ..." (show audioTone)
+  cleaned = cleaned.replace(/\.?\s*Ambient audio:\s*[^.]*\.?\s*/gi, '. ');
+
+  // 3. Strip voice descriptions in parentheses within dialogue
+  //    "(gruff, protective, dad energy, yelling then tender)"
+  cleaned = cleaned.replace(/\([^)]*voice[^)]*\)/gi, '');
+  cleaned = cleaned.replace(/\([^)]*accent[^)]*\)/gi, '');
+  cleaned = cleaned.replace(/\([^)]*delivery[^)]*\)/gi, '');
+  cleaned = cleaned.replace(/\([^)]*speaking[^)]*\)/gi, '');
+  cleaned = cleaned.replace(/\([^)]*monologue[^)]*\)/gi, '');
+
+  // 4. Strip "Characters speaking in the scene:" dialogue section
+  //    Bedrock is making VIDEO not audio — dialogue descriptions are noise
+  cleaned = cleaned.replace(/\.?\s*Characters speaking in the scene:[\s\S]*/i, '');
+
+  // 5. Strip dangerous character visual details but keep safe ones
+  //    "always armed" → remove, "flannel shirt, graying beard" → keep
+  const DANGER_PHRASES = [
+    /always armed/gi,
+    /switchblade/gi,
+    /bite scar[^,.]*/gi,
+    /nosebleed when using powers/gi,
+    /bat with nails/gi,
+    /often bruised or (bloodied|disheveled)/gi,
+    /razor blade/gi,
+    /facial scar/gi,
+    /before violence/gi,
+    /terrifying/gi,
+    /menacing/gi,
+    /grotesque/gi,
+    /fungal infection[^,.]*/gi,
+    /supernatural horror/gi,
+    /infected clicking[^,.]*/gi,
+    /sword clashing/gi,
+    /dragon roars/gi,
+    /kill list/gi,
+    /rage to tears/gi,
+    /unpredictable rage/gi,
+    /shotgun/gi,
+    /whistling while walking/gi,
+  ];
+  for (const pattern of DANGER_PHRASES) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+
+  // 6. Now apply word-level sanitization for remaining trigger words
+  cleaned = basicSanitize(cleaned);
+
+  // 7. Clean up whitespace artifacts
+  cleaned = cleaned
+    .replace(/,\s*,/g, ',')
+    .replace(/\.\s*\./g, '.')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^\s*[,.\s]+/, '')
+    .replace(/[,.\s]+$/, '')
+    .trim();
+
+  // 8. Prefix with cinematic framing
+  if (cleaned.length < 30) {
+    return 'Cinematic establishing shot, professional cinematography, dramatic lighting, detailed environment.';
+  }
+
+  return `Cinematic scene, professional cinematography. ${cleaned}`.slice(0, 512);
+}
+
+// ── LLM-based prompt rewriting ───────────────────────────────────
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
-const REWRITE_SYSTEM_PROMPT = `You rewrite video scene prompts to pass Amazon's content filter while keeping EVERY visual detail unique.
+const REWRITE_SYSTEM_PROMPT = `You rewrite video scene prompts to pass Amazon Nova Reel's strict content filter.
 
-CRITICAL RULES:
-1. PRESERVE all visual specifics: exact setting details, character descriptions, clothing, props, positions, movements, lighting angles, weather, colors, architecture, camera angles
-2. PRESERVE the scene's unique "fingerprint" — what makes THIS scene look different from every other scene
-3. REMOVE ONLY the blocked content categories: explicit violence, weapons, gore, nudity, drugs, profanity, death references
-4. REPLACE removed elements with visually interesting alternatives that maintain the scene's mood and energy:
-   - fight → tense confrontation, dramatic face-off, characters circling each other
-   - gun → pointing/gesturing forcefully
-   - blood → crimson lighting, red reflections, scarlet atmosphere
-   - death → character falling, collapsing, fading
-   - horror → noir, suspense, mystery, eerie atmosphere
-5. Keep character-specific visual details: "tall man in a leather jacket" stays exactly that
-6. Keep environment-specific details: "neon-lit alley with steam rising from grates" stays exactly that
-7. Output ONLY the rewritten prompt. No explanation. Under 512 characters.
-8. NEVER output a generic cinematic description — the rewrite must be as specific as the original`;
+YOUR JOB: Take a scene description and rewrite it as a PURE VISUAL description safe for content filters.
 
-/**
- * Use Groq to intelligently rewrite a prompt for Bedrock safety.
- * Only called when the raw prompt was actually blocked by the content filter.
- */
+RULES:
+1. KEEP all visual specifics: exact setting details, character clothing/hair/build, props, positions, camera angles, lighting, weather, colors, architecture
+2. KEEP what makes THIS scene visually UNIQUE — setting, character positions, time of day, specific objects
+3. REMOVE: any violence, weapons, fighting, death, horror, drugs, nudity, profanity, crime references, supernatural evil
+4. REPLACE removed elements with dramatic but safe equivalents:
+   - fight/attack → intense face-to-face confrontation, characters staring each other down
+   - blood → deep red lighting, crimson atmosphere
+   - horror → moody suspense, noir atmosphere, dramatic shadows
+   - weapons → characters gesturing forcefully, pointing
+5. Output ONLY the rewritten visual description. No explanation. Under 450 characters.
+6. Do NOT output generic descriptions. Be SPECIFIC to this scene.
+7. Focus on what a CAMERA would capture — composition, colors, movement, depth.`;
+
 async function rewritePromptForBedrock(prompt: string): Promise<string> {
   if (!GROQ_API_KEY || GROQ_API_KEY.length < 10) {
-    console.log('[bedrock-video] Groq not configured, using basic sanitizer');
     return basicSanitize(prompt);
   }
 
@@ -67,100 +146,72 @@ async function rewritePromptForBedrock(prompt: string): Promise<string> {
           { role: 'system', content: REWRITE_SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `Rewrite this scene prompt to pass content filters while keeping ALL visual details unique:\n\n${prompt.slice(0, 1500)}`,
+            content: `Rewrite as a safe visual-only video prompt preserving all unique details:\n\n${prompt.slice(0, 1500)}`,
           },
         ],
-        max_tokens: 400,
-        temperature: 0.7, // Higher temp for more variety between scenes
+        max_tokens: 350,
+        temperature: 0.7,
       }),
       signal: AbortSignal.timeout(8000),
     });
 
-    if (!res.ok) {
-      console.warn(`[bedrock-video] Groq rewrite failed (${res.status}), falling back`);
-      return basicSanitize(prompt);
-    }
+    if (!res.ok) return basicSanitize(prompt);
 
     const data = await res.json();
     const rewritten = data.choices?.[0]?.message?.content?.trim();
-    if (!rewritten || rewritten.length < 20) {
-      console.warn('[bedrock-video] Groq returned empty rewrite, falling back');
-      return basicSanitize(prompt);
-    }
+    if (!rewritten || rewritten.length < 20) return basicSanitize(prompt);
 
-    console.log(`[bedrock-video] LLM rewrite (${rewritten.length} chars): ${rewritten.slice(0, 150)}...`);
+    console.log(`[bedrock-video] LLM rewrite: ${rewritten.slice(0, 150)}...`);
     return rewritten.slice(0, 512);
-  } catch (err) {
-    console.warn('[bedrock-video] Groq rewrite error, falling back:', err);
+  } catch {
     return basicSanitize(prompt);
   }
 }
 
-// ── Quick content pre-check ─────────────────────────────────────
-// Fast local check for words very likely to trigger Bedrock filter.
-// If any are found, go straight to LLM rewrite (skip the raw attempt).
+// ── Word-level sanitizer ─────────────────────────────────────────
 
-const HIGH_RISK_WORDS = new Set([
-  'blood', 'bloody', 'gore', 'gory', 'kill', 'killing', 'murder', 'murdered',
-  'dead', 'death', 'die', 'dying', 'corpse', 'corpses',
-  'zombie', 'zombies', 'undead', 'walker', 'walkers',
-  'gun', 'guns', 'rifle', 'pistol', 'shotgun', 'weapon', 'weapons',
-  'sword', 'knife', 'blade', 'axe', 'machete',
-  'explosion', 'explode', 'bomb', 'grenade',
-  'nude', 'naked', 'sexual',
-  'torture', 'torment', 'execution',
-  'suicide', 'overdose',
-  'demon', 'satan', 'satanic',
-  'skull', 'skeleton', 'coffin', 'grave', 'graveyard', 'cemetery',
-]);
-
-function hasHighRiskContent(prompt: string): boolean {
-  const words = prompt.toLowerCase().split(/[\s,.\-;:!?'"()]+/);
-  return words.some(w => HIGH_RISK_WORDS.has(w));
-}
-
-// ── Basic word-replacement sanitizer (fallback) ────────────
 const REPLACEMENT_MAP: Record<string, string> = {
-  'blood': 'crimson mist', 'bloody': 'crimson-stained', 'bleeding': 'injured',
+  'blood': 'crimson light', 'bloody': 'crimson', 'bleeding': 'injured',
   'gore': 'debris', 'gory': 'intense',
   'kill': 'confront', 'killing': 'confronting', 'murder': 'confrontation',
   'dead': 'fallen', 'death': 'dramatic ending', 'die': 'fall', 'dying': 'fading',
-  'corpse': 'still figure', 'zombie': 'gaunt shambling figure',
-  'zombies': 'gaunt shambling figures', 'undead': 'pale lurching figures',
-  'gun': 'metallic object', 'guns': 'metallic objects',
-  'rifle': 'long metallic object', 'pistol': 'small metallic device',
+  'corpse': 'still figure', 'corpses': 'still figures',
+  'zombie': 'gaunt figure', 'zombies': 'gaunt figures', 'undead': 'pale figures',
+  'gun': 'metal object', 'guns': 'metal objects',
+  'rifle': 'long object', 'pistol': 'small device',
   'weapon': 'tool', 'weapons': 'tools', 'sword': 'gleaming steel',
-  'knife': 'sharp implement', 'blade': 'gleaming edge', 'axe': 'heavy tool',
-  'explosion': 'brilliant flash of light', 'explode': 'burst apart',
-  'bomb': 'device', 'grenade': 'small canister',
+  'knife': 'sharp tool', 'blade': 'gleaming edge', 'axe': 'heavy tool',
+  'explosion': 'flash of light', 'explode': 'burst apart',
+  'bomb': 'device', 'grenade': 'canister',
   'horror': 'suspense', 'terrifying': 'intense', 'gruesome': 'stark',
   'violent': 'intense', 'violence': 'tension', 'brutal': 'powerful',
-  'aggressive': 'forceful', 'attack': 'charge forward', 'attacking': 'charging',
-  'fight': 'tense standoff', 'fighting': 'confronting', 'combat': 'confrontation',
+  'aggressive': 'forceful', 'attack': 'confront', 'attacking': 'confronting',
+  'fight': 'standoff', 'fighting': 'confronting', 'combat': 'confrontation',
   'war': 'conflict', 'battle': 'clash', 'destroy': 'shatter',
-  'drug': 'substance', 'drugs': 'substances', 'meth': 'crystalline compound',
-  'cocaine': 'white powder', 'overdose': 'collapse',
-  'demon': 'dark imposing figure', 'devil': 'shadowy presence',
+  'drug': 'substance', 'drugs': 'substances',
+  'demon': 'dark figure', 'devil': 'shadowy presence',
   'hell': 'underworld', 'satan': 'dark lord', 'evil': 'menacing',
   'sinister': 'ominous', 'wicked': 'treacherous',
-  'coffin': 'ornate wooden box', 'grave': 'stone marker', 'graveyard': 'misty field of stones',
-  'cemetery': 'moonlit field', 'tomb': 'stone chamber', 'funeral': 'solemn gathering',
+  'coffin': 'ornate box', 'grave': 'stone marker',
+  'graveyard': 'misty field', 'cemetery': 'moonlit field',
+  'tomb': 'stone chamber', 'funeral': 'solemn gathering',
   'skull': 'pale mask', 'skeleton': 'bony silhouette', 'bones': 'remains',
-  'flesh': 'skin', 'rotting': 'weathered', 'decay': 'deterioration',
   'ghost': 'translucent figure', 'ghostly': 'ethereal', 'phantom': 'apparition',
   'haunted': 'atmospheric', 'nightmare': 'surreal dream',
-  'fear': 'dread', 'scream': 'cry out', 'screaming': 'calling out',
+  'scream': 'cry out', 'screaming': 'calling out',
   'criminal': 'mysterious figure', 'crime': 'mystery', 'mafia': 'organization',
   'gang': 'group', 'gangster': 'sharp-dressed man', 'thug': 'imposing figure',
   'prison': 'concrete facility', 'jail': 'holding facility',
-  'torture': 'intense interrogation', 'torment': 'anguish',
-  'suffer': 'endure', 'suffering': 'hardship',
+  'torture': 'interrogation', 'torment': 'anguish',
   'walker': 'shambling figure', 'walkers': 'shambling figures',
   'naked': 'bare', 'nude': 'unclothed', 'sexual': 'intimate',
   'suicide': 'despair', 'abuse': 'mistreatment',
   'poison': 'dark liquid', 'toxic': 'hazardous', 'deadly': 'dangerous',
   'lethal': 'potent', 'execution': 'final moment',
-  'shotgun': 'heavy metal tool', 'machete': 'long blade tool',
+  'infected': 'affected', 'infection': 'spread', 'fungal': 'organic growth',
+  'armed': 'equipped', 'scar': 'mark', 'scarred': 'marked',
+  'rage': 'intensity', 'fury': 'passion', 'wrath': 'force',
+  'flesh': 'skin', 'rotting': 'weathered', 'decay': 'aging',
 };
 
 function basicSanitize(prompt: string): string {
@@ -169,9 +220,10 @@ function basicSanitize(prompt: string): string {
     const regex = new RegExp(`\\b${word}\\b`, 'gi');
     sanitized = sanitized.replace(regex, replacement);
   }
-  sanitized = sanitized.replace(/\s{2,}/g, ' ').replace(/\.\s*\./g, '.').trim();
-  return sanitized.slice(0, 512);
+  return sanitized.replace(/\s{2,}/g, ' ').replace(/\.\s*\./g, '.').trim();
 }
+
+// ── Bedrock client setup ─────────────────────────────────────────
 
 const REGION = process.env.BEDROCK_REGION || process.env.AWS_REGION || 'us-east-1';
 const S3_BUCKET = process.env.BEDROCK_VIDEO_BUCKET || 'rip-web-video-output';
@@ -180,26 +232,18 @@ const MODEL_ID = 'amazon.nova-reel-v1:0';
 function getCredentials() {
   const accessKeyId = process.env.BEDROCK_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
   const secretAccessKey = process.env.BEDROCK_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
-  if (accessKeyId && secretAccessKey) {
-    return { accessKeyId, secretAccessKey };
-  }
+  if (accessKeyId && secretAccessKey) return { accessKeyId, secretAccessKey };
   return undefined;
 }
 
 function getBedrockClient(): BedrockRuntimeClient {
   const creds = getCredentials();
-  return new BedrockRuntimeClient({
-    region: REGION,
-    ...(creds ? { credentials: creds } : {}),
-  });
+  return new BedrockRuntimeClient({ region: REGION, ...(creds ? { credentials: creds } : {}) });
 }
 
 function getS3Client(): S3Client {
   const creds = getCredentials();
-  return new S3Client({
-    region: REGION,
-    ...(creds ? { credentials: creds } : {}),
-  });
+  return new S3Client({ region: REGION, ...(creds ? { credentials: creds } : {}) });
 }
 
 export interface BedrockVideoJob {
@@ -214,15 +258,25 @@ export interface BedrockVideoResult {
   error?: string;
 }
 
+function isContentFilterError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('content filter') ||
+    lower.includes('blocked') ||
+    lower.includes('input validation failed') ||
+    lower.includes('content moderation')
+  );
+}
+
 /**
  * Submit a text-to-video job to Nova Reel.
- * 
- * Strategy (v3 — maximize scene uniqueness):
- *   1. Quick local check for high-risk words
- *      - If clean → submit raw prompt (maximum fidelity)
- *      - If risky → do basic word-swap sanitize and try that
- *   2. On content-filter block → LLM rewrite via Groq (preserves uniqueness)
- *   3. On second block → ultra-safe basicSanitize() of the LLM rewrite
+ *
+ * Multi-level approach:
+ *   1. Pre-process: strip show metadata, sanitize words → try that
+ *   2. On block → LLM rewrite via Groq (scene-specific, visual only)
+ *   3. On block → basicSanitize the LLM rewrite
+ *   4. On block → ultra-safe generic with scene color/setting cues
  */
 export async function submitBedrockVideo(
   prompt: string,
@@ -241,9 +295,7 @@ export async function submitBedrockVideo(
     fps: 24,
     dimension: opts.dimension || '1280x720',
   };
-  if (opts.seed !== undefined) {
-    videoConfig.seed = opts.seed;
-  }
+  if (opts.seed !== undefined) videoConfig.seed = opts.seed;
 
   const makeCmd = (text: string) =>
     new StartAsyncInvokeCommand({
@@ -254,130 +306,142 @@ export async function submitBedrockVideo(
         videoGenerationConfig: videoConfig,
       } as any,
       outputDataConfig: {
-        s3OutputDataConfig: {
-          s3Uri: `s3://${S3_BUCKET}/${s3Prefix}`,
-        },
+        s3OutputDataConfig: { s3Uri: `s3://${S3_BUCKET}/${s3Prefix}` },
       },
     });
 
-  function isContentFilterError(err: unknown): boolean {
-    const msg = err instanceof Error ? err.message : String(err);
-    const lower = msg.toLowerCase();
-    return (
-      lower.includes('content filter') ||
-      lower.includes('blocked') ||
-      lower.includes('input validation failed') ||
-      lower.includes('content moderation')
-    );
-  }
-
-  const risky = hasHighRiskContent(prompt);
-  console.log(`[bedrock-video] Prompt (${prompt.length} chars, risky=${risky}): ${prompt.slice(0, 150)}...`);
-
-  // ── Attempt 1: raw prompt (if clean) or basic sanitize (if risky) ──
-  const attempt1Prompt = risky ? basicSanitize(prompt) : prompt.slice(0, 512);
-  console.log(`[bedrock-video] Attempt 1 (${risky ? 'basic-sanitized' : 'raw'}): ${attempt1Prompt.slice(0, 120)}...`);
-
-  try {
-    const resp = await client.send(makeCmd(attempt1Prompt));
-    if (resp.invocationArn) {
-      console.log(`[bedrock-video] ✓ Attempt 1 accepted`);
-      return { invocationArn: resp.invocationArn, s3OutputPrefix: s3Prefix, modelId: MODEL_ID };
+  async function trySubmit(text: string, label: string): Promise<BedrockVideoJob | null> {
+    try {
+      console.log(`[bedrock-video] ${label} (${text.length} chars): ${text.slice(0, 150)}...`);
+      const resp = await client.send(makeCmd(text));
+      if (resp.invocationArn) {
+        console.log(`[bedrock-video] ✓ ${label} accepted`);
+        return { invocationArn: resp.invocationArn, s3OutputPrefix: s3Prefix, modelId: MODEL_ID };
+      }
+    } catch (err) {
+      if (!isContentFilterError(err)) throw err;
+      console.log(`[bedrock-video] ✗ ${label} blocked by content filter`);
     }
-  } catch (err1) {
-    if (!isContentFilterError(err1)) throw err1;
-    console.log(`[bedrock-video] Attempt 1 blocked by content filter`);
+    return null;
   }
+
+  // ── Attempt 1: Pre-processed prompt (strip show metadata + word sanitize) ──
+  const preprocessed = preProcessPrompt(prompt);
+  let result = await trySubmit(preprocessed, 'Attempt 1 (pre-processed)');
+  if (result) return result;
 
   // ── Attempt 2: LLM rewrite via Groq ──
   const llmRewrite = await rewritePromptForBedrock(prompt);
-  console.log(`[bedrock-video] Attempt 2 (LLM rewrite): ${llmRewrite.slice(0, 120)}...`);
+  result = await trySubmit(llmRewrite, 'Attempt 2 (LLM rewrite)');
+  if (result) return result;
 
-  try {
-    const resp = await client.send(makeCmd(llmRewrite));
-    if (resp.invocationArn) {
-      console.log(`[bedrock-video] ✓ Attempt 2 accepted (LLM rewrite)`);
-      return { invocationArn: resp.invocationArn, s3OutputPrefix: s3Prefix, modelId: MODEL_ID };
-    }
-  } catch (err2) {
-    if (!isContentFilterError(err2)) throw err2;
-    console.log(`[bedrock-video] Attempt 2 blocked — trying ultra-safe`);
-  }
+  // ── Attempt 3: basicSanitize the LLM rewrite ──
+  const sanitizedLlm = basicSanitize(llmRewrite);
+  result = await trySubmit(
+    `Cinematic scene, professional cinematography. ${sanitizedLlm}`.slice(0, 512),
+    'Attempt 3 (sanitized LLM)',
+  );
+  if (result) return result;
 
-  // ── Attempt 3: basic sanitize the LLM rewrite (belt + suspenders) ──
-  const ultraSafe = basicSanitize(llmRewrite);
-  console.log(`[bedrock-video] Attempt 3 (sanitized LLM rewrite): ${ultraSafe.slice(0, 120)}...`);
+  // ── Attempt 4: Ultra-safe cinematic with scene color/setting cues ──
+  const ultraSafe = buildUltraSafePrompt(prompt);
+  result = await trySubmit(ultraSafe, 'Attempt 4 (ultra-safe)');
+  if (result) return result;
 
-  try {
-    const resp = await client.send(makeCmd(ultraSafe));
-    if (resp.invocationArn) {
-      console.log(`[bedrock-video] ✓ Attempt 3 accepted (ultra-safe)`);
-      return { invocationArn: resp.invocationArn, s3OutputPrefix: s3Prefix, modelId: MODEL_ID };
-    }
-  } catch (err3) {
-    if (!isContentFilterError(err3)) throw err3;
-    console.log(`[bedrock-video] Attempt 3 also blocked`);
-  }
-
-  // ── Attempt 4: scene-fingerprint extraction (last resort, still unique) ──
-  const fingerprint = extractSceneFingerprint(prompt);
-  console.log(`[bedrock-video] Attempt 4 (fingerprint): ${fingerprint.slice(0, 120)}...`);
-
-  const resp = await client.send(makeCmd(fingerprint));
-  if (!resp.invocationArn) {
-    throw new Error('Bedrock did not return an invocation ARN after 4 attempts');
-  }
-  console.log(`[bedrock-video] ✓ Attempt 4 accepted (fingerprint)`);
-  return { invocationArn: resp.invocationArn, s3OutputPrefix: s3Prefix, modelId: MODEL_ID };
+  // All attempts failed
+  throw new Error(
+    'This request has been blocked by our content filters. ' +
+    'The scene content is too sensitive for Amazon Nova Reel even after rewriting. ' +
+    'Try describing the scene with less violent/dark imagery.',
+  );
 }
 
 /**
- * Extract a unique "fingerprint" from a prompt — last resort that produces
- * visually distinct output for each scene by parsing out every concrete detail.
- * Unlike the old extractVisualEssence, this preserves the SPECIFIC nouns and
- * adjectives from the original prompt.
+ * Build an ultra-safe prompt that still extracts unique visual cues from the original.
+ * Parses out colors, settings, lighting, and composition without any content-triggering words.
  */
-function extractSceneFingerprint(prompt: string): string {
-  // Extract concrete nouns, adjectives, and setting details from the original
-  // by removing only the dangerous words and keeping everything else
-  let cleaned = prompt;
+function buildUltraSafePrompt(original: string): string {
+  const lower = original.toLowerCase();
+  const cues: string[] = ['Cinematic establishing shot, professional film quality'];
 
-  // Remove only the most dangerous words, keep everything else
-  const DANGER_WORDS = [
-    'blood', 'bloody', 'gore', 'kill', 'killing', 'murder', 'dead', 'death',
-    'die', 'dying', 'corpse', 'zombie', 'zombies', 'undead', 'gun', 'guns',
-    'rifle', 'pistol', 'shotgun', 'weapon', 'weapons', 'sword', 'knife',
-    'blade', 'axe', 'machete', 'explosion', 'explode', 'bomb', 'grenade',
-    'nude', 'naked', 'sexual', 'torture', 'execution', 'suicide', 'demon',
-    'satan', 'satanic', 'skull', 'skeleton', 'coffin', 'graveyard', 'cemetery',
-    'walker', 'walkers', 'fight', 'fighting', 'attack', 'attacking', 'combat',
-    'war', 'battle', 'horror', 'gruesome', 'brutal', 'violent', 'violence',
-    'scream', 'screaming', 'corpses', 'grave', 'funeral',
+  // Time of day / lighting
+  if (lower.includes('night') || lower.includes('dark') || lower.includes('midnight')) {
+    cues.push('nighttime, moonlit atmosphere with deep blue shadows');
+  } else if (lower.includes('dawn') || lower.includes('sunrise') || lower.includes('morning')) {
+    cues.push('golden dawn light breaking through, warm orange atmosphere');
+  } else if (lower.includes('dusk') || lower.includes('sunset') || lower.includes('evening')) {
+    cues.push('dusk with purple-orange sky, long dramatic shadows');
+  } else if (lower.includes('rain') || lower.includes('storm')) {
+    cues.push('overcast dramatic sky, rain-slicked surfaces reflecting light');
+  } else {
+    cues.push('dramatic natural lighting with volumetric rays');
+  }
+
+  // Setting — extract the FIRST concrete location from the prompt
+  const settingPatterns = [
+    { pattern: /(?:in|at|inside|outside)\s+(?:a|the|an)\s+([a-z\s]+?)(?:\.|,|$)/i, prefix: '' },
+    { pattern: /(city|street|alley|road|highway|bridge)/i, prefix: 'urban ' },
+    { pattern: /(forest|woods|tree|jungle|garden)/i, prefix: 'lush ' },
+    { pattern: /(desert|sand|wasteland|dry)/i, prefix: 'vast ' },
+    { pattern: /(ocean|sea|water|river|lake|beach)/i, prefix: 'expansive ' },
+    { pattern: /(mountain|cliff|peak|hill|valley)/i, prefix: 'dramatic ' },
+    { pattern: /(office|room|house|apartment|building|lobby)/i, prefix: 'detailed interior ' },
+    { pattern: /(lab|hospital|clinic|facility)/i, prefix: 'sterile ' },
+    { pattern: /(bar|restaurant|diner|cafe)/i, prefix: 'atmospheric ' },
   ];
 
-  for (const word of DANGER_WORDS) {
-    cleaned = cleaned.replace(new RegExp(`\\b${word}s?\\b`, 'gi'), '');
+  let settingFound = false;
+  for (const { pattern, prefix } of settingPatterns) {
+    const match = lower.match(pattern);
+    if (match) {
+      cues.push(`${prefix}${match[0]} setting, richly detailed production design`);
+      settingFound = true;
+      break;
+    }
+  }
+  if (!settingFound) {
+    cues.push('richly detailed environment with layered depth');
   }
 
-  // Remove any doubled spaces / empty phrases
-  cleaned = cleaned
-    .replace(/\s{2,}/g, ' ')
-    .replace(/,\s*,/g, ',')
-    .replace(/\.\s*\./g, '.')
-    .replace(/^\s*[,.\s]+/, '')
-    .trim();
-
-  if (cleaned.length < 30) {
-    // If almost everything was stripped, extract any safe visual words from original
-    const safeWords = prompt
-      .toLowerCase()
-      .split(/[\s,.\-;:!?'"()]+/)
-      .filter(w => w.length > 3 && !DANGER_WORDS.includes(w))
-      .slice(0, 15);
-    cleaned = `Cinematic scene featuring: ${safeWords.join(', ')}`;
+  // Color palette from descriptive words
+  if (lower.includes('neon') || lower.includes('fluorescent') || lower.includes('glow')) {
+    cues.push('neon-colored lighting, vibrant glowing accents');
+  } else if (lower.includes('warm') || lower.includes('golden') || lower.includes('amber') || lower.includes('fire') || lower.includes('flame')) {
+    cues.push('warm amber and golden tones, firelight reflections');
+  } else if (lower.includes('cold') || lower.includes('blue') || lower.includes('ice') || lower.includes('winter')) {
+    cues.push('cool blue and teal color grading, frost accents');
+  } else if (lower.includes('green') || lower.includes('lush') || lower.includes('overgrown')) {
+    cues.push('lush green palette, organic natural tones');
+  } else if (lower.includes('red') || lower.includes('crimson')) {
+    cues.push('deep red and amber color palette');
+  } else if (lower.includes('grey') || lower.includes('gray') || lower.includes('muted')) {
+    cues.push('muted desaturated color palette with selective warm highlights');
   }
 
-  return `Cinematic professional cinematography. ${cleaned}`.slice(0, 512);
+  // People — try to count and describe safely
+  const charNames = original.match(/([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*:/g);
+  if (charNames && charNames.length > 1) {
+    cues.push(`${charNames.length} distinct characters in the scene, each with unique appearance`);
+  } else if (lower.includes('alone') || lower.includes('solitary') || lower.includes('single')) {
+    cues.push('solitary figure silhouetted against the backdrop');
+  } else {
+    cues.push('characters with detailed costumes and expressions');
+  }
+
+  // Camera style
+  if (lower.includes('close-up') || lower.includes('closeup') || lower.includes('face')) {
+    cues.push('intimate close-up shot, shallow depth of field');
+  } else if (lower.includes('wide') || lower.includes('panoram') || lower.includes('epic')) {
+    cues.push('wide epic establishing shot');
+  } else if (lower.includes('aerial') || lower.includes('drone') || lower.includes('above')) {
+    cues.push('aerial sweeping camera movement');
+  } else {
+    cues.push('slow tracking shot, gentle camera movement');
+  }
+
+  cues.push('film grain, cinematic aspect ratio, 24fps motion');
+
+  return cues.join(', ').slice(0, 512);
 }
 
 /**
@@ -388,19 +452,12 @@ export async function checkBedrockVideo(
   s3OutputPrefix: string,
 ): Promise<BedrockVideoResult> {
   const client = getBedrockClient();
-
-  const cmd = new GetAsyncInvokeCommand({ invocationArn });
-  const resp = await client.send(cmd);
-
+  const resp = await client.send(new GetAsyncInvokeCommand({ invocationArn }));
   const status = resp.status;
 
   if (status === 'Failed') {
-    return {
-      status: 'failed',
-      error: resp.failureMessage || 'Bedrock video generation failed',
-    };
+    return { status: 'failed', error: resp.failureMessage || 'Bedrock video generation failed' };
   }
-
   if (status !== 'Completed') {
     return { status: 'processing' };
   }
@@ -409,21 +466,17 @@ export async function checkBedrockVideo(
   const s3 = getS3Client();
   const invocationId = invocationArn.split('/').pop() || '';
 
-  const possibleKeys = [
+  for (const videoKey of [
     `${s3OutputPrefix}${invocationId}/output.mp4`,
     `${s3OutputPrefix}output.mp4`,
-  ];
-
-  for (const videoKey of possibleKeys) {
+  ]) {
     try {
       await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: videoKey }));
-
       const signedUrl = await getSignedUrl(
         s3,
         new GetObjectCommand({ Bucket: S3_BUCKET, Key: videoKey }),
         { expiresIn: 86400 },
       );
-
       console.log(`[bedrock-video] Video found at: ${videoKey}`);
       return { status: 'completed', videoUrl: signedUrl };
     } catch {
@@ -431,7 +484,7 @@ export async function checkBedrockVideo(
     }
   }
 
-  // Last resort: list objects in the prefix
+  // Last resort: list objects
   try {
     const listResp = await s3.send(
       new ListObjectsV2Command({ Bucket: S3_BUCKET, Prefix: s3OutputPrefix }),
@@ -443,22 +496,15 @@ export async function checkBedrockVideo(
         new GetObjectCommand({ Bucket: S3_BUCKET, Key: mp4.Key }),
         { expiresIn: 86400 },
       );
-      console.log(`[bedrock-video] Video found via listing: ${mp4.Key}`);
       return { status: 'completed', videoUrl: signedUrl };
     }
-  } catch (listErr) {
-    console.error('[bedrock-video] Failed to list S3 objects:', listErr);
+  } catch (e) {
+    console.error('[bedrock-video] S3 listing failed:', e);
   }
 
-  return {
-    status: 'failed',
-    error: `Video generated but output.mp4 not found in S3 prefix: ${s3OutputPrefix}`,
-  };
+  return { status: 'failed', error: `Output not found in S3: ${s3OutputPrefix}` };
 }
 
-/**
- * Check if Bedrock video generation is available.
- */
 export function isBedrockAvailable(): boolean {
   return true;
 }
