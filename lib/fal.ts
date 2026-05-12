@@ -240,8 +240,10 @@ export async function falGenerate(
     throw new Error('fal.ai: No request_id in response');
   }
 
-  const statusUrl = `https://queue.fal.run/${modelId}/requests/${requestId}/status`;
-  const resultUrl = `https://queue.fal.run/${modelId}/requests/${requestId}`;
+  // Use the URLs returned by fal.ai (they strip sub-paths like /text-to-video)
+  // Fallback to constructing from modelId if not provided
+  const statusUrl = submitData.status_url || `https://queue.fal.run/${modelId}/requests/${requestId}/status`;
+  const resultUrl = submitData.response_url || `https://queue.fal.run/${modelId}/requests/${requestId}`;
 
   const deadline = Date.now() + 300_000; // 5 min timeout
   while (Date.now() < deadline) {
