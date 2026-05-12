@@ -47,7 +47,7 @@ async function callLLM(systemPrompt: string, userPrompt: string, signal: AbortSi
     return { text, model: 'anthropic/claude-sonnet-4' };
   }
 
-  throw new Error('No AI provider configured. Set GROQ_API_KEY or ANTHROPIC_API_KEY in Vercel.');
+  throw new Error('No AI provider configured. Set GROQ_API_KEY or ANTHROPIC_API_KEY in your environment variables.');
 }
 
 // ── Showrunner-enhanced system prompt ────────────────────────────

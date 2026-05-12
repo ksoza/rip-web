@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
     if (!apiKey) {
       return NextResponse.json(
-        { response: '⚠️ ANTHROPIC_API_KEY not configured. Set it in Vercel environment variables.' },
+        { response: '⚠️ ANTHROPIC_API_KEY not configured. Set it in your environment variables.' },
         { status: 200 },
       );
     }

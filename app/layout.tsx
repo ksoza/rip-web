@@ -2,7 +2,8 @@
 import type { Metadata } from 'next';
 import { Bebas_Neue, Instrument_Sans, DM_Mono, UnifrakturMaguntia } from 'next/font/google';
 import { SolanaWalletProvider } from '@/lib/solana/wallet-provider';
-import { Analytics } from '@vercel/analytics/next';
+// Analytics — conditionally loaded (Vercel Analytics removed for AWS deployment)
+// To add analytics on AWS, use a provider like PostHog, Plausible, or AWS CloudWatch RUM
 import './globals.css';
 
 const bebas = Bebas_Neue({
@@ -135,7 +136,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SolanaWalletProvider>
           {children}
         </SolanaWalletProvider>
-        <Analytics />
+        {/* Analytics removed — add PostHog, Plausible, or CloudWatch RUM here */}
       </body>
     </html>
   );
