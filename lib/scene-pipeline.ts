@@ -13,6 +13,7 @@ import { falGenerate, falSubmitToQueue, falCheckStatus, FAL_VIDEO_MODELS, type F
 import { buildScenePrompt, getStylePrompt, SHOW_PROFILES, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
 import { pollinationsGenerateImage, type PollinationsImageOptions } from './pollinations';
+import { isGoogleVeoAvailable, generateVeoVideo, submitVeoVideo, checkVeoVideo } from './google-veo';
 // Bedrock + Wan2.1 removed per user request — using IMAGE→VIDEO→AUDIO pipeline instead
 
 // ── HuggingFace free inference for video ────────────────────────
@@ -489,7 +490,72 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
   // -- In async mode, skip slow free providers (they'd timeout Lambda) --
   const skipFreeProviders = opts?.asyncFal && provider === 'auto';
 
-  // -- 2a. Try HuggingFace image-to-video (SVD, free with HF_TOKEN) --
+  // -- 2a. Try Google Veo (FREE tier, best quality) --
+  if (isGoogleVeoAvailable() && provider !== 'fal') {
+    try {
+      console.log('[scene-pipeline] Trying Google Veo ($0 cost, free tier)...');
+
+      if (opts?.asyncFal) {
+        // Async mode: submit and return job for polling
+        const veoJob = await submitVeoVideo(
+          enrichedDescription || sceneDescription,
+          { imageUrl: sceneImageUrl, aspectRatio: input.aspectRatio || '16:9' }
+        );
+        if (veoJob) {
+          return {
+            success: false,
+            sceneImageUrl: sceneImageUrl || undefined,
+            model: `veo-${veoJob.model}`,
+            audioSynced: false,
+            prompt,
+            error: '__QUEUED__',
+            providerUsed: 'google-veo',
+            requestId: veoJob.operationName,
+            falJob: {
+              requestId: veoJob.operationName,
+              statusUrl: '__VEO__',
+              responseUrl: '__VEO__',
+              modelId: veoJob.model,
+              modelKey: `veo-${veoJob.model}`,
+              audioCapable: false,
+            },
+          };
+        }
+      } else {
+        // Sync mode: submit and wait (up to 5 min)
+        const veoResult = await generateVeoVideo(
+          enrichedDescription || sceneDescription,
+          { imageUrl: sceneImageUrl, aspectRatio: input.aspectRatio || '16:9' }
+        );
+
+        if (veoResult.status === 'completed' && veoResult.videoUrl) {
+          console.log('[scene-pipeline] ✓ Video generated via Google Veo');
+          const { dialogueResult, mainAudioUrl } = await generateTTSIfNeeded(dialogue);
+          return {
+            success: true,
+            sceneImageUrl: sceneImageUrl || undefined,
+            videoUrl: veoResult.videoUrl,
+            audioUrl: mainAudioUrl,
+            model: veoResult.model || 'veo',
+            audioSynced: false,
+            prompt,
+            ragContext: ragContext || undefined,
+            providerUsed: 'google-veo',
+            cost: 0,
+            dialogueAudio: dialogueResult,
+          };
+        }
+
+        if (veoResult.error) {
+          console.warn(`[scene-pipeline] Google Veo: ${veoResult.error}`);
+        }
+      }
+    } catch (veoErr) {
+      console.warn('[scene-pipeline] Google Veo failed:', veoErr);
+    }
+  }
+
+  // -- 2b. Try HuggingFace image-to-video (SVD, free with HF_TOKEN) --
   if (!skipFreeProviders && sceneImageUrl && process.env.HF_TOKEN && provider !== 'fal') {
     try {
       console.log('[scene-pipeline] Trying HuggingFace SVD image-to-video ($0 cost)...');
@@ -519,7 +585,7 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
     }
   }
 
-  // -- 2b. Try HuggingFace text-to-video free models --
+  // -- 2c. Try HuggingFace text-to-video free models --
   if (!skipFreeProviders && provider !== 'fal') {
     const hfResult = await hfFreeVideoGenerate(prompt);
     if (hfResult?.url) {
@@ -543,7 +609,7 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
     }
   }
 
-  // -- 2c. Fall back to fal.ai (paid, best quality + audio sync) ---
+  // -- 2d. Fall back to fal.ai (paid, best quality + audio sync) ---
   let errorMsg = '';
   try {
     const falInput: FalVideoInput = {

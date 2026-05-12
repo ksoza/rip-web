@@ -1,21 +1,21 @@
 // app/api/generate/scene/poll/route.ts
-// Polls the status of a queued scene generation job (fal.ai).
+// Polls the status of a queued scene generation job (fal.ai or Google Veo).
 // Called by the client every 3-5 seconds until the job completes.
 //
 // POST /api/generate/scene/poll
-// Body (fal.ai): { statusUrl, responseUrl, modelKey, audioCapable, prompt, sceneImageUrl?, dialogue? }
+// Body (fal.ai):     { statusUrl, responseUrl, modelKey, audioCapable, prompt, sceneImageUrl?, dialogue? }
+// Body (Google Veo): { statusUrl: '__VEO__', requestId (=operationName), modelKey, prompt, ... }
 // Returns: { status: 'processing' | 'completed' | 'failed', ...result }
 
 import { NextRequest, NextResponse } from 'next/server';
 import { checkSceneJob } from '@/lib/scene-pipeline';
+import { checkVeoVideo } from '@/lib/google-veo';
 import { generateDialogueAudio } from '@/lib/kokoro-tts';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
-    // ── fal.ai job ──
-    const { statusUrl, responseUrl, modelKey, audioCapable, prompt, sceneImageUrl, dialogue } = body;
+    const { statusUrl, responseUrl, modelKey, audioCapable, prompt, sceneImageUrl, dialogue, requestId } = body;
 
     if (!statusUrl || !responseUrl) {
       return NextResponse.json(
@@ -24,6 +24,58 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Google Veo job ──
+    if (statusUrl === '__VEO__') {
+      const operationName = requestId;
+      if (!operationName) {
+        return NextResponse.json({ status: 'failed', error: 'Missing operationName for Veo poll' }, { status: 400 });
+      }
+
+      const veoResult = await checkVeoVideo(operationName);
+
+      if (veoResult.status === 'processing') {
+        return NextResponse.json({ status: 'processing' });
+      }
+
+      if (veoResult.status === 'failed') {
+        return NextResponse.json({
+          status: 'failed',
+          error: veoResult.error || 'Google Veo generation failed',
+          model: modelKey || 'veo',
+        });
+      }
+
+      // Completed — generate TTS audio
+      const dialogueLines = Array.isArray(dialogue) ? dialogue.filter((d: any) => d?.character && d?.line) : [];
+      let audioUrl: string | undefined;
+      let dialogueAudio: any;
+
+      if (dialogueLines.length > 0) {
+        try {
+          const ttsResult = await generateDialogueAudio(dialogueLines);
+          if (ttsResult.lines.some((l: any) => l.audioUrl)) {
+            dialogueAudio = { lines: ttsResult.lines, totalDuration: ttsResult.totalDuration };
+            audioUrl = ttsResult.audioUrl;
+          }
+        } catch (ttsErr) {
+          console.warn('[poll] TTS failed:', ttsErr);
+        }
+      }
+
+      return NextResponse.json({
+        status: 'completed',
+        success: true,
+        sceneImageUrl: sceneImageUrl || undefined,
+        videoUrl: veoResult.videoUrl,
+        audioUrl,
+        model: modelKey || 'veo',
+        audioSynced: false,
+        prompt: prompt || '',
+        dialogueAudio,
+      });
+    }
+
+    // ── fal.ai job ──
     const result = await checkSceneJob(
       statusUrl,
       responseUrl,
