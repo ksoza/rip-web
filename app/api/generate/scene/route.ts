@@ -116,10 +116,10 @@ export async function POST(req: NextRequest) {
     const result = await submitScene(sceneInput);
 
     // If queued for async processing, return job info for client polling
-    if (result.error === '__QUEUED__' && result.falJob) {
+    if (result.error === '__QUEUED__' && (result.falJob || result.bedrockJob)) {
       return NextResponse.json({
         status: 'queued',
-        jobInfo: result.falJob,
+        jobInfo: result.falJob || result.bedrockJob,
         prompt: result.prompt,
         model: result.model,
       });

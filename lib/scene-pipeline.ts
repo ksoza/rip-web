@@ -15,6 +15,7 @@ import { falGenerate, falSubmitToQueue, falCheckStatus, FAL_VIDEO_MODELS, type F
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
 import { pollinationsGenerateVideo } from './pollinations';
+import { submitBedrockVideo, checkBedrockVideo, isBedrockAvailable, type BedrockVideoJob } from './bedrock-video';
 
 // ── HuggingFace free inference for video ────────────────────────
 // Tries multiple HF models that support inference API. $0 with HF_TOKEN.
@@ -159,6 +160,12 @@ export interface SceneResult {
     modelId: string;
     modelKey: string;
     audioCapable: boolean;
+  };
+  /** Bedrock async job info — when present, client must poll for the result */
+  bedrockJob?: {
+    invocationArn: string;
+    s3OutputPrefix: string;
+    modelId: string;
   };
 }
 
@@ -540,6 +547,36 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
         cost: 0,
         dialogueAudio: dialogueResult,
       };
+    }
+  }
+
+  // -- Try AWS Bedrock Nova Reel (free with AWS account, async) ---
+  if (opts?.asyncFal && isBedrockAvailable()) {
+    try {
+      console.log('[scene-pipeline] Trying AWS Bedrock Nova Reel (async, $0 extra cost)...');
+      const bedrockJob = await submitBedrockVideo(prompt, {
+        durationSeconds: 6,
+        dimension: '1280x720',
+        seed: input.seed,
+      });
+      console.log(`[scene-pipeline] Bedrock job submitted: ${bedrockJob.invocationArn}`);
+      return {
+        success: false, // Not done yet
+        model: 'nova-reel',
+        audioSynced: false,
+        prompt,
+        error: '__QUEUED__',
+        providerUsed: 'bedrock',
+        bedrockJob: {
+          invocationArn: bedrockJob.invocationArn,
+          s3OutputPrefix: bedrockJob.s3OutputPrefix,
+          modelId: bedrockJob.modelId,
+        },
+      };
+    } catch (bedrockErr) {
+      const msg = bedrockErr instanceof Error ? bedrockErr.message : String(bedrockErr);
+      console.warn(`[scene-pipeline] Bedrock Nova Reel failed: ${msg}`);
+      // Fall through to fal.ai
     }
   }
 
