@@ -6,6 +6,10 @@ frontend:
         - npm install
     build:
       commands:
+        # Write all env vars to .env.production so Next.js standalone output picks them up at runtime
+        - env | grep -E '^(NEXT_PUBLIC_|SUPABASE_|STRIPE_|ANTHROPIC_|GROQ_|FAL_|NOVITA_|POLLINATIONS_|HUGGINGFACE_|HF_|GOOGLE_|NEXOS_|OPENAI_|ELEVENLABS_|LUMA_|RUNWAY_|XAI_|REPLICATE_|TMDB_|FISH_|TAVILY_|FOUNDER_|SELF_HOSTED_|VOXCPM_|RAGFLOW_|AIRBYTE_|DISCORD_|RUNPOD_|VIDMUSE_|N8N_)' > .env.production || true
+        - echo "Env vars written to .env.production:"
+        - wc -l .env.production
         - npm run build
   artifacts:
     baseDirectory: .next
