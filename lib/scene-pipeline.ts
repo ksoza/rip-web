@@ -558,28 +558,49 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
     if (bedrockAvail) {
       try {
         console.log('[scene-pipeline] Trying AWS Bedrock Nova Reel (async, $0 extra cost)...');
-        console.log(`[scene-pipeline] BEDROCK_ACCESS_KEY_ID: ${process.env.BEDROCK_ACCESS_KEY_ID ? 'SET' : 'NOT SET'}`);
-        console.log(`[scene-pipeline] BEDROCK_REGION: ${process.env.BEDROCK_REGION || 'NOT SET'}`);
-        console.log(`[scene-pipeline] BEDROCK_VIDEO_BUCKET: ${process.env.BEDROCK_VIDEO_BUCKET || 'NOT SET'}`);
-        const bedrockJob = await submitBedrockVideo(prompt, {
-          durationSeconds: 6,
-          dimension: '1280x720',
-          seed: input.seed,
-        });
-        console.log(`[scene-pipeline] Bedrock job submitted: ${bedrockJob.invocationArn}`);
-        return {
-          success: false, // Not done yet
-          model: 'nova-reel',
-          audioSynced: false,
-          prompt,
-          error: '__QUEUED__',
-          providerUsed: 'bedrock',
-          bedrockJob: {
-            invocationArn: bedrockJob.invocationArn,
-            s3OutputPrefix: bedrockJob.s3OutputPrefix,
-            modelId: bedrockJob.modelId,
-          },
-        };
+
+        // Retry with exponential backoff — Bedrock may throttle concurrent requests
+        const MAX_RETRIES = 3;
+        let lastErr: Error | null = null;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            if (attempt > 0) {
+              const delay = Math.min(5000 * Math.pow(2, attempt - 1), 20000); // 5s, 10s, 20s
+              console.log(`[scene-pipeline] Bedrock retry ${attempt}/${MAX_RETRIES} after ${delay}ms...`);
+              await new Promise(r => setTimeout(r, delay));
+            }
+            const bedrockJob = await submitBedrockVideo(prompt, {
+              durationSeconds: 6,
+              dimension: '1280x720',
+              seed: input.seed,
+            });
+            console.log(`[scene-pipeline] Bedrock job submitted: ${bedrockJob.invocationArn}`);
+            return {
+              success: false, // Not done yet
+              model: 'nova-reel',
+              audioSynced: false,
+              prompt,
+              error: '__QUEUED__',
+              providerUsed: 'bedrock',
+              bedrockJob: {
+                invocationArn: bedrockJob.invocationArn,
+                s3OutputPrefix: bedrockJob.s3OutputPrefix,
+                modelId: bedrockJob.modelId,
+              },
+            };
+          } catch (retryErr) {
+            lastErr = retryErr instanceof Error ? retryErr : new Error(String(retryErr));
+            const msg = lastErr.message.toLowerCase();
+            // Only retry on throttling / transient errors
+            if (msg.includes('unable to process') || msg.includes('throttl') || msg.includes('too many') || msg.includes('limit')) {
+              console.warn(`[scene-pipeline] Bedrock transient error (attempt ${attempt + 1}): ${lastErr.message}`);
+              continue;
+            }
+            // Non-retryable error — break immediately
+            break;
+          }
+        }
+        throw lastErr || new Error('Bedrock submission failed after retries');
       } catch (bedrockErr) {
         const msg = bedrockErr instanceof Error ? bedrockErr.message : String(bedrockErr);
         bedrockError = `Bedrock Nova Reel: ${msg}`;
