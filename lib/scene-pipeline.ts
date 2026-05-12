@@ -11,7 +11,7 @@
 // Self-hosted: LTX-2.3 via RunPod Serverless (Option A) or local GPU (Option C)
 // fal.ai: LTX-2.3 (default) → Veo 3.1 → Seedance 2 (fallback chain)
 
-import { falGenerate, FAL_VIDEO_MODELS, type FalModel, type FalVideoInput } from './fal';
+import { falGenerate, falSubmitToQueue, falCheckStatus, FAL_VIDEO_MODELS, type FalModel, type FalVideoInput, type FalQueueJob, type FalResult } from './fal';
 import { buildScenePrompt, getStylePrompt, type ArtStyleId } from './shows';
 import { enrichScenePrompt, isRagflowAvailable } from './ragflow';
 import { pollinationsGenerateVideo } from './pollinations';
@@ -150,6 +150,85 @@ export interface SceneResult {
       duration: number;
     }[];
     totalDuration: number;
+  };
+  /** Async queue info — when present, client must poll for the result */
+  falJob?: {
+    requestId: string;
+    statusUrl: string;
+    responseUrl: string;
+    modelId: string;
+    modelKey: string;
+    audioCapable: boolean;
+  };
+}
+
+/**
+ * Submit a scene for generation but return immediately (non-blocking).
+ * Free providers (self-hosted, pollinations, huggingface) are tried synchronously first.
+ * If those fail, the job is submitted to fal.ai's queue and job info is returned
+ * for client-side polling via the /api/generate/scene/poll endpoint.
+ */
+export async function submitScene(input: SceneInput): Promise<SceneResult> {
+  // Run the synchronous parts: prompt building + free providers
+  // Then submit to fal.ai queue without waiting for the result
+  return generateScene(input, { asyncFal: true });
+}
+
+/**
+ * Check the status of a queued fal.ai scene job.
+ * Called by the poll endpoint.
+ */
+export async function checkSceneJob(
+  statusUrl: string,
+  responseUrl: string,
+  modelKey: string,
+  audioCapable: boolean,
+  prompt: string,
+): Promise<SceneResult> {
+  const check = await falCheckStatus(statusUrl, responseUrl);
+
+  if (check.status === 'COMPLETED' && check.result) {
+    if (!check.result.video?.url) {
+      return {
+        success: false,
+        model: modelKey,
+        audioSynced: false,
+        prompt,
+        error: 'Model returned no video output',
+        providerUsed: 'fal',
+      };
+    }
+    return {
+      success: true,
+      videoUrl: check.result.video.url,
+      audioUrl: check.result.audio?.url,
+      model: modelKey,
+      audioSynced: audioCapable,
+      prompt,
+      requestId: check.result.request_id,
+      providerUsed: 'fal',
+    };
+  }
+
+  if (check.status === 'FAILED') {
+    return {
+      success: false,
+      model: modelKey,
+      audioSynced: false,
+      prompt,
+      error: check.error || 'fal.ai generation failed',
+      providerUsed: 'fal',
+    };
+  }
+
+  // Still processing — return a "pending" result
+  return {
+    success: false,
+    model: modelKey,
+    audioSynced: false,
+    prompt,
+    error: '__PENDING__',
+    providerUsed: 'fal',
   };
 }
 
@@ -309,7 +388,7 @@ async function trySelfHosted(
  *
  * Override with input.provider: 'self-hosted' | 'pollinations' | 'fal' | 'auto'
  */
-export async function generateScene(input: SceneInput): Promise<SceneResult> {
+export async function generateScene(input: SceneInput, opts?: { asyncFal?: boolean }): Promise<SceneResult> {
   const { show, artStyle, sceneDescription, dialogue, characters } = input;
   const provider = input.provider || 'auto';
 
@@ -473,9 +552,52 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
       falInput.duration = formattedDuration;
     }
 
-    console.log(`[scene-pipeline] Trying fal.ai ${modelKey} (${selectedModel.id}), duration=${formattedDuration ?? 'default'}...`);
+    console.log(`[scene-pipeline] Trying fal.ai ${modelKey} (${selectedModel.id}), duration=${formattedDuration ?? 'default'}, async=${!!opts?.asyncFal}...`);
 
-    // Generate via fal.ai - audio-capable models return video with baked-in audio
+    // ASYNC MODE: Submit to queue and return immediately for client-side polling
+    if (opts?.asyncFal) {
+      const submitResult = await falSubmitToQueue(selectedModel.id, falInput);
+
+      // If it was a sync response (instant result), return it directly
+      if ('video' in submitResult || 'images' in submitResult) {
+        const syncResult = submitResult as FalResult;
+        if (syncResult.video?.url) {
+          return {
+            success: true,
+            videoUrl: syncResult.video.url,
+            audioUrl: syncResult.audio?.url,
+            model: modelKey,
+            audioSynced: audioCapable,
+            prompt,
+            requestId: syncResult.request_id,
+            ragContext: ragContext || undefined,
+            providerUsed: 'fal',
+          };
+        }
+      }
+
+      // Queue response — return job info for client to poll
+      const job = submitResult as FalQueueJob;
+      return {
+        success: false, // Not done yet
+        model: modelKey,
+        audioSynced: false,
+        prompt,
+        error: '__QUEUED__',
+        providerUsed: 'fal',
+        requestId: job.requestId,
+        falJob: {
+          requestId: job.requestId,
+          statusUrl: job.statusUrl,
+          responseUrl: job.responseUrl,
+          modelId: job.modelId,
+          modelKey,
+          audioCapable,
+        },
+      };
+    }
+
+    // SYNC MODE: Submit and poll until done (for non-serverless environments)
     const result = await falGenerate(selectedModel.id, falInput);
 
     if (!result.video?.url) {

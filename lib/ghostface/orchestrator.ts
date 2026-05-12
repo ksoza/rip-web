@@ -287,7 +287,26 @@ async function executeSubAgent(
             model: agent.input.model || 'veo',
           }),
         });
-        const data = await res.json();
+        let data = await res.json();
+
+        // Handle async queued response — server-side polling
+        if (data.status === 'queued' && data.jobInfo) {
+          const pollDeadline = Date.now() + 300_000;
+          while (Date.now() < pollDeadline) {
+            await new Promise(r => setTimeout(r, 4000));
+            try {
+              const pollRes = await fetch(`${baseUrl}/api/generate/scene/poll`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data.jobInfo),
+              });
+              const pd = await pollRes.json();
+              if (pd.status === 'completed') { data = { ...pd, success: true }; break; }
+              if (pd.status === 'failed') { data = { success: false, error: pd.error }; break; }
+            } catch { /* retry */ }
+          }
+        }
+
         agent.output = data;
         agent.contextSummary = data.success
           ? `Scene ${agent.input.sceneIndex} generated via ${data.model}`

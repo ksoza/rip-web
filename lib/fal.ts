@@ -199,14 +199,25 @@ export interface FalResult {
   request_id?: string;
 }
 
-// Server-side direct API call (for API routes)
-export async function falGenerate(
+// -- Queue Submit (fast, returns immediately) ------------------
+
+export interface FalQueueJob {
+  requestId: string;
+  statusUrl: string;
+  responseUrl: string;
+  modelId: string;
+}
+
+/**
+ * Submit a generation job to fal.ai's queue.
+ * Returns immediately with job info for polling.
+ */
+export async function falSubmitToQueue(
   modelId: string,
   input: FalImageInput | FalVideoInput,
-): Promise<FalResult> {
+): Promise<FalQueueJob | FalResult> {
   const key = getFalKey();
 
-  // Submit to queue
   const submitRes = await fetch(`${FAL_API_URL}/${modelId}`, {
     method: 'POST',
     headers: {
@@ -234,52 +245,94 @@ export async function falGenerate(
     return normalizeResult(submitData);
   }
 
-  // Poll for result (async/queue response)
   const requestId = submitData.request_id;
   if (!requestId) {
     throw new Error('fal.ai: No request_id in response');
   }
 
   // Use the URLs returned by fal.ai (they strip sub-paths like /text-to-video)
-  // Fallback to constructing from modelId if not provided
-  const statusUrl = submitData.status_url || `https://queue.fal.run/${modelId}/requests/${requestId}/status`;
-  const resultUrl = submitData.response_url || `https://queue.fal.run/${modelId}/requests/${requestId}`;
+  const statusUrl = submitData.status_url || `${FAL_API_URL}/${modelId}/requests/${requestId}/status`;
+  const responseUrl = submitData.response_url || `${FAL_API_URL}/${modelId}/requests/${requestId}`;
 
+  return { requestId, statusUrl, responseUrl, modelId };
+}
+
+/**
+ * Check the status of a queued fal.ai job.
+ * Returns { status, result? } — call repeatedly until status is 'COMPLETED' or 'FAILED'.
+ */
+export async function falCheckStatus(
+  statusUrl: string,
+  responseUrl: string,
+): Promise<{ status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'; result?: FalResult; error?: string }> {
+  const key = getFalKey();
+
+  const statusRes = await fetch(statusUrl, {
+    headers: { 'Authorization': `Key ${key}` },
+  });
+  const statusText = await statusRes.text();
+  let status: any;
+  try {
+    status = JSON.parse(statusText);
+  } catch {
+    console.warn(`fal.ai status poll returned non-JSON (${statusRes.status}): ${statusText.slice(0, 100)}`);
+    return { status: 'IN_PROGRESS' }; // Treat as still running
+  }
+
+  if (status.status === 'COMPLETED') {
+    const resultRes = await fetch(responseUrl, {
+      headers: { 'Authorization': `Key ${key}` },
+    });
+    const resultText = await resultRes.text();
+    if (!resultRes.ok) {
+      return { status: 'FAILED', error: `Result fetch error: ${resultText.slice(0, 300)}` };
+    }
+    let raw: any;
+    try {
+      raw = JSON.parse(resultText);
+    } catch {
+      return { status: 'FAILED', error: `Invalid JSON in result: ${resultText.slice(0, 200)}` };
+    }
+    return { status: 'COMPLETED', result: normalizeResult(raw) };
+  }
+
+  if (status.status === 'FAILED') {
+    return { status: 'FAILED', error: status.error || 'Unknown fal.ai error' };
+  }
+
+  return { status: status.status || 'IN_PROGRESS' };
+}
+
+// -- Synchronous generation (polls internally, for non-serverless use) --
+
+/**
+ * Full synchronous generation — submit + poll until done.
+ * WARNING: Takes 30-120+ seconds. Only use when Lambda timeout is long enough.
+ * For serverless, use falSubmitToQueue() + falCheckStatus() polling from the client.
+ */
+export async function falGenerate(
+  modelId: string,
+  input: FalImageInput | FalVideoInput,
+): Promise<FalResult> {
+  const result = await falSubmitToQueue(modelId, input);
+
+  // Sync response — already done
+  if ('images' in result || 'video' in result) {
+    return result as FalResult;
+  }
+
+  // Queue response — poll until complete
+  const job = result as FalQueueJob;
   const deadline = Date.now() + 300_000; // 5 min timeout
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 3000));
+    const check = await falCheckStatus(job.statusUrl, job.responseUrl);
 
-    const statusRes = await fetch(statusUrl, {
-      headers: { 'Authorization': `Key ${key}` },
-    });
-    const statusText = await statusRes.text();
-    let status: any;
-    try {
-      status = JSON.parse(statusText);
-    } catch {
-      console.warn(`fal.ai status poll returned non-JSON: ${statusText.slice(0, 100)}`);
-      continue; // Retry on next poll
+    if (check.status === 'COMPLETED' && check.result) {
+      return check.result;
     }
-
-    if (status.status === 'COMPLETED') {
-      const resultRes = await fetch(resultUrl, {
-        headers: { 'Authorization': `Key ${key}` },
-      });
-      const resultText = await resultRes.text();
-      if (!resultRes.ok) {
-        throw new Error(`fal.ai result fetch error: ${resultText.slice(0, 500)}`);
-      }
-      let raw: any;
-      try {
-        raw = JSON.parse(resultText);
-      } catch {
-        throw new Error(`fal.ai result returned invalid JSON (${resultRes.status}): ${resultText.slice(0, 200)}`);
-      }
-      return normalizeResult(raw);
-    }
-
-    if (status.status === 'FAILED') {
-      throw new Error(`fal.ai generation failed: ${status.error || 'Unknown error'}`);
+    if (check.status === 'FAILED') {
+      throw new Error(`fal.ai generation failed: ${check.error}`);
     }
   }
 

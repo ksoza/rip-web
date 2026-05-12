@@ -156,9 +156,29 @@ export function SceneGenPanel({ user, loading, setLoading, error, setError, save
         }),
       });
 
-      const data = await res.json();
+      let data = await res.json();
 
-      if (!res.ok) {
+      // Handle async queued response — poll until done
+      if (data.status === 'queued' && data.jobInfo) {
+        const pollDeadline = Date.now() + 300_000;
+        let done = false;
+        while (Date.now() < pollDeadline && !done) {
+          await new Promise(r => setTimeout(r, 4000));
+          try {
+            const pollRes = await fetch('/api/generate/scene/poll', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data.jobInfo),
+            });
+            const pd = await pollRes.json();
+            if (pd.status === 'completed') { data = { ...pd, success: true }; done = true; }
+            else if (pd.status === 'failed') { setError(pd.error || 'Generation failed'); return; }
+          } catch { /* retry */ }
+        }
+        if (!done) { setError('Generation timed out (5 min)'); return; }
+      }
+
+      if (!res.ok && !data.success) {
         setError(data.error || 'Scene generation failed');
         return;
       }

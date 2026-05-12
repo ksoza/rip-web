@@ -167,6 +167,33 @@ export function EpisodeGenPanel({
         });
         const data = await res.json();
 
+        // Handle async queued response
+        if (data.status === 'queued' && data.jobInfo) {
+          let resolved = false;
+          const pollDeadline = Date.now() + 300_000;
+          while (Date.now() < pollDeadline) {
+            await new Promise(r => setTimeout(r, 4000));
+            try {
+              const pollRes = await fetch('/api/generate/scene/poll', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data.jobInfo),
+              });
+              const pd = await pollRes.json();
+              if (pd.status === 'completed' && pd.videoUrl) {
+                setSceneVideos(prev => { const next = [...prev]; next[i] = { status: 'done', videoUrl: pd.videoUrl, audioSynced: pd.audioSynced }; return next; });
+                resolved = true; break;
+              }
+              if (pd.status === 'failed') {
+                setSceneVideos(prev => { const next = [...prev]; next[i] = { status: 'error', error: pd.error || 'Failed' }; return next; });
+                resolved = true; break;
+              }
+            } catch { /* retry */ }
+          }
+          if (!resolved) setSceneVideos(prev => { const next = [...prev]; next[i] = { status: 'error', error: 'Timed out (5 min)' }; return next; });
+          continue;
+        }
+
         if (!res.ok || !data.videoUrl) {
           setSceneVideos(prev => {
             const next = [...prev];
@@ -212,6 +239,29 @@ export function EpisodeGenPanel({
         body: JSON.stringify(sceneInputs[idx]),
       });
       const data = await res.json();
+
+      // Handle async queued response
+      if (data.status === 'queued' && data.jobInfo) {
+        const pollDeadline = Date.now() + 300_000;
+        while (Date.now() < pollDeadline) {
+          await new Promise(r => setTimeout(r, 4000));
+          try {
+            const pollRes = await fetch('/api/generate/scene/poll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data.jobInfo) });
+            const pd = await pollRes.json();
+            if (pd.status === 'completed' && pd.videoUrl) {
+              setSceneVideos(prev => { const next = [...prev]; next[idx] = { status: 'done', videoUrl: pd.videoUrl, audioSynced: pd.audioSynced }; return next; });
+              return;
+            }
+            if (pd.status === 'failed') {
+              setSceneVideos(prev => { const next = [...prev]; next[idx] = { status: 'error', error: pd.error || 'Failed' }; return next; });
+              return;
+            }
+          } catch { /* retry */ }
+        }
+        setSceneVideos(prev => { const next = [...prev]; next[idx] = { status: 'error', error: 'Timed out (5 min)' }; return next; });
+        return;
+      }
+
       setSceneVideos(prev => {
         const next = [...prev];
         next[idx] = res.ok && data.videoUrl

@@ -7,7 +7,7 @@
 // Returns: { success, videoUrl, audioUrl?, model, audioSynced, prompt, requestId?, error? }
 
 import { NextRequest, NextResponse } from 'next/server';
-import { generateScene, type SceneInput } from '@/lib/scene-pipeline';
+import { submitScene, type SceneInput } from '@/lib/scene-pipeline';
 import { checkGenerationAccess, recordGeneration } from '@/lib/credits';
 import { canAccessTier } from '@/lib/revenue';
 import { SHOW_PROFILES, ART_STYLES, type ArtStyleId } from '@/lib/shows';
@@ -111,9 +111,19 @@ export async function POST(req: NextRequest) {
       seed,
     };
 
-    console.log(`[/api/generate/scene] Generating: show=${show}, style=${artStyle}, model=${model || 'veo'}, dialogue=${dialogue.length} lines`);
+    console.log(`[/api/generate/scene] Generating (async): show=${show}, style=${artStyle}, model=${model || 'veo'}, dialogue=${dialogue.length} lines`);
     
-    const result = await generateScene(sceneInput);
+    const result = await submitScene(sceneInput);
+
+    // If queued for async processing, return job info for client polling
+    if (result.error === '__QUEUED__' && result.falJob) {
+      return NextResponse.json({
+        status: 'queued',
+        jobInfo: result.falJob,
+        prompt: result.prompt,
+        model: result.model,
+      });
+    }
 
     // Record generation for credit tracking
     if (userId && result.success) {
@@ -140,7 +150,6 @@ export async function POST(req: NextRequest) {
       audioSynced: result.audioSynced,
       prompt: result.prompt,
       requestId: result.requestId,
-      // Per-line dialogue audio (when video provider doesn't bake audio in)
       ...(result.dialogueAudio ? { dialogueAudio: result.dialogueAudio } : {}),
     });
 

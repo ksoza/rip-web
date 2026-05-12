@@ -576,6 +576,36 @@ export function CreationWizard({ user, selectedMedia, onClose, onOpenEditor, onP
       });
       clearTimeout(timeout);
       const data = await res.json();
+
+      // Handle async queued response — poll until done
+      if (data.status === 'queued' && data.jobInfo) {
+        const pollDeadline = Date.now() + 300_000; // 5 min
+        while (Date.now() < pollDeadline) {
+          await new Promise(r => setTimeout(r, 4000));
+          try {
+            const pollRes = await fetch('/api/generate/scene/poll', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data.jobInfo),
+            });
+            const pollData = await pollRes.json();
+            if (pollData.status === 'completed' && pollData.videoUrl) {
+              setSceneVideos(prev => ({ ...prev, [scene.id]: pollData.videoUrl }));
+              return pollData.videoUrl;
+            }
+            if (pollData.status === 'failed') {
+              setVideoError(prev => (prev ? prev + ' | ' : '') + 'Scene ' + (idx + 1) + ': ' + (pollData.error || 'Generation failed'));
+              return null;
+            }
+            // Still processing — continue polling
+          } catch {
+            // Poll network error — retry
+          }
+        }
+        setVideoError(prev => (prev ? prev + ' | ' : '') + 'Scene ' + (idx + 1) + ': timed out (5 min)');
+        return null;
+      }
+
       if (data.success && data.videoUrl) {
         setSceneVideos(prev => ({ ...prev, [scene.id]: data.videoUrl }));
         return data.videoUrl;
