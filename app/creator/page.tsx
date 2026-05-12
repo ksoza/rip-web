@@ -51,7 +51,10 @@ export default function CreatorRoute() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="w-8 h-0.5 bg-gradient-to-r from-rip to-purple mx-auto animate-pulse" />
+        <div className="text-center">
+          <img src="/rip-loading.png" alt="RiP" className="w-20 h-20 mx-auto mb-3 animate-pulse" />
+          <div className="w-8 h-0.5 bg-gradient-to-r from-rip to-purple mx-auto animate-pulse" />
+        </div>
       </div>
     }>
       <CreatorPageContent />

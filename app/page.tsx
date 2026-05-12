@@ -37,11 +37,7 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
         <div className="text-center">
-          <div className="font-display text-6xl tracking-widest mb-3">
-            <span className="text-rip">R</span>
-            <span className="text-white">i</span>
-            <span className="text-cyan">P</span>
-          </div>
+          <img src="/rip-loading.png" alt="RiP" className="w-24 h-24 mx-auto mb-3 animate-pulse" />
           <div className="w-8 h-0.5 bg-gradient-to-r from-rip to-purple mx-auto animate-pulse" />
         </div>
       </div>
