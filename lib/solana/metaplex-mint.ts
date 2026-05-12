@@ -8,10 +8,7 @@
 
 'use client';
 
-import {
-  createNft,
-  TokenStandard,
-} from '@metaplex-foundation/mpl-token-metadata';
+import { createNft } from '@metaplex-foundation/mpl-token-metadata';
 import {
   getUmiWithPhantom,
   generateSigner,
@@ -141,7 +138,6 @@ export async function mintNFT(input: MintInput): Promise<MintResult> {
       ),
       creators,
       isMutable: true,
-      tokenStandard: TokenStandard.NonFungible,
     }).sendAndConfirm(umi);
 
     const mintAddress = mint.publicKey.toString();
