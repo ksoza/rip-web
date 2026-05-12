@@ -427,8 +427,12 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
     characters,
   });
 
+  // -- In async mode, skip slow free providers (they'd timeout the Lambda) --
+  // Jump straight to fal.ai queue submit which returns instantly
+  const skipFreeProviders = opts?.asyncFal && provider === 'auto';
+
   // -- Try self-hosted first (FREE) ----------------------------
-  if (provider === 'self-hosted' || provider === 'auto') {
+  if (!skipFreeProviders && (provider === 'self-hosted' || provider === 'auto')) {
     const selfHostedResult = await trySelfHosted(prompt, duration, input.seed, ragContext);
     if (selfHostedResult) {
       console.log('[scene-pipeline] Generated via self-hosted GPU ($0 cost)');
@@ -448,7 +452,7 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
   }
 
   // -- Try Pollinations video + Kokoro TTS (FREE, $0) ----------
-  if (provider === 'pollinations' || provider === 'auto') {
+  if (!skipFreeProviders && (provider === 'pollinations' || provider === 'auto')) {
     try {
       console.log('[scene-pipeline] Trying Pollinations video ($0 cost)...');
       const polResult = await pollinationsGenerateVideo(prompt);
@@ -506,7 +510,7 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
   }
 
   // -- Try HuggingFace free inference (Wan 2.1 1.3B, $0 with HF_TOKEN) ---
-  if (provider === 'auto') {
+  if (!skipFreeProviders && provider === 'auto') {
     const hfResult = await hfFreeVideoGenerate(prompt);
     if (hfResult?.url) {
       // Generate dialogue audio via Kokoro TTS
