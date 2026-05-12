@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
 
     if (!process.env.HUGGINGFACE_API_KEY) {
       return NextResponse.json(
-        { error: 'HUGGINGFACE_API_KEY not configured. Set it in Vercel environment variables.' },
+        { error: 'HUGGINGFACE_API_KEY not configured. Set it in your environment variables.' },
         { status: 200 }
       );
     }

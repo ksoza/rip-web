@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
-    // ── Time budget — track elapsed to avoid Vercel 60s gateway timeout ──────
+    // ── Time budget — track elapsed to avoid gateway timeout ──────
     const startTime = Date.now();
     const TIME_BUDGET_MS = 52_000; // bail at 52s, leaving 8s buffer for response
     const timeLeft = () => TIME_BUDGET_MS - (Date.now() - startTime);
@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
       const POL_HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept': 'image/*, */*',
-        'Referer': 'https://rip-web.vercel.app/',
+        'Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://www.remixip.icu',
       };
 
       // Reduced from 4 retries × 90s → 3 retries × 35s with time budget check

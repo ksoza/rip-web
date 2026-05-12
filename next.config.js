@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 'standalone' output for containerised / AWS Amplify deploys
+  output: 'standalone',
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.supabase.co' },
