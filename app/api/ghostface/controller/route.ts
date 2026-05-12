@@ -40,8 +40,12 @@ export async function POST(request: Request) {
 
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
-      request.headers.get('origin') ||
-      'http://localhost:3000';
+      (() => {
+        const fwdHost = request.headers.get('x-forwarded-host');
+        const fwdProto = request.headers.get('x-forwarded-proto') || 'https';
+        if (fwdHost) return `${fwdProto}://${fwdHost}`;
+        return request.headers.get('origin') || 'https://www.remixip.icu';
+      })();
 
     const result = await controller.orchestrate(
       {

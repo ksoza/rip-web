@@ -13,6 +13,40 @@ function getSupabaseUrl(): string {
 }
 
 /**
+ * Resolve the public-facing origin.
+ * Behind reverse proxies (AWS Amplify, CloudFront, etc.) the internal
+ * request.url often contains http://localhost:3000. We prefer:
+ *   1. NEXT_PUBLIC_APP_URL (explicit config)
+ *   2. x-forwarded-host header (set by CDN/proxy)
+ *   3. host header
+ *   4. request.url origin (fallback)
+ */
+function getPublicOrigin(request: Request): string {
+  // 1. Explicit env var — most reliable
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl) {
+    return appUrl.replace(/\/+$/, ''); // strip trailing slash
+  }
+
+  // 2. Forwarded host (set by CloudFront / Amplify / load balancers)
+  const fwdHost = request.headers.get('x-forwarded-host');
+  const fwdProto = request.headers.get('x-forwarded-proto') || 'https';
+  if (fwdHost) {
+    return `${fwdProto}://${fwdHost}`;
+  }
+
+  // 3. Host header
+  const host = request.headers.get('host');
+  if (host && !host.startsWith('localhost') && !host.startsWith('127.')) {
+    const proto = request.url.startsWith('https') ? 'https' : 'https'; // always https in production
+    return `${proto}://${host}`;
+  }
+
+  // 4. Fallback to request URL origin
+  return new URL(request.url).origin;
+}
+
+/**
  * Ensures a profile row exists for the given user.
  * Uses service_role key to bypass RLS (like the DB trigger would).
  * Falls back gracefully if service_role key isn't configured.
@@ -63,7 +97,8 @@ async function ensureProfile(userId: string, userMeta: Record<string, any>, emai
 }
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const origin = getPublicOrigin(request);
   const code  = searchParams.get('code');
   const next  = searchParams.get('next') ?? '/';
   const error = searchParams.get('error');

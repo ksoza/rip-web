@@ -457,7 +457,7 @@ export async function orchestrate(
   } = {}
 ): Promise<ControllerResult> {
   const {
-    baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.remixip.icu',
     maxIterations = 3,
     onStep,
   } = options;

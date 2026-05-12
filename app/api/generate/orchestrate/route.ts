@@ -59,9 +59,12 @@ export async function POST(req: NextRequest) {
     });
 
     // Determine base URL for internal API calls
-    const proto = req.headers.get('x-forwarded-proto') || 'http';
-    const host = req.headers.get('host') || 'localhost:3000';
-    const baseUrl = `${proto}://${host}`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+      || (() => {
+        const proto = req.headers.get('x-forwarded-proto') || 'https';
+        const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';
+        return `${proto}://${host}`;
+      })();
 
     // Execute the plan
     const result = await executeEpisodePlan(plan, baseUrl);
