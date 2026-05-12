@@ -167,6 +167,33 @@ function estimateDuration(dialogue: { character: string; line: string }[]): numb
   return Math.min(16, Math.max(3, Math.ceil(speechDuration)));
 }
 
+// -- Duration formatting per model --------------------------------
+
+/** Valid durations for Veo 3.1 — API only accepts these exact strings */
+const VEO_VALID_DURATIONS = ['4s', '6s', '8s'] as const;
+
+/**
+ * Format duration for fal.ai models. Each model has different requirements:
+ *   - Veo 3.1: only accepts '4s', '6s', or '8s' (string with 's' suffix)
+ *   - LTX 2.3: accepts number of seconds (omit — uses model default)
+ *   - Seedance, Kling, etc.: accept numeric seconds as string
+ */
+function formatDurationForModel(modelKey: string, durationSec: number): string | number | undefined {
+  if (modelKey === 'veo') {
+    // Snap to nearest valid Veo duration
+    if (durationSec <= 5) return '4s';
+    if (durationSec <= 7) return '6s';
+    return '8s';
+  }
+  if (modelKey === 'ltx-2.3' || modelKey === 'ltx-2.3-audio') {
+    // LTX-2.3 works best without explicit duration (uses its default)
+    // If we do send it, it expects a number
+    return undefined;
+  }
+  // Other models: numeric string
+  return String(durationSec);
+}
+
 // -- Model selection ---------------------------------------------
 
 /** Get the best model for the request, with fallback chain */
@@ -435,25 +462,36 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
 
   // -- Fall back to fal.ai (paid, best quality + audio sync) ---
   try {
-    // Generate via fal.ai - audio-capable models return video with baked-in audio
-    const result = await falGenerate(selectedModel.id, {
+    // Build input with model-specific duration formatting
+    const falInput: Record<string, any> = {
       prompt,
-      duration: String(duration),
       aspect_ratio: input.aspectRatio || '16:9',
       seed: input.seed,
-    });
+    };
+    const formattedDuration = formatDurationForModel(modelKey, duration);
+    if (formattedDuration !== undefined) {
+      falInput.duration = formattedDuration;
+    }
+
+    console.log(`[scene-pipeline] Trying fal.ai ${modelKey} (${selectedModel.id}), duration=${formattedDuration ?? 'default'}...`);
+
+    // Generate via fal.ai - audio-capable models return video with baked-in audio
+    const result = await falGenerate(selectedModel.id, falInput);
 
     if (!result.video?.url) {
       // If primary model failed or returned no video, try next audio-capable model
       const fallbackKey = AUDIO_CAPABLE_MODELS.find(k => k !== modelKey && FAL_VIDEO_MODELS[k]);
       if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
         console.log(`[scene-pipeline] ${modelKey} returned no video, falling back to ${fallbackKey}`);
-        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, {
+        const fbInput: Record<string, any> = {
           prompt,
-          duration: String(duration),
           aspect_ratio: input.aspectRatio || '16:9',
           seed: input.seed,
-        });
+        };
+        const fbDuration = formatDurationForModel(fallbackKey, duration);
+        if (fbDuration !== undefined) fbInput.duration = fbDuration;
+
+        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, fbInput);
 
         if (fallback.video?.url) {
           return {
@@ -500,12 +538,15 @@ export async function generateScene(input: SceneInput): Promise<SceneResult> {
     if (fallbackKey && FAL_VIDEO_MODELS[fallbackKey]) {
       try {
         console.log(`[scene-pipeline] ${modelKey} failed (${errorMsg}), falling back to ${fallbackKey}`);
-        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, {
+        const fbInput: Record<string, any> = {
           prompt,
-          duration: String(duration),
           aspect_ratio: input.aspectRatio || '16:9',
           seed: input.seed,
-        });
+        };
+        const fbDuration = formatDurationForModel(fallbackKey, duration);
+        if (fbDuration !== undefined) fbInput.duration = fbDuration;
+
+        const fallback = await falGenerate(FAL_VIDEO_MODELS[fallbackKey].id, fbInput);
 
         if (fallback.video?.url) {
           return {

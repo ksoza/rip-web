@@ -63,7 +63,19 @@ export async function POST(req: NextRequest) {
 
       const input: any = { prompt, aspect_ratio: aspectRatio };
       if (imageUrl) input.image_url = imageUrl;
-      if (duration) input.duration = String(duration);
+      // Model-specific duration formatting
+      if (duration) {
+        const mk = modelKey || provider;
+        if (mk === 'veo') {
+          // Veo 3.1 only accepts '4s', '6s', or '8s'
+          const d = Number(duration);
+          input.duration = d <= 5 ? '4s' : d <= 7 ? '6s' : '8s';
+        } else if (mk === 'ltx-2.3' || mk === 'ltx-2.3-audio') {
+          // LTX-2.3 works best with model defaults — omit duration
+        } else {
+          input.duration = String(duration);
+        }
+      }
 
       const falResult = await falGenerate(falModel.id, input);
       result = {
@@ -195,6 +207,7 @@ export async function POST(req: NextRequest) {
             const falResult = await falGenerate(wanModel.id, {
               prompt,
               aspect_ratio: aspectRatio,
+              // Wan accepts numeric duration as string
               duration: String(duration),
             });
             result = {

@@ -221,7 +221,13 @@ export async function falGenerate(
     throw new Error(`fal.ai submit error (${submitRes.status}): ${err}`);
   }
 
-  const submitData = await submitRes.json();
+  const submitText = await submitRes.text();
+  let submitData: any;
+  try {
+    submitData = JSON.parse(submitText);
+  } catch {
+    throw new Error(`fal.ai returned invalid JSON (${submitRes.status}): ${submitText.slice(0, 200)}`);
+  }
 
   // If result is already available (sync response)
   if (submitData.images || submitData.video) {
@@ -244,16 +250,29 @@ export async function falGenerate(
     const statusRes = await fetch(statusUrl, {
       headers: { 'Authorization': `Key ${key}` },
     });
-    const status = await statusRes.json();
+    const statusText = await statusRes.text();
+    let status: any;
+    try {
+      status = JSON.parse(statusText);
+    } catch {
+      console.warn(`fal.ai status poll returned non-JSON: ${statusText.slice(0, 100)}`);
+      continue; // Retry on next poll
+    }
 
     if (status.status === 'COMPLETED') {
       const resultRes = await fetch(resultUrl, {
         headers: { 'Authorization': `Key ${key}` },
       });
+      const resultText = await resultRes.text();
       if (!resultRes.ok) {
-        throw new Error(`fal.ai result fetch error: ${await resultRes.text()}`);
+        throw new Error(`fal.ai result fetch error: ${resultText.slice(0, 500)}`);
       }
-      const raw = await resultRes.json();
+      let raw: any;
+      try {
+        raw = JSON.parse(resultText);
+      } catch {
+        throw new Error(`fal.ai result returned invalid JSON (${resultRes.status}): ${resultText.slice(0, 200)}`);
+      }
       return normalizeResult(raw);
     }
 
