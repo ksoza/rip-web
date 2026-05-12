@@ -64,6 +64,37 @@ export function EpisodeGenPanel({
 
   const store = useStudioStore();
 
+  /* -- Setup state ----------------------------------------- */
+  const [show, setShow]                 = useState('');
+  const [artStyle, setArtStyle]         = useState<ArtStyleId>('source-faithful');
+  const [selectedChars, setSelectedChars] = useState<string[]>([]);
+  const [prompt, setPrompt]             = useState('');
+  const [format, setFormat]             = useState('short');
+  const [catFilter, setCatFilter]       = useState('');
+
+  /* -- Script state ---------------------------------------- */
+  const [phase, setPhase]               = useState<Phase>('setup');
+  const [script, setScript]             = useState<{
+    title: string; logline: string; scenes: ScriptScene[];
+  } | null>(null);
+  const [sceneInputs, setSceneInputs]   = useState<any[]>([]);
+
+  /* -- Production state ------------------------------------ */
+  const [sceneVideos, setSceneVideos]   = useState<SceneVideo[]>([]);
+  const [currentGen, setCurrentGen]     = useState(-1);
+  const abortRef                        = useRef<AbortController | null>(null);
+
+  /* -- Derived --------------------------------------------- */
+  const showProfile    = show ? SHOW_PROFILES[show] : null;
+  const characters     = showProfile?.characters || [];
+  const filteredShows  = catFilter
+    ? SHOW_LIST.filter(s => s.category === catFilter)
+    : SHOW_LIST;
+  const doneCount      = sceneVideos.filter(s => s.status === 'done').length;
+  const errorCount     = sceneVideos.filter(s => s.status === 'error').length;
+  const totalScenes    = sceneVideos.length;
+  const progressPct    = totalScenes ? Math.round((doneCount / totalScenes) * 100) : 0;
+
   // -- Add all completed scenes to timeline --------------------
   const addAllToTimeline = useCallback(() => {
     const { tracks, addTrack, addClipToTrack, setMode } = store;
@@ -107,37 +138,6 @@ export function EpisodeGenPanel({
     // Switch to timeline view
     setMode('timeline');
   }, [store, sceneVideos, script]);
-
-  /* -- Setup state ----------------------------------------- */
-  const [show, setShow]                 = useState('');
-  const [artStyle, setArtStyle]         = useState<ArtStyleId>('source-faithful');
-  const [selectedChars, setSelectedChars] = useState<string[]>([]);
-  const [prompt, setPrompt]             = useState('');
-  const [format, setFormat]             = useState('short');
-  const [catFilter, setCatFilter]       = useState('');
-
-  /* -- Script state ---------------------------------------- */
-  const [phase, setPhase]               = useState<Phase>('setup');
-  const [script, setScript]             = useState<{
-    title: string; logline: string; scenes: ScriptScene[];
-  } | null>(null);
-  const [sceneInputs, setSceneInputs]   = useState<any[]>([]);
-
-  /* -- Production state ------------------------------------ */
-  const [sceneVideos, setSceneVideos]   = useState<SceneVideo[]>([]);
-  const [currentGen, setCurrentGen]     = useState(-1);
-  const abortRef                        = useRef<AbortController | null>(null);
-
-  /* -- Derived --------------------------------------------- */
-  const showProfile    = show ? SHOW_PROFILES[show] : null;
-  const characters     = showProfile?.characters || [];
-  const filteredShows  = catFilter
-    ? SHOW_LIST.filter(s => s.category === catFilter)
-    : SHOW_LIST;
-  const doneCount      = sceneVideos.filter(s => s.status === 'done').length;
-  const errorCount     = sceneVideos.filter(s => s.status === 'error').length;
-  const totalScenes    = sceneVideos.length;
-  const progressPct    = totalScenes ? Math.round((doneCount / totalScenes) * 100) : 0;
 
   /* -- Helpers --------------------------------------------- */
   function toggleChar(name: string) {
