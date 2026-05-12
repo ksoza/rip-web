@@ -75,25 +75,25 @@ export async function submitBedrockVideo(
   const jobId = `scene-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const s3Prefix = `bedrock-output/${jobId}/`;
 
-  const input: Record<string, unknown> = {
-    taskType: 'TEXT_VIDEO',
-    textToVideoParams: {
-      text: prompt.slice(0, 512), // Nova Reel has a 512-char prompt limit
-    },
-    videoGenerationConfig: {
-      durationSeconds: opts.durationSeconds || 6,
-      fps: 24,
-      dimension: opts.dimension || '1280x720',
-    },
+  const videoConfig: Record<string, unknown> = {
+    durationSeconds: opts.durationSeconds || 6,
+    fps: 24,
+    dimension: opts.dimension || '1280x720',
   };
-
   if (opts.seed !== undefined) {
-    (input.videoGenerationConfig as Record<string, unknown>).seed = opts.seed;
+    videoConfig.seed = opts.seed;
   }
 
   const cmd = new StartAsyncInvokeCommand({
     modelId: MODEL_ID,
-    modelInput: input,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    modelInput: {
+      taskType: 'TEXT_VIDEO',
+      textToVideoParams: {
+        text: prompt.slice(0, 512), // Nova Reel has a 512-char prompt limit
+      },
+      videoGenerationConfig: videoConfig,
+    } as any,
     outputDataConfig: {
       s3OutputDataConfig: {
         s3Uri: `s3://${S3_BUCKET}/${s3Prefix}`,
