@@ -272,11 +272,14 @@ function isContentFilterError(err: unknown): boolean {
 /**
  * Submit a text-to-video job to Nova Reel.
  *
+ * Accepts BOTH the full assembled prompt (for logging) and the raw scene
+ * description (for building a clean Bedrock-safe prompt).
+ *
  * Multi-level approach:
- *   1. Pre-process: strip show metadata, sanitize words → try that
- *   2. On block → LLM rewrite via Groq (scene-specific, visual only)
+ *   1. Build clean visual prompt from raw scene description (no show metadata)
+ *   2. On block → LLM rewrite via Groq
  *   3. On block → basicSanitize the LLM rewrite
- *   4. On block → ultra-safe generic with scene color/setting cues
+ *   4. On block → ultra-safe cinematic with color/setting cues
  */
 export async function submitBedrockVideo(
   prompt: string,
@@ -284,6 +287,12 @@ export async function submitBedrockVideo(
     durationSeconds?: number;
     dimension?: '1280x720' | '1920x1080';
     seed?: number;
+    /** Raw scene description WITHOUT show metadata — used to build clean prompt */
+    rawSceneDescription?: string;
+    /** Show title for minimal context */
+    showTitle?: string;
+    /** Character names (not descriptions) */
+    characterNames?: string[];
   } = {},
 ): Promise<BedrockVideoJob> {
   const client = getBedrockClient();
@@ -325,13 +334,19 @@ export async function submitBedrockVideo(
     return null;
   }
 
-  // ── Attempt 1: Pre-processed prompt (strip show metadata + word sanitize) ──
-  const preprocessed = preProcessPrompt(prompt);
-  let result = await trySubmit(preprocessed, 'Attempt 1 (pre-processed)');
+  // ── Build clean prompt from raw scene description (bypasses show metadata) ──
+  const rawScene = opts.rawSceneDescription || '';
+  const cleanPrompt = rawScene
+    ? buildCleanBedrockPrompt(rawScene, opts.showTitle, opts.characterNames)
+    : preProcessPrompt(prompt);
+
+  // ── Attempt 1: Clean visual-only prompt ──
+  let result = await trySubmit(cleanPrompt, 'Attempt 1 (clean scene)');
   if (result) return result;
 
-  // ── Attempt 2: LLM rewrite via Groq ──
-  const llmRewrite = await rewritePromptForBedrock(prompt);
+  // ── Attempt 2: LLM rewrite of the scene description ──
+  const sourceForLlm = rawScene || prompt;
+  const llmRewrite = await rewritePromptForBedrock(sourceForLlm);
   result = await trySubmit(llmRewrite, 'Attempt 2 (LLM rewrite)');
   if (result) return result;
 
@@ -343,8 +358,8 @@ export async function submitBedrockVideo(
   );
   if (result) return result;
 
-  // ── Attempt 4: Ultra-safe cinematic with scene color/setting cues ──
-  const ultraSafe = buildUltraSafePrompt(prompt);
+  // ── Attempt 4: Ultra-safe cinematic with color/setting cues ──
+  const ultraSafe = buildUltraSafePrompt(rawScene || prompt);
   result = await trySubmit(ultraSafe, 'Attempt 4 (ultra-safe)');
   if (result) return result;
 
@@ -354,6 +369,63 @@ export async function submitBedrockVideo(
     'The scene content is too sensitive for Amazon Nova Reel even after rewriting. ' +
     'Try describing the scene with less violent/dark imagery.',
   );
+}
+
+/**
+ * Build a clean Bedrock-safe prompt from the RAW scene description.
+ * This bypasses buildScenePrompt() entirely — no show visual styles, no character
+ * weapon/violence descriptions, no audio tones. Just the scene itself.
+ */
+function buildCleanBedrockPrompt(
+  sceneDescription: string,
+  showTitle?: string,
+  characterNames?: string[],
+): string {
+  // Sanitize the scene description at word level
+  let cleaned = basicSanitize(sceneDescription);
+
+  const parts: string[] = ['Cinematic scene, professional cinematography, detailed environment'];
+
+  // Add show title as general aesthetic hint (without the dangerous visual style)
+  if (showTitle) {
+    // Map show titles to safe aesthetic keywords
+    const aestheticMap: Record<string, string> = {
+      'Breaking Bad': 'desert landscape, warm amber tones, harsh sunlight',
+      'Game of Thrones': 'medieval fantasy setting, candlelight and torches, epic landscape',
+      'The Sopranos': 'New Jersey suburban, dim restaurant interiors, earth tones',
+      'The Wire': 'Baltimore city streets, institutional lighting, muted palette',
+      'Peaky Blinders': '1920s industrial England, smoky streets, vintage fashion',
+      'The Walking Dead': 'overgrown suburban landscape, abandoned buildings, muted palette',
+      'The Last of Us': 'overgrown post-urban environment, nature reclaiming concrete, green-grey tones',
+      'Stranger Things': '1980s small-town America, warm nostalgic lighting, synth-wave neon',
+      'Wednesday': 'gothic academia architecture, desaturated purple accents, rainy New England',
+      'The Mandalorian': 'space western, desert planets, chrome and leather, beskar armor',
+      'Westworld': 'western frontier meets futurism, sun-bleached desert, sterile white interiors',
+      'The Witcher': 'dark medieval European fantasy, candlelit castles, earth tones',
+      'House of the Dragon': 'medieval castle court, warm golden palette, grand architecture',
+      'The Office': 'fluorescent office lighting, mundane suburban office, handheld camera feel',
+      'Friends': '1990s New York, bright warm interior lighting, cozy apartment setting',
+      'Ozark': 'blue-tinted color grading, dark lakeside cabins, overcast skies',
+      'Succession': 'ultra-wealthy interiors, corporate boardrooms, penthouse views',
+      'Better Call Saul': 'New Mexico desert, neon strip malls, warm amber transitioning to cold blue',
+    };
+    const aesthetic = aestheticMap[showTitle];
+    if (aesthetic) {
+      parts.push(aesthetic);
+    }
+  }
+
+  // Add character names as "characters in the scene" (without their dangerous descriptions)
+  if (characterNames && characterNames.length > 0) {
+    parts.push(`Characters present: ${characterNames.join(', ')}`);
+  }
+
+  // Add the sanitized scene description
+  parts.push(cleaned);
+
+  parts.push('film grain, shallow depth of field, 24fps cinematic motion');
+
+  return parts.join('. ').slice(0, 512);
 }
 
 /**

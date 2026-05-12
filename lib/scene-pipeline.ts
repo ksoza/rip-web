@@ -573,6 +573,9 @@ export async function generateScene(input: SceneInput, opts?: { asyncFal?: boole
               durationSeconds: 6,
               dimension: '1280x720',
               seed: input.seed,
+              rawSceneDescription: enrichedDescription,
+              showTitle: show,
+              characterNames: characters,
             });
             console.log(`[scene-pipeline] Bedrock job submitted: ${bedrockJob.invocationArn}`);
             return {
